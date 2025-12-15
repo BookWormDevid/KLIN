@@ -4,6 +4,8 @@ VideoMAE обучение с OpenCV для загрузки видео
 """
 
 import os
+import pathlib
+
 import torch
 import cv2
 import numpy as np
@@ -15,13 +17,13 @@ from transformers import VideoMAEImageProcessor, VideoMAEForVideoClassification,
 from typing import List, Dict, Optional
 
 # ==================== КОНФИГУРАЦИЯ ====================
-BASE_DIR = r"C:\Users\Koraku\Documents\KLIN"
+BASE_DIR = pathlib.Path(__file__).parent.parent
 TRAIN_DIR = os.path.join(BASE_DIR, "data", "raw", "KLIN", "Train")
 VAL_DIR = os.path.join(BASE_DIR, "data", "raw", "KLIN", "Val")
 TEST_DIR = os.path.join(BASE_DIR, "data", "raw", "KLIN", "Test")
 
 OUTPUT_DIR = "./videomae_results"
-MODEL_NAME = r"C:\Users\Koraku\Documents\KLIN\models\videomae-large"  # Используем онлайн модель
+MODEL_NAME = os.path.join(BASE_DIR, "models", "videomae-large")  # Используем онлайн модель
 NUM_FRAMES = 16
 IMG_SIZE = 224
 BATCH_SIZE = 2  # Для RTX 5060 начните с 2
