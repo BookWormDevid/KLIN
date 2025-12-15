@@ -1,0 +1,5 @@
+Лаба 2
+1) dvc add data/raw/"dataset_folder".dvc
+2) dvc push -r local_remote
+3) dvc status, dvc metrics(если есть), dvc diff
+Лаба 3
