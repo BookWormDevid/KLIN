@@ -25,9 +25,12 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+models/
 remote/MCG-NJU
 remote/YOLO
 remote/videomae-base-finetuned-KLIN
+videomae_results
+torch-2.9.1
 
 
 # PyInstaller

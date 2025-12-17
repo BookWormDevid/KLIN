@@ -5,7 +5,8 @@ import numpy as np
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from tqdm import tqdm
 import pandas as pd
-
+import pathlib
+BASE_DIR = pathlib.Path(__file__).parent.parent
 
 class VideoFolderClassifier:
     def __init__(self, model_path: str = None, chunk_size: int = 16, frame_size: tuple = (224, 224)):
@@ -30,11 +31,7 @@ class VideoFolderClassifier:
     def _find_model_path(self):
         """Автоматически найти путь к модели"""
         possible_paths = [
-            "videomae-base-finetuned-klin/checkpoint-24536",
-            "./videomae-base-finetuned-klin/checkpoint-24536",
-            "../videomae-base-finetunedklin/checkpoint-24536",
-            "checkpoint-24536",
-            "./checkpoint-24536"
+            os.path.join(BASE_DIR, "models", "videomae-large")
         ]
 
         for path in possible_paths:
@@ -209,8 +206,8 @@ def process_video_folder_simple(folder_path, model_path=None, output_file="video
         # Попробуем найти модель относительно текущей директории
         current_dir = os.path.dirname(os.path.abspath(__file__))
         possible_paths = [
-            os.path.join(current_dir, "videomae-base-finetuned-klin", "checkpoint-24536"),
-            os.path.join(current_dir, "checkpoint-24536"),
+            os.path.join(current_dir, "videomae-base-finetuned-klin", "checkpoint-14172"),
+            os.path.join(current_dir, "checkpoint-14172"),
             os.path.join(os.path.dirname(current_dir), "videomae-base-finetuned-klin",
                          "checkpoint-24536")
         ]
@@ -242,10 +239,10 @@ def process_video_folder_simple(folder_path, model_path=None, output_file="video
 # Основной запуск
 if __name__ == "__main__":
     # Укажите путь к вашей папке с видео
-    video_folder = r"C:\Users\DEvA\Videos\Video_For_AI\klin_DATASET\test\violent"
+    video_folder = r"/home/cipher/Documents/VS_code/KLIN/data/raw/KLIN/Test/violent"
 
     # Укажите путь к модели (если нужно)
-    model_path = None  # Автоматический поиск
+    model_path = "/home/cipher/Documents/VS_code/KLIN/videomae_results/checkpoint-28344" # Автоматический поиск
 
     results = process_video_folder_simple(
         folder_path=video_folder,
