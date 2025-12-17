@@ -154,7 +154,7 @@ python run.py
 python remote/evaluated.py
 
 # Пакетная обработка видео
-python remote/metric.py
+python remote/evaluated.py
 
 # Анализ архитектуры и метрик модели
 python remote/metrics_check.py
@@ -193,7 +193,7 @@ klin/
 ├── 📂 remote/                      # ML КОМПОНЕНТЫ (ядро системы)
 │   ├── videomae-base-finetuned-KLIN/  # Дообученная модель VideoMAE
 │   ├── metrics_check.py            # Анализ модели
-│   ├── metric.py             # Пакетная обработка видео
+│   ├── evaluated.py             # Пакетная обработка видео
 │   ├── evaluated.py                    # VideoMAE классификатор (основной)
 │   └── train.py               # Код дообучения модели
 ├── 📂 test/                        # ТЕСТЫ И УТИЛИТЫ

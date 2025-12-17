@@ -4,17 +4,16 @@ mlops-flight-delay/
 │   └── raw/             # исходные данные (через DVC)
 │
 ├── models/              # сохранённые модели
-├── reports/             # отчёты (метрики, графики)
 │
-├── src/
+├── remote/
 │   ├── preprocess.py    # очистка и подготовка данных
 │   ├── train.py         # обучение модели
-│   ├── evaluate.py      # оценка модели
+│   ├── evaluated.py      # оценка модели
 │   ├── predict.py       # скрипт для инференса
 │   ├── api.py           # REST API (FastAPI)
-│   └── utils.py         # вспомогательные функции
+│   └── metrics_check.py # Оценка метрик модели
 │
-├── tests/               # unit-тесты
+├── test/               # unit-тесты
 │   └── test_dummy.py
 │
 ├── .gitignore

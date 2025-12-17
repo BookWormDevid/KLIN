@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from transformers import VideoMAEForVideoClassification, VideoMAEConfig
 
-new_model_name = "videomae-base-finetuned-kinetics-repurposed-klin/checkpoint-200"
+new_model_name = r"C:\Users\meksi\Documents\GitHub\KLIN\models\KLIN-model"
 
 def find_safetensors_models(base_dir):
     """Найти все модели с .safetensors файлами"""
