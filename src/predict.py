@@ -4,13 +4,13 @@ import cv2
 import numpy as np
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from tqdm import tqdm
-import pathlib
+from pathlib import Path
 
-BASE_DIR = pathlib.Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent.parent
 
 
 class VideoClassifier:
-    def __init__(self, model_path: str = None, chunk_size: int = 16, frame_size: tuple = (224, 224)):
+    def __init__(self, model_path: str = "", chunk_size: int = 16, frame_size: tuple = (224, 224)):
         self.chunk_size = chunk_size
         self.frame_size = frame_size
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -144,7 +144,7 @@ class VideoClassifier:
             }
 
 
-def process_video(input_path: str, model_path: str = None):
+def process_video(input_path: str, model_path: str = ""):
     """Основная функция обработки видео или папки с видео"""
 
     # Если путь к модели не указан, пробуем найти автоматически
@@ -266,10 +266,13 @@ def process_video(input_path: str, model_path: str = None):
 # Пример использования
 if __name__ == "__main__":
     # Можно указать как путь к файлу, так и путь к папке
-    input_path = r"C:\Users\meksi\Documents\GitHub\KLIN\data\raw\KLIN\Test"
+    klin_directory = Path(__file__).parent.parent
+
+    
+    input_path = str(klin_directory / Path("data/raw/KLIN/Test"))
 
     # Путь к модели
-    model_path = r"C:\Users\meksi\Documents\GitHub\KLIN\models\KLIN-model"
+    model_path = str(klin_directory / Path("models/KLIN-model"))
 
     # Запуск обработки
     process_video(

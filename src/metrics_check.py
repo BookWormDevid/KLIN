@@ -1,14 +1,13 @@
 import os
-import json
-import torch
 import safetensors
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from transformers import VideoMAEForVideoClassification, VideoMAEConfig
+from transformers import VideoMAEForVideoClassification
 
-new_model_name = r"C:\Users\meksi\Documents\GitHub\KLIN\models\KLIN-model"
+new_model_name = Path("KLIN/models/KLIN-model")
+
 
 def find_safetensors_models(base_dir):
     """Найти все модели с .safetensors файлами"""
