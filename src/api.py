@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import os
 import tempfile
 import uuid
@@ -16,20 +17,27 @@ app = FastAPI(
     description="API для классификации видеофайлов с использованием VideoMAE",
     version="1.0.0"
 )
+
 # Инициализация классификатора при запуске
 MODEL_PATH = os.path.join(BASE_DIR, "models", "KLIN-model")
-print(MODEL_PATH)
+print(f"[API] Загрузка модели из: {MODEL_PATH}")
+
 # Проверяем существование модели
 if not os.path.exists(MODEL_PATH):
-    raise FileNotFoundError(f"❌ Модель не найдена по пути: {MODEL_PATH}")
+    print(f"[API] Ошибка: Модель не найдена по пути: {MODEL_PATH}")
+    raise FileNotFoundError(f"Модель не найдена по пути: {MODEL_PATH}")
 
 try:
-    # Используем ваш существующий VideoFolderClassifier, но переименуем для API
-    classifier = VideoClassifier(MODEL_PATH)  # Используйте VideoFolderClassifier если он называется так
-    print("✅ Классификатор инициализирован")
+    # Используем ваш существующий VideoClassifier
+    classifier = VideoClassifier(MODEL_PATH)
+    print(f"[API] Модель загружена! Доступные классы: {classifier.model.config.id2label}")
 except Exception as e:
-    print(f"❌ Ошибка инициализации классификатора: {e}")
+    print(f"[API] Ошибка инициализации классификатора: {e}")
     classifier = None
+
+
+class URLRequest(BaseModel):
+    url: str
 
 
 @app.get("/")
@@ -61,6 +69,7 @@ async def get_classes():
         raise HTTPException(status_code=500, detail="Модель не загружена")
 
     return {
+        "success": True,
         "classes": classifier.model.config.id2label,
         "num_classes": len(classifier.model.config.id2label)
     }
@@ -87,6 +96,7 @@ async def predict_video(file: UploadFile = File(...)):
         )
 
     # Создаем временный файл для загруженного видео
+    temp_filepath = None
     try:
         # Создаем уникальное имя для временного файла
         temp_dir = tempfile.gettempdir()
@@ -94,35 +104,48 @@ async def predict_video(file: UploadFile = File(...)):
         temp_filepath = os.path.join(temp_dir, temp_filename)
 
         # Сохраняем загруженный файл
+        content = await file.read()
         with open(temp_filepath, "wb") as buffer:
-            content = await file.read()
             buffer.write(content)
 
-        print(f"📥 Видео загружено: {file.filename} -> {temp_filepath}")
+        print(f"[API] Обработка видео: {file.filename}")
 
         # Используем ваш существующий метод predict_video
         result = classifier.predict_video(temp_filepath)
 
         # Удаляем временный файл
-        os.remove(temp_filepath)
+        if temp_filepath and os.path.exists(temp_filepath):
+            os.remove(temp_filepath)
 
         # Проверяем на ошибки
         if result.get('predicted_class') == 'ERROR':
-            raise HTTPException(
-                status_code=500,
-                detail=f"Ошибка обработки видео: {result.get('error', 'Неизвестная ошибка')}"
+            error_msg = result.get('error', 'Неизвестная ошибка')
+            print(f"[API] Ошибка обработки: {error_msg}")
+            
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": error_msg,
+                    "predicted_class": "ERROR",
+                    "confidence": 0.0
+                },
+                status_code=500
             )
 
-        # Форматируем ответ
+        # Форматируем ответ с нужной информацией
+        confidence = result.get('confidence', 0.0)
+        
         response = {
             "success": True,
             "filename": file.filename,
             "predicted_class": result['predicted_class'],
-            "confidence": result['confidence'],
-            "confidence_percent": round(result['confidence'] * 100, 2),
+            "confidence": confidence,
+            "confidence_percent": round(confidence * 100, 2),
             "processing_info": {
-                "frames_processed": result.get('num_frames', 0),
-                "chunks_created": result.get('num_chunks', 0),
+                "processing_time_seconds": round(result.get('processing_time', 0), 2),
+                "video_duration": round(result.get('video_duration', 0), 2),
+                "total_frames": result.get('total_frames', 0),
+                "video_fps": result.get('video_fps', 0),
                 "device": str(classifier.device)
             }
         }
@@ -133,12 +156,84 @@ async def predict_video(file: UploadFile = File(...)):
         raise
     except Exception as e:
         # Удаляем временный файл в случае ошибки
-        if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        if temp_filepath and os.path.exists(temp_filepath):
+            try:
+                os.remove(temp_filepath)
+            except:
+                pass
 
+        print(f"[API] Ошибка: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"Ошибка обработки видео: {str(e)}"
+        )
+
+
+@app.post("/predict_from_url")
+async def predict_from_url(url_request: URLRequest):
+    """
+    Классификация видео по URL
+    Поддерживает: YouTube, Vimeo, прямые ссылки на видеофайлы
+    """
+    if classifier is None:
+        raise HTTPException(status_code=500, detail="Модель не загружена")
+    
+    url = url_request.url.strip()
+    
+    if not url:
+        raise HTTPException(status_code=400, detail="URL не может быть пустым")
+    
+    if not url.startswith(('http://', 'https://')):
+        raise HTTPException(status_code=400, detail="Некорректный URL. Должен начинаться с http:// или https://")
+    
+    try:
+        print(f"[API] Обработка видео по URL: {url}")
+        
+        # Используем метод predict_video_from_url
+        result = classifier.predict_video_from_url(url)
+
+        # Проверяем на ошибки
+        if result.get('predicted_class') == 'ERROR':
+            error_msg = result.get('error', 'Неизвестная ошибка')
+            print(f"[API] Ошибка обработки URL: {error_msg}")
+            
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": error_msg,
+                    "predicted_class": "ERROR",
+                    "confidence": 0.0
+                },
+                status_code=500
+            )
+
+        # Форматируем ответ
+        confidence = result.get('confidence', 0.0)
+        
+        response = {
+            "success": True,
+            "url": url,
+            "filename": result.get('video_name', 'video_from_url'),
+            "predicted_class": result['predicted_class'],
+            "confidence": confidence,
+            "confidence_percent": round(confidence * 100, 2),
+            "processing_info": {
+                "processing_time_seconds": round(result.get('processing_time', 0), 2),
+                "video_duration": round(result.get('video_duration', 0), 2),
+                "total_frames": result.get('total_frames', 0),
+                "video_fps": result.get('video_fps', 0),
+                "device": str(classifier.device),
+                "source": "url"
+            }
+        }
+
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        print(f"[API] Ошибка обработки URL: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка обработки видео по URL: {str(e)}"
         )
 
 
@@ -173,15 +268,16 @@ async def predict_batch(files: List[UploadFile] = File(...)):
             temp_filename = f"video_{uuid.uuid4().hex}{file_ext}"
             temp_filepath = os.path.join(temp_dir, temp_filename)
 
+            content = await file.read()
             with open(temp_filepath, "wb") as buffer:
-                content = await file.read()
                 buffer.write(content)
 
             # Классификация
             result = classifier.predict_video(temp_filepath)
 
             # Удаляем временный файл
-            os.remove(temp_filepath)
+            if temp_filepath and os.path.exists(temp_filepath):
+                os.remove(temp_filepath)
 
             if result.get('predicted_class') == 'ERROR':
                 results.append({
@@ -199,8 +295,11 @@ async def predict_batch(files: List[UploadFile] = File(...)):
                 })
 
         except Exception as e:
-            if 'temp_filepath' in locals() and os.path.exists(temp_filepath):
-                os.remove(temp_filepath)
+            if 'temp_filepath' in locals() and temp_filepath and os.path.exists(temp_filepath):
+                try:
+                    os.remove(temp_filepath)
+                except:
+                    pass
 
             results.append({
                 "filename": file.filename,
@@ -222,24 +321,24 @@ async def predict_batch(files: List[UploadFile] = File(...)):
     return JSONResponse(content=response)
 
 
-@app.post("/predict_from_url")
-async def predict_from_url(url: str):
-    """
-    Классификация видео по URL
-    """
-    # В будущем можно добавить загрузку видео по URL
+@app.get("/test")
+async def test_endpoint():
+    """Тестовый эндпоинт"""
     return {
-        "message": "Функционал в разработке",
-        "url": url
+        "status": "ok",
+        "message": "API работает",
+        "model_loaded": classifier is not None
     }
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    print("🚀 Запуск FastAPI сервера...")
-    print(f"📖 Документация API: http://localhost:8000/docs")
-    print(f"📖 Redoc: http://localhost:8000/redoc")
+    print("=" * 50)
+    print("Запуск FastAPI сервера...")
+    print(f"Документация API: http://localhost:8000/docs")
+    print(f"Redoc: http://localhost:8000/redoc")
+    print("=" * 50)
 
     uvicorn.run(
         app,

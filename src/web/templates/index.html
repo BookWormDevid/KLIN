@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>КЛИН - Анализ видео</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>КЛИН</h1>
+            <p class="subtitle">Система анализа агрессии с видеопотоков</p>
+        </header>
+
+        <main class="main-content">
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <div class="upload-card">
+                    <h2>Анализ видео</h2>
+                    <p class="description">
+                        Загрузите видеофайл или укажите ссылку для анализа на агрессивное поведение
+                    </p>
+
+                    <!-- File Upload -->
+                    <div class="upload-method">
+                        <h3>Загрузить видеофайл</h3>
+                        <div class="file-drop-zone" id="drop-zone">
+                            <div class="drop-content">
+                                <div class="upload-icon">📤</div>
+                                <p>Перетащите видеофайл сюда или</p>
+                                <input type="file" id="file-input" accept="video/*" hidden>
+                                <button class="browse-btn" onclick="document.getElementById('file-input').click()">
+                                    Выбрать файл
+                                </button>
+                                <p class="file-info">Поддерживаемые форматы: MP4, AVI, MOV, MKV</p>
+                            </div>
+                        </div>
+                        <div class="file-info-display" id="file-info"></div>
+                    </div>
+
+                    <!-- Divider -->
+                    <div class="upload-divider">
+                        <span>ИЛИ</span>
+                    </div>
+
+                    <!-- URL Input -->
+                    <div class="upload-method">
+                        <h3>Указать ссылку на видео</h3>
+                        <div class="url-input-group">
+                            <input type="url" id="video-url" placeholder="https://example.com/video.mp4">
+                            <button class="url-test-btn" onclick="testUrl()">Проверить ссылку</button>
+                            <button class="url-clear-btn" onclick="clearUrl()">Очистить</button>
+                        </div>
+                    </div>
+
+                    <!-- Analyze Button -->
+                    <button class="analyze-btn" id="analyze-btn" onclick="analyzeVideo()">
+                        Начать анализ
+                    </button>
+                </div>
+            </section>
+
+            <!-- Results Section - ВСЕГДА ВИДИМА ПОСЛЕ ПЕРВОГО ИСПОЛЬЗОВАНИЯ -->
+            <section class="results-section" id="results-section">
+                <div class="results-card">
+                    <h2>Результаты анализа</h2>
+
+                    <!-- Video Player -->
+                    <div class="video-container">
+                        <video id="video-player" controls>
+                            Ваш браузер не поддерживает видео тег.
+                        </video>
+                    </div>
+
+                    <!-- Analysis Status -->
+                    <div class="analysis-status">
+                        <div class="status-header">
+                            <h3>Статус системы</h3>
+                            <div class="real-time-badge">В реальном времени</div>
+                        </div>
+
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <div class="status-label">
+                                    <span class="status-icon">⚡</span>
+                                    Статус анализа
+                                </div>
+                                <div class="status-value" id="analysis-status">Ожидание данных</div>
+                                <div class="status-description">Обработка видео</div>
+                            </div>
+
+                            <div class="status-item">
+                                <div class="status-label">
+                                    <span class="status-icon">🔮</span>
+                                    Результат
+                                </div>
+                                <div class="status-value" id="prediction-result">--</div>
+                                <div class="status-description">Результат ML модели</div>
+                            </div>
+
+                            <div class="status-item">
+                                <div class="status-label">
+                                    <span class="status-icon">📊</span>
+                                    Уверенность
+                                </div>
+                                <div class="status-value" id="confidence-level">--</div>
+                                <div class="status-description">Уверенность модели</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Info -->
+                    <div class="detailed-info">
+                        <h3>Информация о видео</h3>
+                        <div class="info-grid">
+                            <div class="info-item">
+                                <label>Время обработки:</label>
+                                <span id="processing-time">--</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Длительность видео:</label>
+                                <span id="video-duration">--</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Всего кадров:</label>
+                                <span id="total-frames">--</span>
+                            </div>
+                            <div class="info-item">
+                                <label>Частота кадров (FPS):</label>
+                                <span id="video-fps">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Event Log -->
+                    <div class="event-log">
+                        <div class="log-header">
+                            <h3>Журнал событий</h3>
+                            <button class="clear-log-btn" onclick="clearLog()">Очистить журнал</button>
+                        </div>
+                        <div class="log-container" id="event-log">
+                            <div class="log-empty-message" id="log-empty-message">
+                                <p>Журнал событий пуст. Начните анализ видео, чтобы увидеть события здесь.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>КЛИН - Система анализа агрессии с видеопотоков • v1.0</p>
+            <p class="footer-note">История анализов сохраняется автоматически</p>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <p id="loading-message">Обработка видео...</p>
+    </div>
+
+    <script src="/static/js/script.js"></script>
+</body>
+
+</html>
