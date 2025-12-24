@@ -33,8 +33,8 @@ class VideoClassifier:
     def _find_model_path(self):
         """Автоматически найти путь к модели"""
         possible_paths = [
-            BASE_DIR / "videomae-results" / "checkpoint14172",
-            Path("videomae-results") / "checkpoint14172",
+            BASE_DIR / "videomae_results" / "checkpoint14172",
+            Path("videomae_results") / "checkpoint14172",
         ]
 
         for path in possible_paths:
