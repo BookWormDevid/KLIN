@@ -3,9 +3,6 @@
 KLIN Frontend - Launch Script
 Run this file to start the web interface
 """
-
-import os
-import sys
 import webbrowser
 import threading
 from app import app

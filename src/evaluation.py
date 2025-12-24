@@ -151,7 +151,7 @@ def process_video(input_path: str, model_path: str = None):
     if model_path is None:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         possible_paths = [
-            os.path.join(current_dir, "models", "KLIN-model"),
+            os.path.join(current_dir, "models", "videomae-large"),
         ]
 
         for path in possible_paths:
@@ -266,10 +266,10 @@ def process_video(input_path: str, model_path: str = None):
 # Пример использования
 if __name__ == "__main__":
     # Можно указать как путь к файлу, так и путь к папке
-    input_path = r"C:\Users\meksi\Documents\GitHub\KLIN\data\raw\KLIN\Test"
+    input_path = r""
 
     # Путь к модели
-    model_path = r"C:\Users\meksi\Documents\GitHub\KLIN\models\KLIN-model"
+    model_path = r""
 
     # Запуск обработки
     process_video(

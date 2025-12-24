@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from transformers import VideoMAEForVideoClassification
 
-new_model_name = Path("KLIN/models/KLIN-model")
+new_model_name = Path("KLIN/models/videomae-large")
 
 
 def find_safetensors_models(base_dir):

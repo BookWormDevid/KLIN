@@ -19,7 +19,7 @@ app = FastAPI(
 )
 
 # Инициализация классификатора при запуске
-MODEL_PATH = os.path.join(BASE_DIR, "models", "KLIN-model")
+MODEL_PATH = os.path.join(BASE_DIR, "videomae-results", "checkpoint-14172")
 print(f"[API] Загрузка модели из: {MODEL_PATH}")
 
 # Проверяем существование модели
