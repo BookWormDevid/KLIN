@@ -206,7 +206,7 @@ def process_video_folder_simple(folder_path, model_path=None, output_file="video
         # Попробуем найти модель относительно текущей директории
         current_dir = os.path.dirname(os.path.abspath(__file__))
         possible_paths = [
-            os.path.join(current_dir, "videomae-base-finetuned-klin", "checkpoint-14172"),
+            os.path.join(current_dir, "videomae_results", "checkpoint-14172"),
             os.path.join(current_dir, "checkpoint-14172"),
             os.path.join(os.path.dirname(current_dir), "videomae-base-finetuned-klin",
                          "checkpoint-24536")
