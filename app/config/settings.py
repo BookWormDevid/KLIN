@@ -11,7 +11,7 @@ load_dotenv()
 
 @dataclass
 class Settings(BaseSettings):
-    app_host: str = "0.0.0.0"
+    app_host: str = "192.168.210.85"
     app_port: int = 8000
 
     log_level: Any = "info"

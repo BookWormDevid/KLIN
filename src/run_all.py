@@ -97,7 +97,7 @@ def main():
         
         # Открываем браузер
         try:
-            webbrowser.open("http://localhost:8080")
+            webbrowser.open("http://192.168.210.85:8080")
         except:
             print("Не удалось открыть браузер автоматически")
         

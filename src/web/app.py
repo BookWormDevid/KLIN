@@ -37,7 +37,7 @@ async def analyze_video_file(file: UploadFile = File(...)):
         # Отправка в API
         async with httpx.AsyncClient(timeout=120) as client:
             files = {'file': (file.filename, await file.read(), file.content_type)}
-            response = await client.post("http://localhost:8000/predict", files=files)
+            response = await client.post("http://192.168.210.85:8000/predict", files=files)
         
         if response.status_code == 200:
             result = response.json()
@@ -76,7 +76,7 @@ async def analyze_video_url(request: Request):
         # Отправка в API с большим таймаутом
         async with httpx.AsyncClient(timeout=300) as client:
             response = await client.post(
-                "http://localhost:8000/predict_from_url",
+                "http://192.168.210.85:8000/predict_from_url",
                 json={"url": url},
                 timeout=300
             )
@@ -140,7 +140,7 @@ async def api_health_check():
     """Проверка здоровья API"""
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            response = await client.get("http://localhost:8000/health")
+            response = await client.get("http://192.168.210.85:8000/health")
             return response.json()
     except:
         return {"status": "unavailable", "error": "API не отвечает"}
@@ -153,4 +153,4 @@ if __name__ == "__main__":
     print("Проверка здоровья: http://localhost:8080/health")
     print("Отладка: http://localhost:8080/debug/files")
     print("=" * 40)
-    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="warning")
+    uvicorn.run(app, host="192.168.210.85", port=8080, log_level="warning")

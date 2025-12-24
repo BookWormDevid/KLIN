@@ -12,7 +12,7 @@ from app import app
 
 def open_browser():
     """Open web browser when server starts"""
-    webbrowser.open_new('http://localhost:5000/')
+    webbrowser.open_new('http://192.168.210.85:5000/')
 
 def main():
     """Main function to start the frontend"""
@@ -27,7 +27,7 @@ def main():
     threading.Timer(1.5, open_browser).start()
     
     # Start Flask development server
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
+    app.run(debug=True, host='192.168.210.85', port=5000, use_reloader=False)
 
 if __name__ == '__main__':
     try:
