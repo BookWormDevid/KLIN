@@ -110,12 +110,12 @@ class VideoClassifier:
                 else:
                     raise ValueError("Файл не скачан")
                     
-        except Exception as e:
+        except Exception:
             # Пробуем альтернативный подход для прямых ссылок на видео
             if not url.startswith(('http://', 'https://')):
                 raise ValueError(f"Некорректный URL: {url}")
             
-            print(f"[API] Попытка прямой загрузки...")
+            print("[API] Попытка прямой загрузки...")
             try:
                 import urllib.request
                 urllib.request.urlretrieve(url, temp_filepath)

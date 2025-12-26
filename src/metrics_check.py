@@ -64,7 +64,7 @@ def analyze_safetensors_file_corrected(model_path):
                 print(f"  Всего параметров в показанных тензорах: {total_params:,}")
 
                 # Анализ самых больших тензоров
-                print(f"\n  🏆 Самые большие тензоры:")
+                print("\n  🏆 Самые большие тензоры:")
                 tensor_sizes = []
                 for key in tensors:
                     try:
@@ -84,7 +84,7 @@ def analyze_safetensors_file_corrected(model_path):
             if os.path.exists(safetensors_path):
                 return analyze_safetensors_file_corrected(safetensors_path)
             else:
-                print(f"  ❌ model.safetensors не найден в директории")
+                print("  ❌ model.safetensors не найден в директории")
 
     except Exception as e:
         print(f"  ❌ Ошибка анализа: {e}")
@@ -101,11 +101,11 @@ def load_model_from_safetensors(model_path):
         if os.path.isdir(model_path):
             # Загрузка из директории с конфигом
             model = VideoMAEForVideoClassification.from_pretrained(model_path)
-            print(f"  ✅ Модель загружена из директории")
+            print("  ✅ Модель загружена из директории")
             return model
         else:
             # Для отдельных .safetensors файлов нужна дополнительная обработка
-            print(f"  ⚠️  Отдельный .safetensors файл - нужен config")
+            print("  ⚠️  Отдельный .safetensors файл - нужен config")
             return None
 
     except Exception as e:
@@ -179,8 +179,6 @@ for model_name, model in models.items():
     stats_df = detailed_model_analysis(model, model_name)
     model_stats[model_name] = stats_df
 
-import matplotlib.pyplot as plt
-import numpy as np
 
 
 def create_basic_plots(model, model_name):
@@ -246,7 +244,7 @@ def create_basic_plots(model, model_name):
 
         # Вывод числовой статистики
         print(f"\n📈 СТАТИСТИКА МОДЕЛИ {model_name}:")
-        print(f"   Веса классификатора:")
+        print("   Веса классификатора:")
         print(f"     - Среднее: {stats_data['Среднее']:.6f}")
         print(f"     - Стандартное отклонение: {stats_data['Стд. откл.']:.6f}")
         print(f"     - Диапазон: [{stats_data['Мин.']:.6f}, {stats_data['Макс.']:.6f}]")

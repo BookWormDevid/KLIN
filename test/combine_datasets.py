@@ -3,7 +3,7 @@ import cv2
 import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 import random

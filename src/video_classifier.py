@@ -176,7 +176,7 @@ class VideoFolderClassifier:
         successful = df[df['predicted_class'] != 'ERROR']
         errors = df[df['predicted_class'] == 'ERROR']
 
-        print(f"\n📊 СВОДКА ОБРАБОТКИ:")
+        print("\n📊 СВОДКА ОБРАБОТКИ:")
         print(f"   Всего видео: {len(df)}")
         print(f"   Успешно обработано: {len(successful)}")
         print(f"   Ошибок: {len(errors)}")
@@ -186,13 +186,13 @@ class VideoFolderClassifier:
 
             # Class distribution
             class_counts = successful['predicted_class'].value_counts()
-            print(f"   Распределение классов:")
+            print("   Распределение классов:")
             for class_name, count in class_counts.items():
                 percentage = (count / len(successful)) * 100
                 print(f"     {class_name}: {count} видео ({percentage:.1f}%)")
 
         if len(errors) > 0:
-            print(f"\n❌ Ошибки обработки:")
+            print("\n❌ Ошибки обработки:")
             for _, error_row in errors.iterrows():
                 print(f"   {error_row['video_name']}: {error_row.get('error', 'Unknown error')}")
 

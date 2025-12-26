@@ -6,4 +6,18 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "dvc>=3.64.2",
+    "fastapi>=0.127.0",
+    "httpx>=0.28.1",
+    "opencv-python-headless>=4.12.0.88",
+    "python-multipart>=0.0.21",
+    "torchvision==0.24.0",
+    "transformers>=4.57.3",
+    "uvicorn>=0.40.0",
+    "yt-dlp>=2025.12.8",
+]
+
+[dependency-groups]
+dev = [
+    "myp>=1.5.8",
+    "ruff>=0.14.10",
 ]

@@ -5,7 +5,7 @@ from typing import List, Dict, Optional
 import torch
 import cv2
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torchvision import transforms
 from transformers import (
     VideoMAEImageProcessor,

@@ -172,7 +172,7 @@ def process_video(input_path: str, model_path: str = None):
     if os.path.isfile(input_path):
         # Обработка одного файла
         print("\n" + "=" * 50)
-        print(f"🎬 ОБРАБОТКА ВИДЕОФАЙЛА")
+        print("🎬 ОБРАБОТКА ВИДЕОФАЙЛА")
         print("=" * 50)
 
         result = classifier.predict_video(input_path)
@@ -182,7 +182,7 @@ def process_video(input_path: str, model_path: str = None):
             return
 
         print("\n" + "=" * 50)
-        print(f"📊 РЕЗУЛЬТАТЫ КЛАССИФИКАЦИИ")
+        print("📊 РЕЗУЛЬТАТЫ КЛАССИФИКАЦИИ")
         print("=" * 50)
         print(f"📁 Видео: {result['video_name']}")
         print(f"🎯 Предсказанный класс: {result['predicted_class']}")
@@ -203,7 +203,7 @@ def process_video(input_path: str, model_path: str = None):
     elif os.path.isdir(input_path):
         # Обработка папки
         print("\n" + "=" * 50)
-        print(f"📁 ОБРАБОТКА ПАПКИ С ВИДЕО")
+        print("📁 ОБРАБОТКА ПАПКИ С ВИДЕО")
         print("=" * 50)
         print(f"Папка: {input_path}")
 
@@ -239,7 +239,7 @@ def process_video(input_path: str, model_path: str = None):
         errors = [r for r in results if r.get('error')]
 
         print("\n" + "=" * 50)
-        print(f"📈 СВОДНАЯ СТАТИСТИКА")
+        print("📈 СВОДНАЯ СТАТИСТИКА")
         print("=" * 50)
         print(f"Всего видео: {len(results)}")
         print(f"Успешно обработано: {len(successful)}")

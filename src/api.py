@@ -336,8 +336,8 @@ if __name__ == "__main__":
 
     print("=" * 50)
     print("Запуск FastAPI сервера...")
-    print(f"Документация API: http://localhost:8000/docs")
-    print(f"Redoc: http://localhost:8000/redoc")
+    print("Документация API: http://localhost:8000/docs")
+    print("Redoc: http://localhost:8000/redoc")
     print("=" * 50)
 
     uvicorn.run(

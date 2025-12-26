@@ -1,5 +1,4 @@
 # test_data_loader.py
-import torch
 from combine_datasets import FightDetectionDataset, DataLoaderFactory
 
 
