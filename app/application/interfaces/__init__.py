@@ -1,9 +1,8 @@
 from .Klin import (
-    IKlinRepository,
     IKlinInference,
     IKlinProcessProducer,
+    IKlinRepository,
 )
-
 
 __all__ = (
     "IKlinRepository",

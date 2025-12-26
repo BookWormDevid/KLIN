@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "dvc>=3.64.2",
+    "albumentations>=2.0.8",
     "fastapi>=0.127.0",
     "httpx>=0.28.1",
     "opencv-python-headless>=4.12.0.88",
@@ -18,6 +18,32 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "myp>=1.5.8",
+    "mypy>=1.5.8",
+    "pre-commit>=4.5.1",
     "ruff>=0.14.10",
 ]
+
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+strict_optional = true
+plugins = []
+
+
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # bugbear
+    "UP", # pyupgrade
+]
+ignore = ["E501"]

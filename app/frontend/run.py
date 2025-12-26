@@ -3,9 +3,11 @@
 KLIN Frontend - Launch Script
 Run this file to start the web interface
 """
-import webbrowser
 import threading
+import webbrowser
+
 from app import app
+
 
 def open_browser():
     """Open web browser when server starts"""

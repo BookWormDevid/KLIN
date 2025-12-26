@@ -1,8 +1,0 @@
-stages:
-  preprocess:
-    cmd: python remote/preprocess.py
-    deps:
-      - remote/preprocess.py
-      - data/raw/KLIN_raw
-    outs:
-      - data/processed/KLIN_processed

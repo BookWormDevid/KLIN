@@ -1,9 +1,10 @@
 import os
-import safetensors
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-from pathlib import Path
+import safetensors
 from transformers import VideoMAEForVideoClassification
 
 new_model_name = Path("KLIN/models/videomae-large")

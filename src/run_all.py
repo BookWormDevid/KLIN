@@ -1,9 +1,10 @@
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
-import threading
 from pathlib import Path
+
 
 def run_process(name, cmd, cwd=None):
     """Запуск процесса с минимальным выводом"""

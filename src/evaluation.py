@@ -1,10 +1,11 @@
 import os
-import torch
+import pathlib
+
 import cv2
 import numpy as np
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
+import torch
 from tqdm import tqdm
-import pathlib
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 

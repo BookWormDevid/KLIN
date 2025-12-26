@@ -1,4 +1,5 @@
 import uuid
+
 import msgspec
 
 from app.models import KlinModel, ProcessingState

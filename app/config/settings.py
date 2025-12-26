@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 from app.config.base import BaseSettings
 
-
 load_dotenv()
 
 

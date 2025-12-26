@@ -1,6 +1,6 @@
+import uuid
 from abc import abstractmethod
 from typing import Protocol
-import uuid
 
 from app.application.dto import KlinProcessDto
 from app.models import KlinModel

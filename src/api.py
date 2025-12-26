@@ -1,11 +1,11 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 import os
+import pathlib
 import tempfile
 import uuid
-from typing import List
-import pathlib
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Импортируем ваш существующий VideoClassifier
 from predict import VideoClassifier
@@ -238,7 +238,7 @@ async def predict_from_url(url_request: URLRequest):
 
 
 @app.post("/predict_batch")
-async def predict_batch(files: List[UploadFile] = File(...)):
+async def predict_batch(files: list[UploadFile] = File(...)):
     """
     Пакетная классификация нескольких видео файлов
     """

@@ -1,15 +1,16 @@
 # app.py
-from flask import Flask, render_template, request, jsonify
 import os
 import sys
 import tempfile
-import requests
-import traceback
-import time
 import threading
-from queue import Queue
-from werkzeug.utils import secure_filename
+import time
+import traceback
 from pathlib import Path
+from queue import Queue
+
+import requests
+from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
 # Optional: enable CORS if front-end served from different origin during dev
 # from flask_cors import CORS

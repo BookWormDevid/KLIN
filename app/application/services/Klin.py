@@ -1,11 +1,11 @@
-from dataclasses import dataclass
 import uuid
+from dataclasses import dataclass
 
 from app.application.dto import KlinProcessDto, KlinUploadDto
 from app.application.interfaces import (
-    IKlinRepository,
     IKlinInference,
     IKlinProcessProducer,
+    IKlinRepository,
 )
 from app.models import KlinModel, ProcessingState
 

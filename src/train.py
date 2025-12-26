@@ -1,19 +1,19 @@
 import os
 import pathlib
-from typing import List, Dict, Optional
 
-import torch
 import cv2
 import numpy as np
+import torch
+from sklearn.metrics import precision_recall_fscore_support
 from torch.utils.data import Dataset
 from torchvision import transforms
 from transformers import (
-    VideoMAEImageProcessor,
-    VideoMAEForVideoClassification,
+    Trainer,
     TrainingArguments,
-    Trainer
+    VideoMAEForVideoClassification,
+    VideoMAEImageProcessor,
 )
-from sklearn.metrics import precision_recall_fscore_support
+
 import mlflow
 
 # ==================== КОНФИГУРАЦИЯ ====================
@@ -41,18 +41,18 @@ class OpenCVVideoDataset(Dataset):
     """Video dataset using OpenCV with oversampling for violent class."""
 
     def __init__(self, root_dir: str, num_frames: int = 16, img_size: int = 224, 
-                 mode: str = 'train', max_samples: Optional[int] = None):
+                 mode: str = 'train', max_samples: int | None = None):
         self.root_dir = root_dir
         self.num_frames = num_frames
         self.img_size = img_size
         self.mode = mode
-        self.samples: List[Dict] = []
+        self.samples: list[dict] = []
         self._collect_video_paths(max_samples)
         self.transform = self._get_transforms()
         self.successful_loads = 0
         self.failed_loads = 0
 
-    def _collect_video_paths(self, max_samples: Optional[int]):
+    def _collect_video_paths(self, max_samples: int | None):
         for label_idx, label_name in enumerate(['nonviolent', 'violent']):
             label_dir = os.path.join(self.root_dir, label_name)
             if not os.path.exists(label_dir):
@@ -93,7 +93,7 @@ class OpenCVVideoDataset(Dataset):
                                      [0.229, 0.224, 0.225])
             ])
 
-    def _load_video_frames(self, video_path: str, label:int) -> Optional[np.ndarray]:
+    def _load_video_frames(self, video_path: str, label:int) -> np.ndarray | None:
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
@@ -164,6 +164,8 @@ def compute_metrics(eval_pred):
 
 # ==================== CUSTOM TRAINER WITH WEIGHTED LOSS ====================
 from torch.nn import CrossEntropyLoss
+
+
 class WeightedTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         labels = inputs.get("labels")

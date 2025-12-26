@@ -1,12 +1,12 @@
 import os
-import cv2
-import torch
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from typing import List, Tuple, Dict
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
 import random
+
+import albumentations as A
+import cv2
+import numpy as np
+import torch
+from albumentations.pytorch import ToTensorV2
+from torch.utils.data import DataLoader, Dataset
 
 
 class FightDetectionDataset(Dataset):
@@ -16,12 +16,12 @@ class FightDetectionDataset(Dataset):
     """
 
     def __init__(self,
-                 dataset_paths: Dict[str, str],
+                 dataset_paths: dict[str, str],
                  clip_length: int = 16,
                  frame_rate: int = 10,
-                 resolution: Tuple[int, int] = (224, 224),
+                 resolution: tuple[int, int] = (224, 224),
                  mode: str = 'train',
-                 datasets_to_use: List[str] = None):
+                 datasets_to_use: list[str] = None):
         """
         Args:
             dataset_paths: Dict with dataset names and paths
@@ -69,7 +69,7 @@ class FightDetectionDataset(Dataset):
 
         print(f"Loaded {len(self.samples)} samples from datasets: {list(self.dataset_configs.keys())}")
 
-    def _build_samples(self) -> List[Dict]:
+    def _build_samples(self) -> list[dict]:
         """Build unified list of samples from all datasets"""
         samples = []
 
@@ -88,7 +88,7 @@ class FightDetectionDataset(Dataset):
 
 
     def _load_class_folder_structure(self, dataset_name: str, base_path: str,
-                                     class_mapping: Dict[str, int]) -> List[Dict]:
+                                     class_mapping: dict[str, int]) -> list[dict]:
         """Load datasets organized in class folders"""
         samples = []
 
@@ -135,7 +135,7 @@ class FightDetectionDataset(Dataset):
                 ToTensorV2(),
             ])
 
-    def _load_video_frames(self, video_path: str) -> List[np.ndarray]:
+    def _load_video_frames(self, video_path: str) -> list[np.ndarray]:
         """Load and sample frames from video"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -143,7 +143,6 @@ class FightDetectionDataset(Dataset):
 
         # Get video properties
         original_fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Calculate sampling interval
         if original_fps <= 0:
@@ -176,7 +175,7 @@ class FightDetectionDataset(Dataset):
 
         return frames
 
-    def _sample_clip(self, frames: List[np.ndarray]) -> List[np.ndarray]:
+    def _sample_clip(self, frames: list[np.ndarray]) -> list[np.ndarray]:
         """Sample a clip of specified length from frames"""
         if len(frames) <= self.clip_length:
             # Pad with last frame if video is too short
@@ -194,7 +193,7 @@ class FightDetectionDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         sample = self.samples[idx]
 
         try:
@@ -227,11 +226,11 @@ class DataLoaderFactory:
     """Factory for creating data loaders with different configurations"""
 
     @staticmethod
-    def create_loaders(dataset_paths: Dict[str, str],
+    def create_loaders(dataset_paths: dict[str, str],
                        batch_size: int = 32,
                        clip_length: int = 16,
                        frame_rate: int = 10,
-                       resolution: Tuple[int, int] = (224, 224),
+                       resolution: tuple[int, int] = (224, 224),
                        train_ratio: float = 0.8,
                        num_workers: int = 4):
         """

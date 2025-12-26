@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Request, UploadFile, File
+import os
+from pathlib import Path
+
+import httpx
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import httpx
-import os
-from pathlib import Path
 
 app = FastAPI(
     title="КЛИН - Анализ видео",
@@ -142,7 +143,7 @@ async def api_health_check():
         async with httpx.AsyncClient(timeout=5) as client:
             response = await client.get("http://192.168.210.85:8000/health")
             return response.json()
-    except:
+    except: 
         return {"status": "unavailable", "error": "API не отвечает"}
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 # test_data_loader.py
-from combine_datasets import FightDetectionDataset, DataLoaderFactory
+from combine_datasets import DataLoaderFactory, FightDetectionDataset
 
 
 def test_data_loader():

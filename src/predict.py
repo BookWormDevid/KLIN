@@ -1,12 +1,13 @@
 import os
-import torch
+import tempfile
+import time
+from pathlib import Path
+
 import cv2
 import numpy as np
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
-from pathlib import Path
-import time
-import tempfile
+import torch
 import yt_dlp
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = Path(__file__).parent.parent
 
