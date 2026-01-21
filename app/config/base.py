@@ -22,10 +22,13 @@ class BaseSettings:
         return value
 
     def resolve_env_property(
-        self, key: str, parser: Callable[[str], TProp], default_value: None | TProp = None
+        self,
+        key: str,
+        parser: Callable[[str], TProp],
+        default_value: None | TProp = None,
     ) -> TProp:
         if key in self.env_properties:
-            return self.env_properties[key]
+            return self.env_properties[key]  # type: ignore
 
         try:
             prop = parser(self.get_env_variable(key))

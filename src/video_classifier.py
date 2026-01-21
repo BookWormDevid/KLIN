@@ -1,20 +1,27 @@
 import os
 import pathlib
+from typing import Any
 
 import cv2
 import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
+from transformers import (
+    VideoMAEForVideoClassification,
+    VideoMAEImageProcessor,
+)
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
+
 class VideoFolderClassifier:
-    def __init__(self, model_path: str = None, chunk_size: int = 16, frame_size: tuple = (224, 224)):
+    def __init__(
+        self, model_path: str = "", chunk_size: int = 16, frame_size: tuple = (224, 224)
+    ):
         self.chunk_size = chunk_size
         self.frame_size = frame_size
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Определяем путь к модели
         if model_path is None:
@@ -24,20 +31,27 @@ class VideoFolderClassifier:
         print(f"🔄 Загрузка модели из: {model_path}")
 
         # Загрузка модели и процессора
-        self.processor = VideoMAEImageProcessor.from_pretrained(model_path, local_files_only=True)
-        self.model = VideoMAEForVideoClassification.from_pretrained(model_path, local_files_only=True).to(self.device)
+        self.processor = VideoMAEImageProcessor.from_pretrained(
+            model_path, local_files_only=True
+        )
+        model: VideoMAEForVideoClassification = (
+            VideoMAEForVideoClassification.from_pretrained(
+                model_path, local_files_only=True
+            )
+        )
+        self.model = model.to(device)  # type: ignore
         self.model.eval()
 
         print(f"✅ Модель загружена! Классы: {self.model.config.id2label}")
 
     def _find_model_path(self):
         """Автоматически найти путь к модели"""
-        possible_paths = [
-            os.path.join(BASE_DIR, "models", "videomae-large")
-        ]
+        possible_paths = [os.path.join(BASE_DIR, "models", "videomae-large")]
 
         for path in possible_paths:
-            if os.path.exists(path) and os.path.exists(os.path.join(path, "config.json")):
+            if os.path.exists(path) and os.path.exists(
+                os.path.join(path, "config.json")
+            ):
                 return path
 
         # Если не нашли, запросим у пользователя
@@ -58,7 +72,9 @@ class VideoFolderClassifier:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Читаем каждый кадр
-        for _ in range(min(total_frames, 1000)):  # ограничим максимальное количество кадров
+        for _ in range(
+            min(total_frames, 1000)
+        ):  # ограничим максимальное количество кадров
             ret, frame = cap.read()
             if not ret:
                 break
@@ -92,55 +108,62 @@ class VideoFolderClassifier:
             frames = self._read_video_frames(video_path)
             chunks = self._chunk_frames(frames)
 
-            print(f"📹 {os.path.basename(video_path)}: {len(frames)} frames -> {len(chunks)} chunks")
+            print(
+                f"📹 {os.path.basename(video_path)}: {len(frames)} frames -> {len(chunks)} chunks"
+            )
 
             # Batch process chunks
             all_predictions = []
             with torch.no_grad():
                 for i in range(0, len(chunks), batch_size):
-                    batch_chunks = chunks[i:i + batch_size]
+                    batch_chunks = chunks[i : i + batch_size]
                     batch_frames = [list(chunk) for chunk in batch_chunks]
 
-                    inputs = self.processor(batch_frames, return_tensors="pt").to(self.device)
+                    inputs: Any = self.processor(batch_frames, return_tensors="pt")
+                    inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
                     outputs = self.model(**inputs)
                     all_predictions.append(outputs.logits.cpu())
 
             # Aggregate results
             final_logits = torch.mean(torch.cat(all_predictions), dim=0)
             probabilities = torch.nn.functional.softmax(final_logits, dim=0)
-            predicted_idx = final_logits.argmax().item()
+            predicted_idx: int = int(final_logits.argmax().item())
             confidence = probabilities[predicted_idx].item()
+            id2label = self.model.config.id2label or {}
+            predicted_class = id2label.get(predicted_idx, str(predicted_idx))
 
             return {
-                'video_name': os.path.basename(video_path),
-                'video_path': video_path,
-                'predicted_class': self.model.config.id2label[predicted_idx],
-                'confidence': confidence,
-                'num_frames': len(frames),
-                'num_chunks': len(chunks)
+                "video_name": os.path.basename(video_path),
+                "video_path": video_path,
+                "predicted_class": predicted_class,
+                "confidence": confidence,
+                "num_frames": len(frames),
+                "num_chunks": len(chunks),
             }
 
         except Exception as e:
             print(f"❌ Ошибка обработки {os.path.basename(video_path)}: {e}")
             return {
-                'video_name': os.path.basename(video_path),
-                'video_path': video_path,
-                'predicted_class': 'ERROR',
-                'confidence': 0.0,
-                'error': str(e)
+                "video_name": os.path.basename(video_path),
+                "video_path": video_path,
+                "predicted_class": "ERROR",
+                "confidence": 0.0,
+                "error": str(e),
             }
 
-    def predict_folder(self, folder_path: str, output_file: str = None, batch_size: int = 4) -> pd.DataFrame:
+    def predict_folder(
+        self, folder_path: str, output_file: str = "", batch_size: int = 4
+    ) -> pd.DataFrame:
         """Predict all videos in folder"""
 
         if not os.path.exists(folder_path):
             raise FileNotFoundError(f"Папка не найдена: {folder_path}")
 
         # Find all video files
-        video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm')
+        video_extensions = (".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm")
         video_files = []
 
-        for root, dirs, files in os.walk(folder_path):
+        for root, _dirs, files in os.walk(folder_path):
             for file in files:
                 if file.lower().endswith(video_extensions):
                     video_files.append(os.path.join(root, file))
@@ -162,7 +185,7 @@ class VideoFolderClassifier:
 
         # Save results if output file specified
         if output_file:
-            df.to_csv(output_file, index=False, encoding='utf-8')
+            df.to_csv(output_file, index=False, encoding="utf-8")
             print(f"💾 Результаты сохранены в: {output_file}")
 
         # Print summary
@@ -175,8 +198,8 @@ class VideoFolderClassifier:
         if len(df) == 0:
             return
 
-        successful = df[df['predicted_class'] != 'ERROR']
-        errors = df[df['predicted_class'] == 'ERROR']
+        successful = df[df["predicted_class"] != "ERROR"]
+        errors = df[df["predicted_class"] == "ERROR"]
 
         print("\n📊 СВОДКА ОБРАБОТКИ:")
         print(f"   Всего видео: {len(df)}")
@@ -187,7 +210,7 @@ class VideoFolderClassifier:
             print(f"   Средняя уверенность: {successful['confidence'].mean():.4f}")
 
             # Class distribution
-            class_counts = successful['predicted_class'].value_counts()
+            class_counts = successful["predicted_class"].value_counts()
             print("   Распределение классов:")
             for class_name, count in class_counts.items():
                 percentage = (count / len(successful)) * 100
@@ -196,11 +219,15 @@ class VideoFolderClassifier:
         if len(errors) > 0:
             print("\n❌ Ошибки обработки:")
             for _, error_row in errors.iterrows():
-                print(f"   {error_row['video_name']}: {error_row.get('error', 'Unknown error')}")
+                print(
+                    f"   {error_row['video_name']}: {error_row.get('error', 'Unknown error')}"
+                )
 
 
 # Исправленная функция для быстрого запуска
-def process_video_folder_simple(folder_path, model_path=None, output_file="video_results.csv"):
+def process_video_folder_simple(
+    folder_path, model_path=None, output_file="video_results.csv"
+):
     """Простая функция для обработки папки с видео"""
 
     # Если путь к модели не указан, используем относительный путь
@@ -210,8 +237,11 @@ def process_video_folder_simple(folder_path, model_path=None, output_file="video
         possible_paths = [
             os.path.join(current_dir, "videomae_results", "checkpoint-14172"),
             os.path.join(current_dir, "checkpoint-14172"),
-            os.path.join(os.path.dirname(current_dir), "videomae-base-finetuned-klin",
-                         "checkpoint-24536")
+            os.path.join(
+                os.path.dirname(current_dir),
+                "videomae-base-finetuned-klin",
+                "checkpoint-24536",
+            ),
         ]
 
         for path in possible_paths:
@@ -231,8 +261,7 @@ def process_video_folder_simple(folder_path, model_path=None, output_file="video
 
     # Обработка папки
     results = classifier.predict_folder(
-        folder_path=folder_path,
-        output_file=output_file
+        folder_path=folder_path, output_file=output_file
     )
 
     return results
@@ -244,12 +273,12 @@ if __name__ == "__main__":
     video_folder = r"/home/cipher/Documents/VS_code/KLIN/data/raw/KLIN/Test/violent"
 
     # Укажите путь к модели (если нужно)
-    model_path = "/home/cipher/Documents/VS_code/KLIN/videomae_results/checkpoint-28344" # Автоматический поиск
+    model_path = "/home/cipher/Documents/VS_code/KLIN/videomae_results/checkpoint-28344"  # Автоматический поиск
 
     results = process_video_folder_simple(
         folder_path=video_folder,
         model_path=model_path,
-        output_file="video_classification_results.csv"
+        output_file="video_classification_results.csv",
     )
 
     # Показать результаты

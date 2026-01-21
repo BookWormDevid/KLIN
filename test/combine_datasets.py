@@ -15,13 +15,15 @@ class FightDetectionDataset(Dataset):
     Supports: RWF-2000, Anomaly Detection, Violence Detection datasets
     """
 
-    def __init__(self,
-                 dataset_paths: dict[str, str],
-                 clip_length: int = 16,
-                 frame_rate: int = 10,
-                 resolution: tuple[int, int] = (224, 224),
-                 mode: str = 'train',
-                 datasets_to_use: list[str] = None):
+    def __init__(
+        self,
+        dataset_paths: dict[str, str],
+        clip_length: int = 16,
+        frame_rate: int = 10,
+        resolution: tuple[int, int] = (224, 224),
+        mode: str = "train",
+        datasets_to_use: list[str] = None,
+    ):
         """
         Args:
             dataset_paths: Dict with dataset names and paths
@@ -39,27 +41,30 @@ class FightDetectionDataset(Dataset):
 
         # Define datasets mapping
         self.dataset_configs = {
-            'rwf': {
-                'path': dataset_paths.get('rwf'),
-                'classes': {'Fight': 1, 'NonFight': 0},
-                'structure': 'class_folders'  # Fight/NonFight folders
+            "rwf": {
+                "path": dataset_paths.get("rwf"),
+                "classes": {"Fight": 1, "NonFight": 0},
+                "structure": "class_folders",  # Fight/NonFight folders
             },
-            'anomaly': {
-                'path': dataset_paths.get('anomaly'),
-                'classes': {'Fighting': 1, 'Normal_Videos_event': 0},
-                'structure': 'class_folders'  # Individual class folders
+            "anomaly": {
+                "path": dataset_paths.get("anomaly"),
+                "classes": {"Fighting": 1, "Normal_Videos_event": 0},
+                "structure": "class_folders",  # Individual class folders
             },
-            'violence': {
-                'path': dataset_paths.get('violence'),
-                'classes': {'Violent': 1, 'nonviolent': 0},
-                'structure': 'class_folders'
-            }
+            "violence": {
+                "path": dataset_paths.get("violence"),
+                "classes": {"Violent": 1, "nonviolent": 0},
+                "structure": "class_folders",
+            },
         }
 
         # Filter datasets if specified
         if datasets_to_use:
-            self.dataset_configs = {k: v for k, v in self.dataset_configs.items()
-                                    if k in datasets_to_use and v['path'] is not None}
+            self.dataset_configs = {
+                k: v
+                for k, v in self.dataset_configs.items()
+                if k in datasets_to_use and v["path"] is not None
+            }
 
         # Build samples list
         self.samples = self._build_samples()
@@ -67,28 +72,34 @@ class FightDetectionDataset(Dataset):
         # Data augmentation
         self.transform = self._get_transforms()
 
-        print(f"Loaded {len(self.samples)} samples from datasets: {list(self.dataset_configs.keys())}")
+        print(
+            f"Loaded {len(self.samples)} samples from datasets: {list(self.dataset_configs.keys())}"
+        )
 
     def _build_samples(self) -> list[dict]:
         """Build unified list of samples from all datasets"""
         samples = []
 
         for dataset_name, config in self.dataset_configs.items():
-            dataset_path = config['path']
+            dataset_path = config["path"]
             if not os.path.exists(dataset_path):
                 print(f"Warning: {dataset_name} path {dataset_path} does not exist")
                 continue
 
-            if config['structure'] == 'class_folders':
-                samples.extend(self._load_class_folder_structure(dataset_name, dataset_path, config['classes']))
+            if config["structure"] == "class_folders":
+                samples.extend(
+                    self._load_class_folder_structure(
+                        dataset_name, dataset_path, config["classes"]
+                    )
+                )
 
         # Shuffle samples
         random.shuffle(samples)
         return samples
 
-
-    def _load_class_folder_structure(self, dataset_name: str, base_path: str,
-                                     class_mapping: dict[str, int]) -> list[dict]:
+    def _load_class_folder_structure(
+        self, dataset_name: str, base_path: str, class_mapping: dict[str, int]
+    ) -> list[dict]:
         """Load datasets organized in class folders"""
         samples = []
 
@@ -100,17 +111,17 @@ class FightDetectionDataset(Dataset):
                 continue
 
             # Support multiple video extensions
-            video_extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+            video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
 
             for video_file in os.listdir(class_path):
                 if any(video_file.lower().endswith(ext) for ext in video_extensions):
                     video_path = os.path.join(class_path, video_file)
 
                     sample = {
-                        'video_path': video_path,
-                        'label': label,
-                        'dataset': dataset_name,
-                        'class_name': class_name
+                        "video_path": video_path,
+                        "label": label,
+                        "dataset": dataset_name,
+                        "class_name": class_name,
                     }
                     samples.append(sample)
 
@@ -119,21 +130,25 @@ class FightDetectionDataset(Dataset):
 
     def _get_transforms(self):
         """Get data augmentation transforms for train/val modes"""
-        if self.mode == 'train':
-            return A.Compose([
-                A.Resize(self.resolution[0], self.resolution[1]),
-                A.HorizontalFlip(p=0.5),
-                A.RandomBrightnessContrast(p=0.2),
-                A.GaussNoise(p=0.1),
-                A.Normalize(),
-                ToTensorV2(),
-            ])
+        if self.mode == "train":
+            return A.Compose(
+                [
+                    A.Resize(self.resolution[0], self.resolution[1]),
+                    A.HorizontalFlip(p=0.5),
+                    A.RandomBrightnessContrast(p=0.2),
+                    A.GaussNoise(p=0.1),
+                    A.Normalize(),
+                    ToTensorV2(),
+                ]
+            )
         else:
-            return A.Compose([
-                A.Resize(self.resolution[0], self.resolution[1]),
-                A.Normalize(),
-                ToTensorV2(),
-            ])
+            return A.Compose(
+                [
+                    A.Resize(self.resolution[0], self.resolution[1]),
+                    A.Normalize(),
+                    ToTensorV2(),
+                ]
+            )
 
     def _load_video_frames(self, video_path: str) -> list[np.ndarray]:
         """Load and sample frames from video"""
@@ -180,15 +195,15 @@ class FightDetectionDataset(Dataset):
         if len(frames) <= self.clip_length:
             # Pad with last frame if video is too short
             padded_frames = frames + [frames[-1]] * (self.clip_length - len(frames))
-            return padded_frames[:self.clip_length]
+            return padded_frames[: self.clip_length]
         else:
             # Random sampling for training, center sampling for validation
-            if self.mode == 'train':
+            if self.mode == "train":
                 start_idx = random.randint(0, len(frames) - self.clip_length)
             else:
                 start_idx = (len(frames) - self.clip_length) // 2
 
-            return frames[start_idx:start_idx + self.clip_length]
+            return frames[start_idx : start_idx + self.clip_length]
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -198,26 +213,28 @@ class FightDetectionDataset(Dataset):
 
         try:
             # Load and sample frames
-            frames = self._load_video_frames(sample['video_path'])
+            frames = self._load_video_frames(sample["video_path"])
             clip_frames = self._sample_clip(frames)
 
             # Apply transforms to each frame
             transformed_frames = []
             for frame in clip_frames:
-                transformed = self.transform(image=frame)['image']
+                transformed = self.transform(image=frame)["image"]
                 transformed_frames.append(transformed)
 
             # Stack frames: [C, T, H, W]
             video_tensor = torch.stack(transformed_frames, dim=1)
 
-            label = torch.tensor(sample['label'], dtype=torch.float32)
+            label = torch.tensor(sample["label"], dtype=torch.float32)
 
             return video_tensor, label
 
         except Exception as e:
             print(f"Error loading sample {sample['video_path']}: {e}")
             # Return a dummy sample (you might want better error handling)
-            dummy_video = torch.zeros(3, self.clip_length, self.resolution[0], self.resolution[1])
+            dummy_video = torch.zeros(
+                3, self.clip_length, self.resolution[0], self.resolution[1]
+            )
             dummy_label = torch.tensor(0.0, dtype=torch.float32)
             return dummy_video, dummy_label
 
@@ -226,13 +243,15 @@ class DataLoaderFactory:
     """Factory for creating data loaders with different configurations"""
 
     @staticmethod
-    def create_loaders(dataset_paths: dict[str, str],
-                       batch_size: int = 32,
-                       clip_length: int = 16,
-                       frame_rate: int = 10,
-                       resolution: tuple[int, int] = (224, 224),
-                       train_ratio: float = 0.8,
-                       num_workers: int = 4):
+    def create_loaders(
+        dataset_paths: dict[str, str],
+        batch_size: int = 32,
+        clip_length: int = 16,
+        frame_rate: int = 10,
+        resolution: tuple[int, int] = (224, 224),
+        train_ratio: float = 0.8,
+        num_workers: int = 4,
+    ):
         """
         Create train and validation data loaders
         """
@@ -242,7 +261,7 @@ class DataLoaderFactory:
             clip_length=clip_length,
             frame_rate=frame_rate,
             resolution=resolution,
-            mode='train'  # We'll split manually
+            mode="train",  # We'll split manually
         )
 
         # Split dataset
@@ -253,8 +272,8 @@ class DataLoaderFactory:
         )
 
         # Set modes
-        train_dataset.dataset.mode = 'train'
-        val_dataset.dataset.mode = 'val'
+        train_dataset.dataset.mode = "train"
+        val_dataset.dataset.mode = "val"
 
         # Create data loaders
         train_loader = DataLoader(
@@ -262,7 +281,7 @@ class DataLoaderFactory:
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
-            pin_memory=True
+            pin_memory=True,
         )
 
         val_loader = DataLoader(
@@ -270,7 +289,7 @@ class DataLoaderFactory:
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
-            pin_memory=True
+            pin_memory=True,
         )
 
         return train_loader, val_loader

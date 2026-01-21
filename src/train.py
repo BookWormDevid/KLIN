@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import torch
 from sklearn.metrics import precision_recall_fscore_support
+from torch.nn import CrossEntropyLoss
 from torch.utils.data import Dataset
 from torchvision import transforms
 from transformers import (
@@ -30,18 +31,26 @@ BATCH_SIZE = 2
 EPOCHS = 8
 CLASS_WEIGHTS = [1.0, 10.0]  # nonviolent, violent
 
+
 # ==================== COLLATE ФУНКЦИЯ ====================
 def collate_fn(batch):
-    pixel_values = torch.stack([item['pixel_values'] for item in batch])
-    labels = torch.stack([item['labels'] for item in batch])
-    return {'pixel_values': pixel_values, 'labels': labels}
+    pixel_values = torch.stack([item["pixel_values"] for item in batch])
+    labels = torch.stack([item["labels"] for item in batch])
+    return {"pixel_values": pixel_values, "labels": labels}
+
 
 # ==================== ДАТАСЕТ ====================
 class OpenCVVideoDataset(Dataset):
     """Video dataset using OpenCV with oversampling for violent class."""
 
-    def __init__(self, root_dir: str, num_frames: int = 16, img_size: int = 224, 
-                 mode: str = 'train', max_samples: int | None = None):
+    def __init__(
+        self,
+        root_dir: str,
+        num_frames: int = 16,
+        img_size: int = 224,
+        mode: str = "train",
+        max_samples: int | None = None,
+    ):
         self.root_dir = root_dir
         self.num_frames = num_frames
         self.img_size = img_size
@@ -53,47 +62,54 @@ class OpenCVVideoDataset(Dataset):
         self.failed_loads = 0
 
     def _collect_video_paths(self, max_samples: int | None):
-        for label_idx, label_name in enumerate(['nonviolent', 'violent']):
+        for label_idx, label_name in enumerate(["nonviolent", "violent"]):
             label_dir = os.path.join(self.root_dir, label_name)
             if not os.path.exists(label_dir):
                 continue
-            video_extensions = ('.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv')
-            video_files = [os.path.join(root, f) 
-                           for root, _, files in os.walk(label_dir)
-                           for f in files if f.lower().endswith(video_extensions)]
-            
+            video_extensions = (".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv")
+            video_files = [
+                os.path.join(root, f)
+                for root, _, files in os.walk(label_dir)
+                for f in files
+                if f.lower().endswith(video_extensions)
+            ]
+
             # Oversample violent class
-            if label_name == 'violent':
+            if label_name == "violent":
                 video_files = video_files * 3
 
             if max_samples and len(video_files) > max_samples // 2:
-                video_files = video_files[:max_samples // 2]
+                video_files = video_files[: max_samples // 2]
 
             for video_path in video_files:
-                self.samples.append({'path': video_path, 'label': label_idx, 'label_name': label_name})
+                self.samples.append(
+                    {"path": video_path, "label": label_idx, "label_name": label_name}
+                )
 
     def _get_transforms(self):
-        if self.mode == 'train':
-            return transforms.Compose([
-                transforms.ToPILImage(),
-                transforms.Resize((256, 256)),
-                transforms.RandomCrop(self.img_size),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.ColorJitter(brightness=0.2, contrast=0.2),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406],
-                                     [0.229, 0.224, 0.225])
-            ])
+        if self.mode == "train":
+            return transforms.Compose(
+                [
+                    transforms.ToPILImage(),
+                    transforms.Resize((256, 256)),
+                    transforms.RandomCrop(self.img_size),
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.ColorJitter(brightness=0.2, contrast=0.2),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
         else:
-            return transforms.Compose([
-                transforms.ToPILImage(),
-                transforms.Resize((self.img_size, self.img_size)),
-                transforms.ToTensor(),
-                transforms.Normalize([0.485, 0.456, 0.406],
-                                     [0.229, 0.224, 0.225])
-            ])
+            return transforms.Compose(
+                [
+                    transforms.ToPILImage(),
+                    transforms.Resize((self.img_size, self.img_size)),
+                    transforms.ToTensor(),
+                    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+                ]
+            )
 
-    def _load_video_frames(self, video_path: str, label:int) -> np.ndarray | None:
+    def _load_video_frames(self, video_path: str, label: int) -> np.ndarray | None:
         try:
             cap = cv2.VideoCapture(video_path)
             if not cap.isOpened():
@@ -109,8 +125,10 @@ class OpenCVVideoDataset(Dataset):
                 while len(frame_indices) < self.num_frames:
                     frame_indices.append(frame_indices[-1])
             else:
-                if self.mode == 'train':
-                    start_idx = np.random.randint(0, max(1, total_frames - self.num_frames))
+                if self.mode == "train":
+                    start_idx = np.random.randint(
+                        0, max(1, total_frames - self.num_frames)
+                    )
                     frame_indices = list(range(start_idx, start_idx + self.num_frames))
                 else:
                     step = total_frames / self.num_frames
@@ -128,7 +146,7 @@ class OpenCVVideoDataset(Dataset):
             if len(frames) < self.num_frames:
                 return None
             return np.array(frames)
-        except:
+        except RuntimeError:
             return None
 
     def __len__(self):
@@ -136,34 +154,42 @@ class OpenCVVideoDataset(Dataset):
 
     def __getitem__(self, idx: int):
         video_info = self.samples[idx]
-        frames = self._load_video_frames(video_info['path'], video_info['label'])
+        frames = self._load_video_frames(video_info["path"], video_info["label"])
         if frames is None:
             # retry with random other sample
             return self.__getitem__(np.random.randint(len(self)))
         transformed_frames = [self.transform(f) for f in frames]
         video_tensor = torch.stack(transformed_frames)
-        return {'pixel_values': video_tensor, 'labels': torch.tensor(video_info['label'], dtype=torch.long)}
+        return {
+            "pixel_values": video_tensor,
+            "labels": torch.tensor(video_info["label"], dtype=torch.long),
+        }
 
     def print_stats(self):
         total = self.successful_loads + self.failed_loads
         if total > 0:
-            print(f"Loaded: {self.successful_loads}/{total} videos ({self.successful_loads/total*100:.1f}%)")
+            print(
+                f"Loaded: {self.successful_loads}/{total} videos ({self.successful_loads / total * 100:.1f}%)"
+            )
+
 
 # ==================== METRICS ====================
 def compute_metrics(eval_pred):
     preds = np.argmax(eval_pred.predictions, axis=1)
     labels = eval_pred.label_ids
     acc = (preds == labels).mean()
-    precision, recall, f1, _ = precision_recall_fscore_support(labels, preds, labels=[1], average='binary')
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        labels, preds, labels=[1], average="binary"
+    )
     return {
         "accuracy": acc,
         "violent_precision": precision,
         "violent_recall": recall,
-        "violent_f1": f1
+        "violent_f1": f1,
     }
 
+
 # ==================== CUSTOM TRAINER WITH WEIGHTED LOSS ====================
-from torch.nn import CrossEntropyLoss
 
 
 class WeightedTrainer(Trainer):
@@ -176,6 +202,7 @@ class WeightedTrainer(Trainer):
         loss = loss_fct(logits.view(-1, 2), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
 
+
 # ==================== MAIN ====================
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -184,18 +211,19 @@ def main():
     mlflow.start_run()
 
     # Datasets
-    train_dataset = OpenCVVideoDataset(TRAIN_DIR, NUM_FRAMES, IMG_SIZE, 'train')
-    val_dataset = OpenCVVideoDataset(VAL_DIR, NUM_FRAMES, IMG_SIZE, 'val')
-    test_dataset = OpenCVVideoDataset(TEST_DIR, NUM_FRAMES, IMG_SIZE, 'val')
+    train_dataset = OpenCVVideoDataset(TRAIN_DIR, NUM_FRAMES, IMG_SIZE, "train")
+    val_dataset = OpenCVVideoDataset(VAL_DIR, NUM_FRAMES, IMG_SIZE, "val")
+    test_dataset = OpenCVVideoDataset(TEST_DIR, NUM_FRAMES, IMG_SIZE, "val")
 
     # Model
     image_processor = VideoMAEImageProcessor.from_pretrained(MODEL_NAME)
     model = VideoMAEForVideoClassification.from_pretrained(
-        MODEL_NAME, num_labels=2,
-        label2id={"nonviolent":0,"violent":1},
-        id2label={0:"nonviolent",1:"violent"},
-        ignore_mismatched_sizes=True
-    ).to(device)
+        MODEL_NAME,
+        num_labels=2,
+        label2id={"nonviolent": 0, "violent": 1},
+        id2label={0: "nonviolent", 1: "violent"},
+        ignore_mismatched_sizes=True,
+    ).to(device)  # type: ignore
 
     # TrainingArguments
     training_args = TrainingArguments(
@@ -211,7 +239,7 @@ def main():
         fp16=torch.cuda.is_available(),
         logging_dir=f"{OUTPUT_DIR}/logs",
         gradient_accumulation_steps=2,
-        gradient_checkpointing=True
+        gradient_checkpointing=True,
     )
 
     # Trainer
@@ -220,9 +248,8 @@ def main():
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        tokenizer=image_processor,
         data_collator=collate_fn,
-        compute_metrics=compute_metrics
+        compute_metrics=compute_metrics,
     )
 
     # Train
@@ -233,13 +260,14 @@ def main():
     # Test
     test_results = trainer.evaluate(test_dataset)
     print("Test results:", test_results)
-    mlflow.log_metrics({f"test_{k}": v for k,v in test_results.items()})
+    mlflow.log_metrics({f"test_{k}": v for k, v in test_results.items()})
 
     # Save
     trainer.save_model(OUTPUT_DIR)
     image_processor.save_pretrained(OUTPUT_DIR)
     mlflow.end_run()
     print("Model saved.")
+
 
 if __name__ == "__main__":
     main()

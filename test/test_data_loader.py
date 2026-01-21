@@ -5,9 +5,9 @@ from combine_datasets import DataLoaderFactory, FightDetectionDataset
 def test_data_loader():
     # Define your dataset paths
     dataset_paths = {
-        'rwf': 'C:/Users/DEvA/Videos/Video_For_AI/RWF-2000/train',
-        'anomaly': 'C:/Users/DEvA/Videos/Video_For_AI/Anomaly_detection_dataset/train',
-        'violence': 'C:/Users/DEvA/Videos/Video_For_AI/violence-detection-datasets-main'
+        "rwf": "C:/Users/DEvA/Videos/Video_For_AI/RWF-2000/train",
+        "anomaly": "C:/Users/DEvA/Videos/Video_For_AI/Anomaly_detection_dataset/train",
+        "violence": "C:/Users/DEvA/Videos/Video_For_AI/violence-detection-datasets-main",
     }
 
     # Test single dataset
@@ -17,8 +17,8 @@ def test_data_loader():
         clip_length=16,
         frame_rate=10,
         resolution=(224, 224),
-        mode='train',
-        datasets_to_use=['rwf']  # Start with just RWF for testing
+        mode="train",
+        datasets_to_use=["rwf"],  # Start with just RWF for testing
     )
 
     print(f"Dataset size: {len(dataset)}")
@@ -35,7 +35,7 @@ def test_data_loader():
         batch_size=8,  # Small batch for testing
         clip_length=16,
         frame_rate=10,
-        resolution=(224, 224)
+        resolution=(224, 224),
     )
 
     # Test one batch

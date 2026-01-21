@@ -10,6 +10,7 @@ class IKlinInference(Protocol):
     @abstractmethod
     async def analyze(self, model: KlinModel) -> str: ...
 
+
 class IKlinRepository(Protocol):
     @abstractmethod
     async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel: ...

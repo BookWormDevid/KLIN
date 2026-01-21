@@ -7,8 +7,8 @@ def process_klindataset_safe(dataset_path, chunk_size=150):
     """
     Safe version: Creates processed copies in a new folder structure.
     """
-    splits = ['Train', 'Val', 'Test']
-    classes = ['violent', 'nonviolent']
+    splits = ["Train", "Val", "Test"]
+    classes = ["violent", "nonviolent"]
 
     # Create a new processed dataset folder
     processed_path = Path(dataset_path).parent / "klin_processed"
@@ -26,19 +26,26 @@ def process_klindataset_safe(dataset_path, chunk_size=150):
             output_folder.mkdir(parents=True, exist_ok=True)
 
             # Get all video files
-            video_files = [f for f in input_folder.iterdir()
-                           if f.is_file() and f.suffix.lower() in ['.mp4', '.avi', '.mov', '.mkv', '.wmv']]
+            video_files = [
+                f
+                for f in input_folder.iterdir()
+                if f.is_file()
+                and f.suffix.lower() in [".mp4", ".avi", ".mov", ".mkv", ".wmv"]
+            ]
 
             # Start chunk counter for this class
             chunk_counter = 0
 
             # Process all video files
             for video_file in video_files:
-                chunk_counter = create_video_chunks_safe(video_file, output_folder, class_name, chunk_size,
-                                                         chunk_counter)
+                chunk_counter = create_video_chunks_safe(
+                    video_file, output_folder, class_name, chunk_size, chunk_counter
+                )
 
 
-def create_video_chunks_safe(video_path, output_dir, class_name, chunk_size, start_chunk_count):
+def create_video_chunks_safe(
+    video_path, output_dir, class_name, chunk_size, start_chunk_count
+):
     """
     Create chunks from a video file - safe version with better error handling.
     """
@@ -72,7 +79,7 @@ def create_video_chunks_safe(video_path, output_dir, class_name, chunk_size, sta
                 output_path = output_dir / output_filename
 
                 # Create video writer
-                fourcc = cv2.VideoWriter.fourcc(*'XVID')
+                fourcc = cv2.VideoWriter.fourcc(*"XVID")
                 out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
 
                 # Set starting frame
@@ -80,7 +87,7 @@ def create_video_chunks_safe(video_path, output_dir, class_name, chunk_size, sta
 
                 # Write frames for this chunk
                 frames_written = 0
-                for i in range(frames_in_chunk):
+                for _i in range(frames_in_chunk):
                     ret, frame = cap.read()
                     if ret:
                         out.write(frame)
@@ -112,7 +119,9 @@ def create_video_chunks_safe(video_path, output_dir, class_name, chunk_size, sta
 
 
 if __name__ == "__main__":
-    dataset_path = "C:\\Users\\DEvA\\videos\\video_for_ai\\klin_DATASET"  # Your dataset path
+    dataset_path = (
+        "C:\\Users\\DEvA\\videos\\video_for_ai\\klin_DATASET"  # Your dataset path
+    )
 
     try:
         print("Starting video chunk processing...")

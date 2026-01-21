@@ -14,15 +14,15 @@ def find_safetensors_models(base_dir):
     """Найти все модели с .safetensors файлами"""
     model_paths = {}
 
-    for root, dirs, files in os.walk(base_dir):
-        if 'model.safetensors' in files:
+    for root, _dirs, files in os.walk(base_dir):
+        if "model.safetensors" in files:
             checkpoint_name = os.path.basename(root)
             model_paths[checkpoint_name] = root
 
         # Также ищем в поддиректориях
         for file in files:
-            if file.endswith('.safetensors') and file != 'model.safetensors':
-                checkpoint_name = file.replace('.safetensors', '')
+            if file.endswith(".safetensors") and file != "model.safetensors":
+                checkpoint_name = file.replace(".safetensors", "")
                 model_paths[checkpoint_name] = os.path.join(root, file)
 
     print(f"Найдено моделей: {len(model_paths)}")
@@ -30,6 +30,7 @@ def find_safetensors_models(base_dir):
         print(f"  - {name}: {path}")
 
     return model_paths
+
 
 model_paths = find_safetensors_models(new_model_name)
 
@@ -39,7 +40,7 @@ def analyze_safetensors_file_corrected(model_path):
     print(f"\n🔍 Анализ: {model_path}")
 
     try:
-        if os.path.isfile(model_path) and model_path.endswith('.safetensors'):
+        if os.path.isfile(model_path) and model_path.endswith(".safetensors"):
             # Это отдельный файл
             with safetensors.safe_open(model_path, framework="pt") as f:
                 metadata = f.metadata()
@@ -71,7 +72,8 @@ def analyze_safetensors_file_corrected(model_path):
                     try:
                         tensor = f.get_tensor(key)
                         tensor_sizes.append((key, tensor.shape, tensor.numel()))
-                    except:
+                    except RuntimeWarning:
+                        print("No keys... in tensors...")
                         continue
 
                 # Сортируем по размеру
@@ -93,8 +95,9 @@ def analyze_safetensors_file_corrected(model_path):
 
 # Анализ всех найденных моделей с исправленной функцией
 print("🔄 ПЕРЕЗАПУСК АНАЛИЗА С ИСПРАВЛЕНИЕМ...")
-for model_name, model_path in model_paths.items():
+for model_path in model_paths.items():
     analyze_safetensors_file_corrected(model_path)
+
 
 def load_model_from_safetensors(model_path):
     """Загрузка полной модели с конфигом"""
@@ -144,16 +147,18 @@ def detailed_model_analysis(model, model_name):
             trainable_params += param_count
 
         # Собираем статистику по слоям
-        layer_name = name.split('.')[0] if '.' in name else name
-        layer_stats.append({
-            'layer': layer_name,
-            'name': name,
-            'shape': tuple(param.shape),
-            'parameters': param_count,
-            'trainable': param.requires_grad,
-            'mean': param.data.mean().item(),
-            'std': param.data.std().item()
-        })
+        layer_name = name.split(".")[0] if "." in name else name
+        layer_stats.append(
+            {
+                "layer": layer_name,
+                "name": name,
+                "shape": tuple(param.shape),
+                "parameters": param_count,
+                "trainable": param.requires_grad,
+                "mean": param.data.mean().item(),
+                "std": param.data.std().item(),
+            }
+        )
 
     print(f"📊 Общее количество параметров: {total_params:,}")
     print(f"🎯 Обучаемых параметров: {trainable_params:,}")
@@ -161,15 +166,18 @@ def detailed_model_analysis(model, model_name):
 
     # Анализ по типам слоев
     layer_df = pd.DataFrame(layer_stats)
-    layer_summary = layer_df.groupby('layer').agg({
-        'parameters': 'sum',
-        'trainable': 'mean'
-    }).sort_values('parameters', ascending=False)
+    layer_summary = (
+        layer_df.groupby("layer")
+        .agg({"parameters": "sum", "trainable": "mean"})
+        .sort_values("parameters", ascending=False)
+    )
 
     print("\n📋 Распределение по слоям:")
     for layer, row in layer_summary.head(10).iterrows():
-        trainable_pct = row['trainable'] * 100
-        print(f"  {layer:20} {row['parameters']:>12,} params ({trainable_pct:.1f}% trainable)")
+        trainable_pct = row["trainable"] * 100
+        print(
+            f"  {layer:20} {row['parameters']:>12,} params ({trainable_pct:.1f}% trainable)"
+        )
 
     return layer_df
 
@@ -179,7 +187,6 @@ model_stats = {}
 for model_name, model in models.items():
     stats_df = detailed_model_analysis(model, model_name)
     model_stats[model_name] = stats_df
-
 
 
 def create_basic_plots(model, model_name):
@@ -194,48 +201,55 @@ def create_basic_plots(model, model_name):
         fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
 
         # 1. Гистограмма весов
-        ax1.hist(classifier_weights, bins=50, alpha=0.7, color='skyblue', edgecolor='black')
-        ax1.set_title(f'Распределение весов классификатора\n{model_name}')
-        ax1.set_xlabel('Значение веса')
-        ax1.set_ylabel('Количество')
+        ax1.hist(
+            classifier_weights, bins=50, alpha=0.7, color="skyblue", edgecolor="black"
+        )
+        ax1.set_title(f"Распределение весов классификатора\n{model_name}")
+        ax1.set_xlabel("Значение веса")
+        ax1.set_ylabel("Количество")
         ax1.grid(True, alpha=0.3)
 
         # 2. Значения смещений
         classes = range(len(classifier_bias))
-        bars = ax2.bar(classes, classifier_bias, color=['lightcoral', 'lightgreen'])
-        ax2.set_title('Смещения по классам')
-        ax2.set_xlabel('Класс')
-        ax2.set_ylabel('Значение смещения')
+        bars = ax2.bar(classes, classifier_bias, color=["lightcoral", "lightgreen"])
+        ax2.set_title("Смещения по классам")
+        ax2.set_xlabel("Класс")
+        ax2.set_ylabel("Значение смещения")
         ax2.set_xticks(classes)
         # Добавляем значения на столбцы
-        for bar, value in zip(bars, classifier_bias):
-            ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                     f'{value:.4f}', ha='center', va='bottom')
+        for bar, value in zip(bars, classifier_bias, strict=False):
+            ax2.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height(),
+                f"{value:.4f}",
+                ha="center",
+                va="bottom",
+            )
         ax2.grid(True, alpha=0.3)
 
         # 3. Heatmap весов (упрощенный)
         weights_2d = model.classifier.weight.data.cpu().numpy()
-        im = ax3.imshow(weights_2d, aspect='auto', cmap='coolwarm')
-        ax3.set_title('Матрица весов классификатора')
-        ax3.set_xlabel('Признаки (упрощенно)')
-        ax3.set_ylabel('Классы')
+        im = ax3.imshow(weights_2d, aspect="auto", cmap="coolwarm")
+        ax3.set_title("Матрица весов классификатора")
+        ax3.set_xlabel("Признаки (упрощенно)")
+        ax3.set_ylabel("Классы")
         ax3.set_xticks([])  # Убираем подписи для упрощения
         plt.colorbar(im, ax=ax3)
 
         # 4. Сравнение статистик
         stats_data = {
-            'Среднее': np.mean(classifier_weights),
-            'Стд. откл.': np.std(classifier_weights),
-            'Мин.': np.min(classifier_weights),
-            'Макс.': np.max(classifier_weights)
+            "Среднее": np.mean(classifier_weights),
+            "Стд. откл.": np.std(classifier_weights),
+            "Мин.": np.min(classifier_weights),
+            "Макс.": np.max(classifier_weights),
         }
 
-        ax4.bar(stats_data.keys(), stats_data.values(), color='lightsteelblue')
-        ax4.set_title('Статистика весов')
-        ax4.set_ylabel('Значение')
+        ax4.bar(stats_data.keys(), stats_data.values(), color="lightsteelblue")
+        ax4.set_title("Статистика весов")
+        ax4.set_ylabel("Значение")
         # Добавляем значения на столбцы
-        for i, (key, value) in enumerate(stats_data.items()):
-            ax4.text(i, value, f'{value:.4f}', ha='center', va='bottom')
+        for i, (_key, value) in enumerate(stats_data.items()):
+            ax4.text(i, value, f"{value:.4f}", ha="center", va="bottom")
         ax4.grid(True, alpha=0.3)
 
         plt.tight_layout()
@@ -266,21 +280,21 @@ def create_simple_plot(model, model_name):
         plt.figure(figsize=(12, 4))
 
         plt.subplot(1, 2, 1)
-        plt.hist(weights, bins=30, alpha=0.7, color='blue')
-        plt.title(f'Веса классификатора - {model_name}')
-        plt.xlabel('Значение')
-        plt.ylabel('Частота')
+        plt.hist(weights, bins=30, alpha=0.7, color="blue")
+        plt.title(f"Веса классификатора - {model_name}")
+        plt.xlabel("Значение")
+        plt.ylabel("Частота")
         plt.grid(True, alpha=0.3)
 
         plt.subplot(1, 2, 2)
-        plt.bar(['Класс 0', 'Класс 1'], bias, color=['red', 'green'])
-        plt.title('Смещения классов')
-        plt.ylabel('Значение')
+        plt.bar(["Класс 0", "Класс 1"], bias, color=["red", "green"])
+        plt.title("Смещения классов")
+        plt.ylabel("Значение")
         plt.grid(True, alpha=0.3)
 
         # Добавляем значения на столбцы
         for i, value in enumerate(bias):
-            plt.text(i, value, f'{value:.4f}', ha='center', va='bottom')
+            plt.text(i, value, f"{value:.4f}", ha="center", va="bottom")
 
         plt.tight_layout()
         plt.show()

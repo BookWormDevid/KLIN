@@ -58,7 +58,7 @@ def initialize_video_source(source=None):
         raise Exception("No video source available")
 
 
-def real_time_pose_detection(source=None, model_name='yolo11n-pose.pt'):
+def real_time_pose_detection(source=None, model_name="yolo11n-pose.pt"):
     # Load model
     model = YOLO(model_name)
 
@@ -83,14 +83,21 @@ def real_time_pose_detection(source=None, model_name='yolo11n-pose.pt'):
             annotated_frame = results[0].plot()
 
             # Add source info
-            cv2.putText(annotated_frame, source_info, (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+            cv2.putText(
+                annotated_frame,
+                source_info,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 0),
+                2,
+            )
 
             # Display
-            cv2.imshow('YOLO Pose Detection', annotated_frame)
+            cv2.imshow("YOLO Pose Detection", annotated_frame)
 
             # Exit on 'q'
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
     except KeyboardInterrupt:
