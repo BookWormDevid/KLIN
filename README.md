@@ -12,6 +12,7 @@
 uv venv
 uv sync
 uv sync --dev # Если надо менять код
+pre-commit install # Если надо менять код
 ```
 
 #### Окружениe
@@ -30,5 +31,3 @@ make # Линтер Ruff + Mypy
 
 #### Web Site
 **http://0.0.0.0:8082**
-
-

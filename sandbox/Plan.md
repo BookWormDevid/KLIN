@@ -55,4 +55,3 @@ CORE COMPONENTS
 2. Frame sampling strategy (uniform vs random)
 3. Mixed precision training (fp16 for speed)
 4. Real-time augmentation pipeline
-
