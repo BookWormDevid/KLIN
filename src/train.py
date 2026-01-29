@@ -37,7 +37,7 @@ MODEL_NAME = str(BASE_DIR / "models" / "videomae-large")
 NUM_FRAMES = 16
 IMG_SIZE = 224
 BATCH_SIZE = 2
-EPOCHS = 8
+EPOCHS = 1
 CLASS_WEIGHTS = [1.0, 5.0]  # [nonviolent, violent]
 MAX_RETRIES = 5
 RNG_SEED = 42
@@ -330,6 +330,7 @@ def main() -> None:
 
     mlflow.set_tracking_uri(f"sqlite:///{BASE_DIR}/mlflow/mlflow.db")
     mlflow.set_experiment("videomae_violence_detection")
+    print(mlflow.get_tracking_uri())
     mlflow.start_run()
 
     mlflow.log_params(
@@ -370,7 +371,7 @@ def main() -> None:
         fp16=torch.cuda.is_available(),
         logging_dir=str(OUTPUT_DIR / "logs"),
         logging_steps=50,
-        save_total_limit=2,
+        save_total_limit=3,
         report_to=["mlflow"],
         gradient_accumulation_steps=2,
         learning_rate=2e-5,
@@ -405,9 +406,11 @@ def main() -> None:
     trainer.save_model(str(OUTPUT_DIR))
     image_processor.save_pretrained(str(OUTPUT_DIR))
 
-    mlflow.log_artifacts(str(OUTPUT_DIR), artifact_path="model")
+    mlflow.log_artifacts(str(OUTPUT_DIR), artifact_path="mlruns/models")
 
     logger.info("Model and processor saved to: %s", OUTPUT_DIR)
+
+    mlflow.end_run()
 
 
 if __name__ == "__main__":

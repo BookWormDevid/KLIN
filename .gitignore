@@ -30,6 +30,7 @@ remote/MCG-NJU
 remote/YOLO
 remote/videomae-base-finetuned-KLIN
 videomae_results
+videomae_results-old
 torch-2.9.1
 
 
@@ -240,4 +241,3 @@ dvc_remote/
 .dvc/state
 .dvc/state-journal
 .dvc/state-wal
-
