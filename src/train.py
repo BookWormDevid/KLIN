@@ -330,7 +330,6 @@ def main() -> None:
 
     mlflow.set_tracking_uri(f"sqlite:///{BASE_DIR}/mlflow/mlflow.db")
     mlflow.set_experiment("videomae_violence_detection")
-    print(mlflow.get_tracking_uri())
     mlflow.start_run()
 
     mlflow.log_params(
