@@ -3,7 +3,6 @@ import pathlib
 import random
 from typing import Any
 
-import cv2
 import numpy as np
 import torch
 from sklearn.metrics import (
@@ -23,6 +22,8 @@ from transformers import (
 )
 
 import mlflow
+
+from helpers import ReadAllFrames
 
 # ======================= CONFIG =======================
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
@@ -76,7 +77,7 @@ class BetterVideoDataset(Dataset):
         self.rng = random.Random(seed if seed is not None else RNG_SEED)
         self._collect_paths(max_samples)
         self.transform = self._build_transforms()
-
+        self.frames = ReadAllFrames()
     def _collect_paths(self, max_samples: int | None) -> None:
         classes = ["nonviolent", "violent"]
         exts = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"}
@@ -119,25 +120,6 @@ class BetterVideoDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    @staticmethod
-    def _read_all_frames(path: pathlib.Path) -> list[np.ndarray] | None:
-        cap = cv2.VideoCapture(str(path))
-        if not cap.isOpened():
-            cap.release()
-            return None
-        frames: list[np.ndarray] = []
-        try:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        finally:
-            cap.release()
-        if not frames:
-            return None
-        return frames
-
     def _sample_indices(self, total: int) -> list[int]:
         if total <= self.num_frames:
             idxs = list(range(total))
@@ -152,7 +134,7 @@ class BetterVideoDataset(Dataset):
             return [int(i * step) for i in range(self.num_frames)]
 
     def _load_clip(self, path: pathlib.Path) -> np.ndarray | None:
-        frames = self._read_all_frames(path)
+        frames = ReadAllFrames.read_all_frames(path)
         if frames is None:
             return None
         idxs = self._sample_indices(len(frames))
