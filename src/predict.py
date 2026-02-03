@@ -38,7 +38,7 @@ class VideoClassifier:
 
         print(f"[API] Модель загружена! Доступные классы: {self.model.config.id2label}")
 
-    def _find_model_path(self):
+    def _find_model_path(self) -> str:
         """Автоматически найти путь к модели"""
         possible_paths = [
             BASE_DIR / "videomae_results" / "checkpoint14172",
@@ -172,7 +172,7 @@ class VideoClassifier:
             with torch.no_grad():
                 for i in range(0, len(chunks), batch_size):
                     batch_chunks = chunks[i : i + batch_size]
-                    batch_frames = [list(chunk) for chunk in batch_chunks]
+                    batch_frames = [frame for chunk in batch_chunks for frame in chunk]
 
                     inputs = self.processor(batch_frames, return_tensors="pt").to(
                         self.device

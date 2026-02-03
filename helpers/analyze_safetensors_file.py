@@ -1,6 +1,6 @@
 import os
-import safetensors
 
+import safetensors
 from transformers import VideoMAEForVideoClassification
 
 

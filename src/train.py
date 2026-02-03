@@ -22,7 +22,6 @@ from transformers import (
 )
 
 import mlflow
-
 from helpers import ReadAllFrames
 
 # ======================= CONFIG =======================
@@ -78,6 +77,7 @@ class BetterVideoDataset(Dataset):
         self._collect_paths(max_samples)
         self.transform = self._build_transforms()
         self.frames = ReadAllFrames()
+
     def _collect_paths(self, max_samples: int | None) -> None:
         classes = ["nonviolent", "violent"]
         exts = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"}

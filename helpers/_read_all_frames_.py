@@ -1,8 +1,10 @@
-import cv2
 import pathlib
-import numpy as np
-class ReadAllFrames:
 
+import cv2
+import numpy as np
+
+
+class ReadAllFrames:
     @staticmethod
     def read_all_frames(path: pathlib.Path) -> list[np.ndarray] | None:
         cap = cv2.VideoCapture(str(path))

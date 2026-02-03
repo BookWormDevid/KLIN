@@ -8,7 +8,6 @@ from helpers.analyze_safetensors_file import SafetensorsFileActions
 
 
 class MetricCheck:
-
     def __init__(self):
         self.STFA = SafetensorsFileActions()
 
@@ -80,7 +79,11 @@ class MetricCheck:
 
             # 1. Гистограмма весов
             ax1.hist(
-                classifier_weights, bins=50, alpha=0.7, color="skyblue", edgecolor="black"
+                classifier_weights,
+                bins=50,
+                alpha=0.7,
+                color="skyblue",
+                edgecolor="black",
             )
             ax1.set_title(f"Распределение весов классификатора\n{model_name}")
             ax1.set_xlabel("Значение веса")
@@ -140,14 +143,15 @@ class MetricCheck:
             print("   Веса классификатора:")
             print(f"     - Среднее: {stats_data['Среднее']:.6f}")
             print(f"     - Стандартное отклонение: {stats_data['Стд. откл.']:.6f}")
-            print(f"     - Диапазон: [{stats_data['Мин.']:.6f}, {stats_data['Макс.']:.6f}]")
+            print(
+                f"     - Диапазон: [{stats_data['Мин.']:.6f}, {stats_data['Макс.']:.6f}]"
+            )
             print(f"   Смещения по классам: {classifier_bias}")
 
         except Exception as e:
             print(f"❌ Ошибка при создании графиков: {e}")
 
     def run(self, path: Path):
-
         model_paths = self.STFA.find_safetensors_models(path)
 
         # Анализ всех найденных моделей с исправленной функцией
