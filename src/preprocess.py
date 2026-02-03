@@ -2,6 +2,7 @@ from pathlib import Path
 
 import cv2
 
+
 class Preprocessor:
 
     def process_klindataset_safe(self,  dataset_path, chunk_size=150):
