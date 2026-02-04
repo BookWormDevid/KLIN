@@ -29,6 +29,8 @@ class KlinService:
         return klin
 
     async def perform_klin(self, klin_id: uuid.UUID) -> None:
+        # пиши сервисную часть
+
         klin: KlinModel = await self._klin_repository.get_by_id(klin_id)
 
         try:
