@@ -44,5 +44,9 @@ class Settings(BaseSettings):
     def debug(self) -> bool:
         return bool(self.resolve_env_property("DEBUG", int, default_value=0))
 
+    @property
+    def klin_secret(self) -> str:
+        return self.resolve_env_property("KLIN_SECRET", str)
+
 
 app_settings = Settings()

@@ -7,6 +7,7 @@ from app.models import KlinModel, ProcessingState
 
 class KlinUploadDto(msgspec.Struct, frozen=True):
     target_url: str
+    response_url: str
 
 
 class KlinResultDto(msgspec.Struct, frozen=True):

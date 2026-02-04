@@ -25,3 +25,6 @@ class IKlinRepository(Protocol):
 class IKlinProcessProducer(Protocol):
     @abstractmethod
     async def send(self, data: KlinProcessDto) -> None: ...
+
+
+# class IKlinCallbackSender(Protocol): ...

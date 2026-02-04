@@ -4,8 +4,7 @@ import cv2
 
 
 class Preprocessor:
-
-    def process_klindataset_safe(self,  dataset_path, chunk_size=150):
+    def process_klindataset_safe(self, dataset_path, chunk_size=150):
         """
         Safe version: Creates processed copies in a new folder structure.
         """
@@ -44,9 +43,8 @@ class Preprocessor:
                         video_file, output_folder, class_name, chunk_size, chunk_counter
                     )
 
-
-    def create_video_chunks_safe(self,
-        video_path, output_dir, class_name, chunk_size, start_chunk_count
+    def create_video_chunks_safe(
+        self, video_path, output_dir, class_name, chunk_size, start_chunk_count
     ):
         """
         Create chunks from a video file - safe version with better error handling.
@@ -82,7 +80,9 @@ class Preprocessor:
 
                     # Create video writer
                     fourcc = cv2.VideoWriter.fourcc(*"XVID")
-                    out = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+                    out = cv2.VideoWriter(
+                        str(output_path), fourcc, fps, (width, height)
+                    )
 
                     # Set starting frame
                     cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
@@ -118,7 +118,6 @@ class Preprocessor:
         except Exception as e:
             print(f"Error processing {video_path}: {e}")
             return start_chunk_count
-
 
     def run(self, dataset_path: Path):
         if not dataset_path.exists():
