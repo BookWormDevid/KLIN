@@ -5,10 +5,10 @@ import uuid
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 # Импортируем ваш существующий VideoClassifier
 from predict import VideoClassifier
-from pydantic import BaseModel
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
