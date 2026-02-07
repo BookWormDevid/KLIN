@@ -48,7 +48,6 @@ torchvision = [{ index = "pytorch-cu128" }]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
-ignore_missing_imports = true
 strict_optional = true
 exclude = ["data", "models", "videomae_results", "mlflow", "mlruns"]
 plugins = []
