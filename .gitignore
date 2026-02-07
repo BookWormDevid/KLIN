@@ -31,8 +31,8 @@ remote/YOLO
 remote/videomae-base-finetuned-KLIN
 videomae_results
 videomae_results-old
-sandbox/videos
-sandbox/models
+sandbox/videos/
+sandbox/models/
 
 
 # PyInstaller
