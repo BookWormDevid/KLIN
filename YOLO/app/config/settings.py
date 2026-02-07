@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-from YOLO.appconfig.base import BaseSettings
+
+from YOLO.app.config.base import BaseSettings
 
 load_dotenv()
 
