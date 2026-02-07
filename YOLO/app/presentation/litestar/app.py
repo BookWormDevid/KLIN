@@ -13,13 +13,13 @@ from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
 
-from app.ioc import ApplicationProvider, ImageProvider, InfrastructureProvider
-from app.presentation.litestar.controllers import KlinController
+from YOLO.app.ioc import ApplicationProvider, ImageProvider, InfrastructureProvider
+from YOLO.app.presentation.litestar.controllers import YoloController
 
 # Роутер с префиксом /api/v1
 api_v1_router = Router(
     path="/api/v1",
-    route_handlers=[KlinController],
+    route_handlers=[YoloController],
 )
 
 # Путь к фронтенду
@@ -47,7 +47,7 @@ def create_litestar_app() -> Litestar:
         route_handlers=[api_v1_router],
         cors_config=CORSConfig(allow_origins=["*"]),
         openapi_config=OpenAPIConfig(
-            title="Klin Inference",
+            title="Yolo Inference",
             version="1.0.0",
             path="/api/docs",
             render_plugins=[SwaggerRenderPlugin()],

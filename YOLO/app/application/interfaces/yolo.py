@@ -2,8 +2,8 @@ import uuid
 from abc import abstractmethod
 from typing import Protocol
 
-from app.application.dto import YoloProcessDto
-from app.models import YoloModel
+from YOLO.appapplication.dto import YoloProcessDto
+from YOLO.appmodels import YoloModel
 
 
 class IYoloInference(Protocol):
@@ -13,7 +13,7 @@ class IYoloInference(Protocol):
 
 class IYoloRepository(Protocol):
     @abstractmethod
-    async def get_by_id(self, klin_id: uuid.UUID) -> YoloModel: ...
+    async def get_by_id(self, yolo_id: uuid.UUID) -> YoloModel: ...
 
     @abstractmethod
     async def create(self, model: YoloModel) -> YoloModel: ...
@@ -27,4 +27,4 @@ class IYoloProcessProducer(Protocol):
     async def send(self, data: YoloProcessDto) -> None: ...
 
 
-# class IKlinCallbackSender(Protocol): ...
+# class IYoloCallbackSender(Protocol): ...

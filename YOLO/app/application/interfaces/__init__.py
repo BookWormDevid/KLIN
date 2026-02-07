@@ -1,4 +1,4 @@
-from .yolo import (
+from .Yolo import (
     IYoloInference,
     IYoloProcessProducer,
     IYoloRepository,

@@ -2,9 +2,8 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-
-from app.config import app_settings
-from app.models import Model
+from YOLO.appconfig import app_settings
+from YOLO.appmodels import Model
 
 config = context.config
 

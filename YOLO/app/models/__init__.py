@@ -1,5 +1,5 @@
 from .base import BaseModel, Model
-from .yolo import ProcessingState, YoloModel
+from .Yolo import ProcessingState, YoloModel
 
 __all__ = (
     "YoloModel",

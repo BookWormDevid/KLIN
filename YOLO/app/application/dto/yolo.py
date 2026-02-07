@@ -1,13 +1,11 @@
 import uuid
 
 import msgspec
-
-from app.models import ProcessingState, YoloModel
+from YOLO.appmodels import ProcessingState, YoloModel
 
 
 class YoloUploadDto(msgspec.Struct, frozen=True):
     target_url: str
-    response_url: str
 
 
 class YoloResultDto(msgspec.Struct, frozen=True):

@@ -1,5 +1,5 @@
-from Klin import KlinProcessProducer
+from .Yolo import YoloProcessProducer
 
 __all__ = [
-    "KlinProcessProducer",
+    "YoloProcessProducer",
 ]

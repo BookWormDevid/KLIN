@@ -9,16 +9,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.application.interfaces import (
-    IKlinInference,
-    IKlinProcessProducer,
-    IKlinRepository,
+from YOLO.app.application.interfaces import (
+    IYoloInference,
+    IYoloProcessProducer,
+    IYoloRepository,
 )
-from app.application.services import KlinService
-from app.config import app_settings
-from app.infrastructure.database import KlinRepository
-from app.infrastructure.producers import KlinProcessProducer
-from app.infrastructure.services import KlinProcessor
+from YOLO.app.application.services import YoloService
+from YOLO.app.config import app_settings
+from YOLO.app.infrastructure.database import YoloRepository
+from YOLO.app.infrastructure.producers import YoloProcessProducer
+from YOLO.app.infrastructure.services import YoloProcessor
 
 
 class InfrastructureProvider(Provider):
@@ -50,18 +50,18 @@ class InfrastructureProvider(Provider):
     def session(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(bind=engine, expire_on_commit=True, autoflush=False)
 
-    klin_repository = provide(KlinRepository, provides=IKlinRepository)
+    yolo_repository = provide(YoloRepository, provides=IYoloRepository)
 
-    klin_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
+    yolo_producer = provide(YoloProcessProducer, provides=IYoloProcessProducer)
 
     # callbacksender
 
 
 class ApplicationProvider(Provider):
     scope = Scope.APP
-    klin_service = provide(KlinService)
+    yolo_service = provide(YoloService)
 
 
 class ImageProvider(Provider):
     scope = Scope.APP
-    klin_processor = provide(KlinProcessor, provides=IKlinInference)
+    yolo_processor = provide(YoloProcessor, provides=IYoloInference)

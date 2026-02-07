@@ -1,3 +1,3 @@
-from .Klin import KlinController
+from .Yolo import YoloController
 
-__all__ = ("KlinController",)
+__all__ = ("YoloController",)

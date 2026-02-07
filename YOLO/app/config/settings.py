@@ -2,15 +2,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-
-from app.config.base import BaseSettings
+from YOLO.appconfig.base import BaseSettings
 
 load_dotenv()
 
 
 @dataclass
 class Settings(BaseSettings):
-    app_host: str = "192.168.210.85"
+    app_host: str = "0.0.0.0"
     app_port: int = 8008
 
     log_level: Any = "info"
@@ -20,7 +19,7 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
-    Klin_queue = "Klin-queue"
+    yolo_queue = "yolo-queue"
 
     @property
     def database_url(self) -> str:
@@ -45,8 +44,8 @@ class Settings(BaseSettings):
         return bool(self.resolve_env_property("DEBUG", int, default_value=0))
 
     @property
-    def klin_secret(self) -> str:
-        return self.resolve_env_property("KLIN_SECRET", str)
+    def yolo_secret(self) -> str:
+        return self.resolve_env_property("YOLO_SECRET", str)
 
 
 app_settings = Settings()
