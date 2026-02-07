@@ -3,8 +3,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from MAE.app.config import app_settings
-from MAE.app.models import Model
+from app.config import app_settings
+from app.models import Model
 
 config = context.config
 

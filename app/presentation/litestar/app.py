@@ -12,9 +12,8 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
-
-from MAE.app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
-from MAE.app.presentation.litestar.controllers import MAEController
+from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
+from app.presentation.litestar.controllers import MAEController
 
 # Роутер с префиксом /api/v1
 api_v1_router = Router(

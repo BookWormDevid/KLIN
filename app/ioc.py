@@ -9,16 +9,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from MAE.app.application.interfaces import (
+from app.application.interfaces import (
     IMAEInference,
     IMAEProcessProducer,
     IMAERepository,
 )
-from MAE.app.application.services import MAEService
-from MAE.app.config import app_settings
-from MAE.app.infrastructure.database import MAERepository
-from MAE.app.infrastructure.producers import MAEProcessProducer
-from MAE.app.infrastructure.services import MAEProcessor
+from app.application.services import MAEService
+from app.config import app_settings
+from app.infrastructure.database import MAERepository
+from app.infrastructure.producers import MAEProcessProducer
+from app.infrastructure.services import MAEProcessor
 
 
 class InfrastructureProvider(Provider):

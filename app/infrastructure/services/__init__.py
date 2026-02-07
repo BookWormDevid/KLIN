@@ -1,4 +1,4 @@
-from .processor import MAEProcessor
+from .target import MAEProcessor
 
 __all__ = [
     "MAEProcessor",
