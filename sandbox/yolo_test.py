@@ -2,9 +2,9 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
-parent = Path(__file__).resolve().parent.parent
+parent = Path(__file__).resolve().parent
 
-model = YOLO(parent / "models/yolo26x.pt")
+model = YOLO(parent / "models/yolo_small_weights.pt")
 
 
-model.predict(source=parent / r"C:\Users\meksi\Desktop\d\Fighting023_x264.mp4", show=True, conf=0.6)
+model.predict(source=parent / "videos/fi004.mp4", show=True, conf=0.6)
