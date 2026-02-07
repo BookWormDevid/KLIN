@@ -1,17 +1,18 @@
 import os
+
+import evaluate
+import mlflow.pytorch
 import numpy as np
 from datasets import Dataset, DatasetDict
-from transformers import (
-    VideoMAEImageProcessor,
-    VideoMAEForVideoClassification,
-    TrainingArguments,
-    Trainer,
-)
-import evaluate
-import decord
 from decord import VideoReader, cpu
+from transformers import (
+    Trainer,
+    TrainingArguments,
+    VideoMAEForVideoClassification,
+    VideoMAEImageProcessor,
+)
+
 import mlflow
-import mlflow.pytorch
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Маппинг классов
@@ -30,7 +31,7 @@ label2id = {
     "Shooting": 10,
     "Shoplifting": 11,
     "Stealing": 12,
-    "Vandalism": 13
+    "Vandalism": 13,
 }
 id2label = {v: k for k, v in label2id.items()}
 
@@ -38,12 +39,13 @@ id2label = {v: k for k, v in label2id.items()}
 # Пути к данным
 # ──────────────────────────────────────────────────────────────────────────────
 train_dir = "ucf_crime_dataset/train"
-val_dir   = "ucf_crime_dataset/val"
+val_dir = "ucf_crime_dataset/val"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Processor
 # ──────────────────────────────────────────────────────────────────────────────
 processor = VideoMAEImageProcessor.from_pretrained("MCG-NJU/videomae-large")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Сэмплирование кадров
@@ -61,6 +63,7 @@ def sample_frames(video_path, num_frames=16):
         print(f"Ошибка загрузки {video_path}: {e}")
         return None
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Preprocess
 # ──────────────────────────────────────────────────────────────────────────────
@@ -76,13 +79,14 @@ def preprocess(examples):
     inputs = processor(frames_list, return_tensors="pt")
     return {"pixel_values": inputs["pixel_values"], "labels": labels}
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Загрузка путей
 # ──────────────────────────────────────────────────────────────────────────────
 def get_video_paths_and_labels(root_dir):
     paths, labels = [], []
     class_names = sorted(os.listdir(root_dir))
-    for label_idx, class_name in enumerate(class_names):
+    for _label_idx, class_name in enumerate(class_names):
         if class_name not in label2id:
             print(f"Предупреждение: неизвестный класс {class_name}")
             continue
@@ -95,19 +99,16 @@ def get_video_paths_and_labels(root_dir):
                 labels.append(label2id[class_name])
     return {"video_path": paths, "label": labels}
 
-train_data = get_video_paths_and_labels(train_dir)
-val_data   = get_video_paths_and_labels(val_dir)
 
-dataset = DatasetDict({
-    "train": Dataset.from_dict(train_data),
-    "validation": Dataset.from_dict(val_data)
-})
+train_data = get_video_paths_and_labels(train_dir)
+val_data = get_video_paths_and_labels(val_dir)
+
+dataset = DatasetDict(
+    {"train": Dataset.from_dict(train_data), "validation": Dataset.from_dict(val_data)}
+)
 
 dataset = dataset.map(
-    preprocess,
-    batched=True,
-    batch_size=4,
-    remove_columns=["video_path"]
+    preprocess, batched=True, batch_size=4, remove_columns=["video_path"]
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -118,7 +119,7 @@ model = VideoMAEForVideoClassification.from_pretrained(
     num_labels=14,
     label2id=label2id,
     id2label=id2label,
-    ignore_mismatched_sizes=True
+    ignore_mismatched_sizes=True,
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -126,9 +127,11 @@ model = VideoMAEForVideoClassification.from_pretrained(
 # ──────────────────────────────────────────────────────────────────────────────
 accuracy = evaluate.load("accuracy")
 
+
 def compute_metrics(eval_pred):
     predictions = np.argmax(eval_pred.predictions, axis=-1)
     return accuracy.compute(predictions=predictions, references=eval_pred.label_ids)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Training Arguments
@@ -151,29 +154,32 @@ args = TrainingArguments(
     metric_for_best_model="accuracy",
     fp16=True,
     seed=42,
-    report_to=["mlflow"]
+    report_to=["mlflow"],
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
 # MLflow + Trainer
 # ──────────────────────────────────────────────────────────────────────────────
-mlflow.set_tracking_uri("http://localhost:5000")          # ← поменяйте если используете сервер
+mlflow.set_tracking_uri("http://localhost:5000")  # ← поменяйте если используете сервер
 mlflow.set_experiment("VideoMAE-UCF-Crime-Finetune")
 
 with mlflow.start_run(run_name="videomae-large-ucf-crime"):
     # Логируем основные параметры
-    mlflow.log_params({
-        "model_name": "MCG-NJU/videomae-large",
-        "num_labels": 14,
-        "num_train_epochs": args.num_train_epochs,
-        "learning_rate": args.learning_rate,
-        "batch_size": args.per_device_train_batch_size,
-        "effective_batch_size": args.per_device_train_batch_size * args.gradient_accumulation_steps,
-        "warmup_ratio": args.warmup_ratio,
-        "optimizer": args.optim,
-        "fp16": args.fp16,
-        "seed": args.seed,
-    })
+    mlflow.log_params(
+        {
+            "model_name": "MCG-NJU/videomae-large",
+            "num_labels": 14,
+            "num_train_epochs": args.num_train_epochs,
+            "learning_rate": args.learning_rate,
+            "batch_size": args.per_device_train_batch_size,
+            "effective_batch_size": args.per_device_train_batch_size
+            * args.gradient_accumulation_steps,
+            "warmup_ratio": args.warmup_ratio,
+            "optimizer": args.optim,
+            "fp16": args.fp16,
+            "seed": args.seed,
+        }
+    )
 
     # Добавляем теги (удобно для фильтрации)
     mlflow.set_tag("dataset", "UCF-Crime")
@@ -187,7 +193,7 @@ with mlflow.start_run(run_name="videomae-large-ucf-crime"):
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
         tokenizer=processor,
-        compute_metrics=compute_metrics
+        compute_metrics=compute_metrics,
     )
 
     # Включаем автологгер для transformers → mlflow будет логировать loss, accuracy и т.д.

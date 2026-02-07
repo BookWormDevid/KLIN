@@ -11,7 +11,6 @@ from transformers import (
     VideoMAEForVideoClassification,
     VideoMAEImageProcessor,
 )
-from transformers.feature_extraction_utils import BatchFeature
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
@@ -86,20 +85,28 @@ class VideoFolderClassifier:
 
             with torch.no_grad():
                 for i in range(0, len(chunks), batch_size):
-                    batch_chunks = chunks[i: i + batch_size]
+                    batch_chunks = chunks[i : i + batch_size]
 
                     # Формируем список списков кадров в формате uint8
                     images = [
-                        [frame.astype(np.uint8) for frame in clip]  # clip shape: (chunk_size, H, W, 3)
+                        [
+                            frame.astype(np.uint8) for frame in clip
+                        ]  # clip shape: (chunk_size, H, W, 3)
                         for clip in batch_chunks
                     ]
 
                     # Проверка форм
                     for clip in images:
-                        assert len(clip) == self.chunk_size, f"chunk size mismatch: {len(clip)}"
+                        assert len(clip) == self.chunk_size, (
+                            f"chunk size mismatch: {len(clip)}"
+                        )
                         for frame in clip:
-                            assert frame.shape[:2] == self.frame_size, f"frame size mismatch: {frame.shape[:2]}"
-                            assert frame.shape[2] == 3, f"frame channels mismatch: {frame.shape[2]}"
+                            assert frame.shape[:2] == self.frame_size, (
+                                f"frame size mismatch: {frame.shape[:2]}"
+                            )
+                            assert frame.shape[2] == 3, (
+                                f"frame channels mismatch: {frame.shape[2]}"
+                            )
 
                     # Подготовка входа для модели
                     inputs = self.processor(images, return_tensors="pt").to(self.device)
@@ -188,7 +195,9 @@ def process_video_folder_simple(
 
 if __name__ == "__main__":
     video_path = r"C:\Users\meksi\Desktop\d\Fighting023_x264.mp4"
-    model_path = r"C:\Users\meksi\Documents\GitHub\KLIN\videomae_results\videomae-ufc-crime"
+    model_path = (
+        r"C:\Users\meksi\Documents\GitHub\KLIN\videomae_results\videomae-ufc-crime"
+    )
 
     classifier = VideoFolderClassifier(model_path=model_path)
     result = classifier.predict_video(video_path)
