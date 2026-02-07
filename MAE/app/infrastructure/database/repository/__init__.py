@@ -1,5 +1,5 @@
-from Klin import KlinRepository
+from MAE import MAERepository
 
 __all__ = [
-    "KlinRepository",
+    "MAERepository",
 ]

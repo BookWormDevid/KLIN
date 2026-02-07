@@ -1,8 +1,8 @@
 from .base import BaseModel, Model
-from .Klin import KlinModel, ProcessingState
+from .MAE import MAEModel, ProcessingState
 
 __all__ = (
-    "KlinModel",
+    "MAEModel",
     "ProcessingState",
     "BaseModel",
     "Model",

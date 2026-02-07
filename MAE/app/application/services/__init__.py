@@ -1,3 +1,3 @@
-from .Klin import KlinService
+from .MAE import MAEService
 
-__all__ = ("KlinService",)
+__all__ = ("MAEService",)
