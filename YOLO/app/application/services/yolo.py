@@ -1,13 +1,13 @@
 import uuid
 from dataclasses import dataclass
 
-from YOLO.appapplication.dto import YoloProcessDto, YoloReadDto, YoloUploadDto
-from YOLO.appapplication.interfaces import (
+from YOLO.app.application.dto import YoloProcessDto, YoloReadDto, YoloUploadDto
+from YOLO.app.application.interfaces import (
     IYoloInference,
     IYoloProcessProducer,
     IYoloRepository,
 )
-from YOLO.appmodels import ProcessingState, YoloModel
+from YOLO.app.models import ProcessingState, YoloModel
 
 
 @dataclass
