@@ -2,8 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
-
-from MAE.app.config.base import BaseSettings
+from app.config.base import BaseSettings
 
 load_dotenv()
 

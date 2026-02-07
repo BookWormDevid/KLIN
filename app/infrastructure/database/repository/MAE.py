@@ -4,8 +4,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from MAE.app.application.interfaces import IMAERepository
-from MAE.app.models.MAE import MAEModel
+from app.application.interfaces import IMAERepository
+from app.models.MAE import MAEModel
 
 
 @dataclass
