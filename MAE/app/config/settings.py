@@ -3,7 +3,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from app.config.base import BaseSettings
+from MAE.app.config.base import BaseSettings
 
 load_dotenv()
 
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
-    Klin_queue = "Klin-queue"
+    MAE_queue = "MAE-queue"
 
     @property
     def database_url(self) -> str:
@@ -45,8 +45,8 @@ class Settings(BaseSettings):
         return bool(self.resolve_env_property("DEBUG", int, default_value=0))
 
     @property
-    def klin_secret(self) -> str:
-        return self.resolve_env_property("KLIN_SECRET", str)
+    def MAE_secret(self) -> str:
+        return self.resolve_env_property("MAE_SECRET", str)
 
 
 app_settings = Settings()

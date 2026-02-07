@@ -1,11 +1,11 @@
-from .Klin import (
-    IKlinInference,
-    IKlinProcessProducer,
-    IKlinRepository,
+from .MAE import (
+    IMAEInference,
+    IMAEProcessProducer,
+    IMAERepository,
 )
 
 __all__ = (
-    "IKlinRepository",
-    "IKlinInference",
-    "IKlinProcessProducer",
+    "IMAERepository",
+    "IMAEInference",
+    "IMAEProcessProducer",
 )

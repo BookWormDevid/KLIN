@@ -1,0 +1,30 @@
+import uuid
+from abc import abstractmethod
+from typing import Protocol
+
+from MAE.app.application.dto import MAEProcessDto
+from MAE.app.models import MAEModel
+
+
+class IMAEInference(Protocol):
+    @abstractmethod
+    async def analyze(self, model: MAEModel) -> str: ...
+
+
+class IMAERepository(Protocol):
+    @abstractmethod
+    async def get_by_id(self, MAE_id: uuid.UUID) -> MAEModel: ...
+
+    @abstractmethod
+    async def create(self, model: MAEModel) -> MAEModel: ...
+
+    @abstractmethod
+    async def update(self, model: MAEModel) -> None: ...
+
+
+class IMAEProcessProducer(Protocol):
+    @abstractmethod
+    async def send(self, data: MAEProcessDto) -> None: ...
+
+
+# class IMAECallbackSender(Protocol): ...

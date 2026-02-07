@@ -9,16 +9,16 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.application.interfaces import (
-    IKlinInference,
-    IKlinProcessProducer,
-    IKlinRepository,
+from MAE.app.application.interfaces import (
+    IMAEInference,
+    IMAEProcessProducer,
+    IMAERepository,
 )
-from app.application.services import KlinService
-from app.config import app_settings
-from app.infrastructure.database import KlinRepository
-from app.infrastructure.producers import KlinProcessProducer
-from app.infrastructure.services import KlinProcessor
+from MAE.app.application.services import MAEService
+from MAE.app.config import app_settings
+from MAE.app.infrastructure.database import MAERepository
+from MAE.app.infrastructure.producers import MAEProcessProducer
+from MAE.app.infrastructure.services import MAEProcessor
 
 
 class InfrastructureProvider(Provider):
@@ -50,18 +50,18 @@ class InfrastructureProvider(Provider):
     def session(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
         return async_sessionmaker(bind=engine, expire_on_commit=True, autoflush=False)
 
-    klin_repository = provide(KlinRepository, provides=IKlinRepository)
+    MAE_repository = provide(MAERepository, provides=IMAERepository)
 
-    klin_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
+    MAE_producer = provide(MAEProcessProducer, provides=IMAEProcessProducer)
 
     # callbacksender
 
 
 class ApplicationProvider(Provider):
     scope = Scope.APP
-    klin_service = provide(KlinService)
+    MAE_service = provide(MAEService)
 
 
-class ImageProvider(Provider):
+class VideoProvider(Provider):
     scope = Scope.APP
-    klin_processor = provide(KlinProcessor, provides=IKlinInference)
+    MAE_processor = provide(MAEProcessor, provides=IMAEInference)

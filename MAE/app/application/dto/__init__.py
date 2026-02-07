@@ -1,13 +1,13 @@
-from .Klin import (
-    KlinProcessDto,
-    KlinReadDto,
-    KlinResultDto,
-    KlinUploadDto,
+from .MAE import (
+    MAEProcessDto,
+    MAEReadDto,
+    MAEResultDto,
+    MAEUploadDto,
 )
 
 __all__ = (
-    "KlinUploadDto",
-    "KlinResultDto",
-    "KlinReadDto",
-    "KlinProcessDto",
+    "MAEUploadDto",
+    "MAEResultDto",
+    "MAEReadDto",
+    "MAEProcessDto",
 )
