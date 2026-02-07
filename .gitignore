@@ -25,7 +25,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-models/
 remote/MCG-NJU
 remote/YOLO
 remote/videomae-base-finetuned-KLIN
