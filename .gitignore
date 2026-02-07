@@ -241,3 +241,4 @@ dvc_remote/
 .dvc/state
 .dvc/state-journal
 .dvc/state-wal
+models/
