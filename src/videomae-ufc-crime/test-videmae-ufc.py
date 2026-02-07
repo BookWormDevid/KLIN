@@ -1,12 +1,13 @@
 import os
-import torch
+
 import cv2
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from transformers import VideoMAEImageProcessor, VideoMAEForVideoClassification
+import torch
+from torch.utils.data import DataLoader, Dataset
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 # Папка с тестовыми видео
-video_folder = r"C:\Users\meksi\Desktop\d"          # ← поменяй на свою
+video_folder = r"C:\Users\meksi\Desktop\d"  # ← поменяй на свою
 
 # Устройство
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -14,9 +15,7 @@ model_path = r"/videomae_results/videomae-ufc-crime"
 
 processor = VideoMAEImageProcessor.from_pretrained(model_path, local_files_only=True)
 model = VideoMAEForVideoClassification.from_pretrained(
-    model_path,
-    local_files_only=True,
-    ignore_mismatched_sizes=True
+    model_path, local_files_only=True, ignore_mismatched_sizes=True
 ).to(device)
 model.eval()
 
@@ -25,6 +24,7 @@ id2label = model.config.id2label
 # label2id = model.config.label2id   # если понадобится
 
 print("Классы модели:", id2label)
+
 
 # ────────────────────────────────────────────────
 # Функция загрузки и предобработки видео
@@ -62,12 +62,13 @@ def load_and_process_video(video_path, processor, num_frames=16):
 
     # Processor сам сделает resize, normalize, to tensor и stack
     inputs = processor(
-        frames,               # list of frames
-        return_tensors="pt"
+        frames,  # list of frames
+        return_tensors="pt",
     )
 
     # inputs["pixel_values"] → [1, num_frames, 3, 224, 224]
     return inputs["pixel_values"].squeeze(0)  # [num_frames, 3, H, W]
+
 
 # ────────────────────────────────────────────────
 # Dataset
@@ -92,6 +93,7 @@ class VideoDataset(Dataset):
             return {"video": None, "filename": os.path.basename(path)}
         return {"video": video_tensor, "filename": os.path.basename(path)}
 
+
 # ────────────────────────────────────────────────
 # Запуск
 # ────────────────────────────────────────────────
@@ -100,7 +102,7 @@ test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
 with torch.no_grad():
     for batch in test_loader:
-        video_tensor = batch["video"]          # [1, num_frames, 3, H, W]
+        video_tensor = batch["video"]  # [1, num_frames, 3, H, W]
         filename = batch["filename"][0]
 
         if video_tensor is None:
@@ -117,5 +119,7 @@ with torch.no_grad():
         confidence = probs[0, pred_idx].item()
 
         print(f"Файл: {filename}")
-        print(f"→ Предсказание: {pred_label} (id {pred_idx}) | уверенность: {confidence:.3f}")
+        print(
+            f"→ Предсказание: {pred_label} (id {pred_idx}) | уверенность: {confidence:.3f}"
+        )
         print("-" * 60)

@@ -2,7 +2,7 @@ import uuid
 
 import msgspec
 
-from app.models import YoloModel, ProcessingState
+from app.models import ProcessingState, YoloModel
 
 
 class YoloUploadDto(msgspec.Struct, frozen=True):
