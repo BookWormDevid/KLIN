@@ -31,6 +31,7 @@ dev = [
     "mypy>=1.5.8",
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
+    "ultralytics>=8.4.12",
 ]
 
 [[tool.uv.index]]
