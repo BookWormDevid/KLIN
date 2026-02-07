@@ -83,27 +83,42 @@ class VideoFolderClassifier:
             frames = self._read_video_frames(video_path)
             chunks = self._chunk_frames(frames)
             all_predictions: list[torch.Tensor] = []
+
             with torch.no_grad():
                 for i in range(0, len(chunks), batch_size):
-                    batch_chunks = chunks[i : i + batch_size]
-                    batch_clips: list[np.ndarray] = [
-                        np.asarray(chunk) for chunk in batch_chunks
+                    batch_chunks = chunks[i: i + batch_size]
+
+                    # Формируем список списков кадров в формате uint8
+                    images = [
+                        [frame.astype(np.uint8) for frame in clip]  # clip shape: (chunk_size, H, W, 3)
+                        for clip in batch_chunks
                     ]
-                    inputs: BatchFeature = self.processor(
-                        batch_clips, return_tensors="pt"
-                    )
-                    inputs = inputs.to(self.device)
+
+                    # Проверка форм
+                    for clip in images:
+                        assert len(clip) == self.chunk_size, f"chunk size mismatch: {len(clip)}"
+                        for frame in clip:
+                            assert frame.shape[:2] == self.frame_size, f"frame size mismatch: {frame.shape[:2]}"
+                            assert frame.shape[2] == 3, f"frame channels mismatch: {frame.shape[2]}"
+
+                    # Подготовка входа для модели
+                    inputs = self.processor(images, return_tensors="pt").to(self.device)
                     outputs = self.model(**inputs)
                     all_predictions.append(outputs.logits.cpu())
+
             if not all_predictions:
                 raise RuntimeError("no predictions produced")
+
+            # Усреднение логитов по всем чанкам
             logits = torch.cat(all_predictions, dim=0)
             final_logits = torch.mean(logits, dim=0)
             probabilities = torch.nn.functional.softmax(final_logits, dim=0)
-            predicted_idx: int = int(final_logits.argmax().item())
-            confidence: float = float(probabilities[predicted_idx].item())
+            predicted_idx = int(final_logits.argmax().item())
+            confidence = float(probabilities[predicted_idx].item())
+
             id2label = getattr(self.model.config, "id2label", None) or {}
             predicted_class = id2label.get(predicted_idx, str(predicted_idx))
+
             return {
                 "video_name": os.path.basename(video_path),
                 "video_path": video_path,
@@ -112,6 +127,7 @@ class VideoFolderClassifier:
                 "num_frames": len(frames),
                 "num_chunks": len(chunks),
             }
+
         except Exception as e:
             return {
                 "video_name": os.path.basename(video_path),
@@ -171,12 +187,9 @@ def process_video_folder_simple(
 
 
 if __name__ == "__main__":
-    video_folder = r"/home/cipher/Documents/VS_code/KLIN/data/raw/KLIN/Test/violent"
-    model_path = "/home/cipher/Documents/VS_code/KLIN/videomae_results/checkpoint-28344"
-    results_df = process_video_folder_simple(
-        folder_path=video_folder,
-        model_path=model_path,
-        output_file="video_classification_results.csv",
-    )
-    if not results_df.empty:
-        print(results_df.head(10))
+    video_path = r"C:\Users\meksi\Desktop\d\Fighting023_x264.mp4"
+    model_path = r"C:\Users\meksi\Documents\GitHub\KLIN\videomae_results\videomae-ufc-crime"
+
+    classifier = VideoFolderClassifier(model_path=model_path)
+    result = classifier.predict_video(video_path)
+    print(result)

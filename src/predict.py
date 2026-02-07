@@ -42,7 +42,7 @@ class VideoClassifier:
         """Автоматически найти путь к модели"""
         possible_paths = [
             BASE_DIR / "videomae_results" / "checkpoint14172",
-            Path("videomae_results") / "checkpoint14172",
+            Path("videomae_results") / "videomae-large-klin",
         ]
 
         for path in possible_paths:
