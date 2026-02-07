@@ -1,3 +1,3 @@
-from .yolo import YoloService
+from .Yolo import YoloService
 
 __all__ = ("YoloService",)

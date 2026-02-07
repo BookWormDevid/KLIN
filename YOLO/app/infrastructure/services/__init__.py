@@ -1,5 +1,5 @@
-from .target import KlinProcessor
+from .target import YoloProcessor
 
 __all__ = [
-    "KlinProcessor",
+    "YoloProcessor",
 ]

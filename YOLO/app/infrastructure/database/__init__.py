@@ -1,5 +1,5 @@
-from .repository import KlinRepository
+from .repository import YoloRepository
 
 __all__ = [
-    "KlinRepository",
+    "YoloRepository",
 ]

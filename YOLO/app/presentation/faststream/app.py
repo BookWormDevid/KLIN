@@ -1,11 +1,12 @@
 import msgspec
-from app.application.dto import KlinProcessDto
-from app.application.services import KlinService
-from app.config import app_settings
-from app.ioc import ApplicationProvider, ImageProvider, InfrastructureProvider
 from dishka import make_container
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitMessage
+
+from YOLO.app.application.dto import YoloProcessDto
+from YOLO.app.application.services import YoloService
+from YOLO.app.config import app_settings
+from YOLO.app.ioc import ApplicationProvider, ImageProvider, InfrastructureProvider
 
 container = make_container(
     InfrastructureProvider(), ApplicationProvider(), ImageProvider()
@@ -15,11 +16,11 @@ broker = container.get(RabbitBroker)
 
 app = FastStream(broker)
 
-klin_service = container.get(KlinService)
+yolo_service = container.get(YoloService)
 
 
-@broker.subscriber(app_settings.Klin_queue)
+@broker.subscriber(app_settings.Yolo_queue)
 async def base_handler(message: RabbitMessage) -> None:
-    data = msgspec.json.decode(message.body, type=KlinProcessDto)
+    data = msgspec.json.decode(message.body, type=YoloProcessDto)
 
-    await klin_service.perform_klin(klin_id=data.klin_id)
+    await yolo_service.perform_yolo(yolo_id=data.yolo_id)
