@@ -2,12 +2,10 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
 import torch
-import yt_dlp
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = Path(__file__).parent.parent
@@ -40,16 +38,32 @@ class VideoClassifier:
 
     def _find_model_path(self) -> str:
         """Автоматически найти путь к модели"""
-        possible_paths = [
-            BASE_DIR / "videomae_results" / "checkpoint14172",
-            Path("videomae_results") / "videomae-large-klin",
-        ]
 
-        for path in possible_paths:
-            if path.exists():
-                return str(path)
+        BASE_DIR_MAE = Path(__file__).parent.parent
+        print(BASE_DIR_MAE)
+        mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
 
-        raise FileNotFoundError(f"Модель не найдена по пути: {possible_paths[0]}")
+        return str(mae_dir)
+
+    def save_video_bytes(self, video_bytes: bytes, suffix: str = ".mp4") -> str:
+        if not video_bytes:
+            raise ValueError("video_bytes пустой")
+
+        try:
+            local_temp_dir = Path("tmp").resolve()
+            local_temp_dir.mkdir(parents=True, exist_ok=True)
+
+            with tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=suffix,
+                    dir=local_temp_dir
+            ) as tmp_file:
+                tmp_file.write(video_bytes)
+                tmp_path = tmp_file.name
+
+                return str(tmp_path)
+        except Exception as e:
+            raise RuntimeError(f"Не удалось сохранить видео во временный файл: {e}") from e
 
     def _read_video_frames(self, video_path: str) -> tuple:
         """Чтение видео и возврат кадров + информация о видео"""
@@ -86,59 +100,6 @@ class VideoClassifier:
 
         return np.array(frames, dtype=np.uint8), video_info
 
-    def _download_video_from_url(self, url: str) -> str:
-        """Скачать видео по URL"""
-        print(f"[API] Загрузка видео по URL: {url}")
-
-        # Создаем временный файл
-        temp_dir = tempfile.gettempdir()
-        temp_filename = f"video_{int(time.time())}.mp4"
-        temp_filepath = os.path.join(temp_dir, temp_filename)
-
-        # Настройки yt-dlp
-        ydl_opts: dict[str, Any] = {
-            "format": "best[ext=mp4]/best",
-            "outtmpl": temp_filepath,
-            "quiet": True,
-            "no_warnings": True,
-            "ignoreerrors": True,
-        }
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:  # type: ignore
-                info = ydl.extract_info(url, download=True)
-                if info is None:
-                    raise ValueError(f"Не удалось загрузить видео по URL: {url}")
-
-                # Проверяем, что файл скачался
-                if os.path.exists(temp_filepath):
-                    file_size = os.path.getsize(temp_filepath) / (1024 * 1024)
-                    print(f"[API] Видео скачано: {temp_filepath} ({file_size:.1f} MB)")
-                    return temp_filepath
-                else:
-                    raise ValueError("Файл не скачан")
-
-        except Exception as err:
-            # Пробуем альтернативный подход для прямых ссылок на видео
-            if not url.startswith(("http://", "https://")):
-                raise ValueError(f"Некорректный URL: {url}") from err
-
-            print("[API] Попытка прямой загрузки...")
-            try:
-                import urllib.request
-
-                urllib.request.urlretrieve(url, temp_filepath)
-                if os.path.exists(temp_filepath):
-                    file_size = os.path.getsize(temp_filepath) / (1024 * 1024)
-                    print(
-                        f"[API] Видео скачано напрямую: {temp_filepath} ({file_size:.1f} MB)"
-                    )
-                    return temp_filepath
-                else:
-                    raise ValueError("Не удалось скачать видео")
-            except Exception as e2:
-                raise ValueError(f"Ошибка загрузки видео: {str(e2)}") from e2
-
     def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""
         t = len(frames)
@@ -146,7 +107,7 @@ class VideoClassifier:
 
         if padding_needed > 0:
             padding = np.zeros((padding_needed, *self.frame_size, 3), dtype=np.uint8)
-            frames = np.concatenate([frames, padding], axis=0)
+            frames = np.vstack((frames, padding))
 
         num_chunks = len(frames) // self.chunk_size
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
@@ -157,32 +118,30 @@ class VideoClassifier:
         video_name = os.path.basename(video_path)
 
         try:
-            # Чтение и обработка видео
             print(f"[API] Начало обработки видео: {video_name}")
             frames, video_info = self._read_video_frames(video_path)
-            print(
-                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
-            )
+            print(f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}")
 
             chunks = self._chunk_frames(frames)
             print(f"[API] Создано чанков: {len(chunks)}")
 
-            # Пакетная обработка чанков
-            all_predictions = []
+            all_logits = []
             with torch.no_grad():
-                for i in range(0, len(chunks), batch_size):
-                    batch_chunks = chunks[i : i + batch_size]
-                    batch_frames = [frame for chunk in batch_chunks for frame in chunk]
+                # Обрабатываем по одному чанку (16 кадров)
+                for chunk in chunks:
+                    # chunk.shape == (16, 224, 224, 3)
+                    inputs = self.processor(
+                        list(chunk),  # список из 16 numpy-массивов
+                        return_tensors="pt"
+                    ).to(self.device)
 
-                    inputs = self.processor(batch_frames, return_tensors="pt").to(
-                        self.device
-                    )
                     outputs = self.model(**inputs)
-                    all_predictions.append(outputs.logits.cpu())
+                    all_logits.append(outputs.logits)  # (1, num_classes)
 
             # Агрегация результатов
-            if len(all_predictions) > 0:
-                final_logits = torch.mean(torch.cat(all_predictions), dim=0)
+            if all_logits:
+                # Среднее по всем чанкам
+                final_logits = torch.mean(torch.cat(all_logits, dim=0), dim=0)
                 probabilities = torch.nn.functional.softmax(final_logits, dim=0)
                 predicted_idx = int(final_logits.argmax().item())
                 confidence = probabilities[predicted_idx].item()
@@ -191,15 +150,14 @@ class VideoClassifier:
                 confidence = 0.5
 
             # Получение имени класса
-            id2label: dict[int, str] = self.model.config.id2label or {}
+            id2label: dict = self.model.config.id2label or {}
             predicted_class = id2label.get(predicted_idx, str(predicted_idx))
-            # Преобразование nonviolent -> non_violent для совместимости
             if predicted_class == "nonviolent":
                 predicted_class = "non_violent"
 
             processing_time = time.time() - start_time
 
-            # Вывод в терминал
+            # Вывод результатов
             print("\n" + "=" * 60)
             print("РЕЗУЛЬТАТЫ АНАЛИЗА ВИДЕО")
             print("=" * 60)
@@ -271,3 +229,7 @@ class VideoClassifier:
                 "confidence": 0.0,
                 "error": str(e),
             }
+
+d = VideoClassifier()
+# s = d._download_video_from_url("https://video-preview.s3.yandex.net/8mbFWgIAAAA.mp4")
+e = d.predict_video(r"C:\Users\meksi\Documents\GitHub\KLIN\videos\d\fi004.mp4")

@@ -15,7 +15,7 @@ class ProcessingState(str, enum.Enum):
 class MAEModel(BaseModel):
     __tablename__ = "MAE"
 
-    target_url: Mapped[str] = mapped_column(Text)
     response_url: Mapped[str] = mapped_column(nullable=True)
+    video_path: Mapped[str] = mapped_column(String(), nullable=False)
     state: Mapped[ProcessingState] = mapped_column(String())
     result: Mapped[str | None] = mapped_column(Text, default=None)

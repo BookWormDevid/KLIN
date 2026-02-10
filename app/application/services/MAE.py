@@ -18,8 +18,8 @@ class MAEService:
 
     async def MAE_image(self, data: MAEUploadDto) -> MAEModel:
         MAE = MAEModel(
-            target_url=data.target_url,
             response_url=data.response_url,
+            video_path=data.video_path,
             state=ProcessingState.PENDING,
         )
         MAE = await self._MAE_repository.create(MAE)
@@ -49,8 +49,8 @@ class MAEService:
         finally:
             await self._MAE_repository.update(MAE)
 
-    async def get_inference_status(self, MAE_id: uuid.UUID) -> MAEReadDto:
-        MAE = await self._MAE_repository.get_by_id(MAE_id)
-        if not MAE:
-            raise ValueError(f"MAE {MAE_id} not found")
-        return MAEReadDto.from_model(MAE)
+    async def get_inference_status(self, mae_id: uuid.UUID) -> MAEReadDto:
+        mae = await self._MAE_repository.get_by_id(mae_id)
+        if not mae:
+            raise ValueError(f"MAE {mae_id} not found")
+        return MAEReadDto.from_model(mae)

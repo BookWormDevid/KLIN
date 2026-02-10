@@ -6,12 +6,11 @@ from app.models import MAEModel, ProcessingState
 
 
 class MAEUploadDto(msgspec.Struct, frozen=True):
-    target_url: str
     response_url: str
+    video_path: str
 
 class MAEResultDto(msgspec.Struct, frozen=True):
     result: str
-
 
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID

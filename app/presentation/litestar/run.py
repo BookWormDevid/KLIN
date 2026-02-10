@@ -1,5 +1,6 @@
 from dishka import make_async_container
-from app.ioc import ApplicationProvider, VideoProvider, InfrastructureProvider
+
+from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
 
 from .app import create_litestar_app
 
