@@ -12,6 +12,7 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
+
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
 from app.presentation.litestar.controllers import MAEController
 

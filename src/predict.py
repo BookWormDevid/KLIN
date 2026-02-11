@@ -54,16 +54,16 @@ class VideoClassifier:
             local_temp_dir.mkdir(parents=True, exist_ok=True)
 
             with tempfile.NamedTemporaryFile(
-                    delete=False,
-                    suffix=suffix,
-                    dir=local_temp_dir
+                delete=False, suffix=suffix, dir=local_temp_dir
             ) as tmp_file:
                 tmp_file.write(video_bytes)
                 tmp_path = tmp_file.name
 
                 return str(tmp_path)
         except Exception as e:
-            raise RuntimeError(f"Не удалось сохранить видео во временный файл: {e}") from e
+            raise RuntimeError(
+                f"Не удалось сохранить видео во временный файл: {e}"
+            ) from e
 
     def _read_video_frames(self, video_path: str) -> tuple:
         """Чтение видео и возврат кадров + информация о видео"""
@@ -120,7 +120,9 @@ class VideoClassifier:
         try:
             print(f"[API] Начало обработки видео: {video_name}")
             frames, video_info = self._read_video_frames(video_path)
-            print(f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}")
+            print(
+                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
+            )
 
             chunks = self._chunk_frames(frames)
             print(f"[API] Создано чанков: {len(chunks)}")
@@ -132,7 +134,7 @@ class VideoClassifier:
                     # chunk.shape == (16, 224, 224, 3)
                     inputs = self.processor(
                         list(chunk),  # список из 16 numpy-массивов
-                        return_tensors="pt"
+                        return_tensors="pt",
                     ).to(self.device)
 
                     outputs = self.model(**inputs)
@@ -152,8 +154,6 @@ class VideoClassifier:
             # Получение имени класса
             id2label: dict = self.model.config.id2label or {}
             predicted_class = id2label.get(predicted_idx, str(predicted_idx))
-            if predicted_class == "nonviolent":
-                predicted_class = "non_violent"
 
             processing_time = time.time() - start_time
 
@@ -229,6 +229,7 @@ class VideoClassifier:
                 "confidence": 0.0,
                 "error": str(e),
             }
+
 
 d = VideoClassifier()
 # s = d._download_video_from_url("https://video-preview.s3.yandex.net/8mbFWgIAAAA.mp4")

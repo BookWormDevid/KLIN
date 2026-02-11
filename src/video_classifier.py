@@ -77,7 +77,7 @@ class VideoFolderClassifier:
         num_chunks = len(frames) // self.chunk_size
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
-    def  predict_video(self, video_path: str, batch_size: int = 4) -> dict[str, Any]:
+    def predict_video(self, video_path: str, batch_size: int = 4) -> dict[str, Any]:
         try:
             frames = self._read_video_frames(video_path)
             chunks = self._chunk_frames(frames)

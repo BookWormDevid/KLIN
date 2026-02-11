@@ -1,2 +1,3 @@
-from .processor import MAEProcessor
-__all__ = ['MAEProcessor',]
+from .processor import MAECallbackSender, MAEProcessor
+
+__all__ = ["MAEProcessor", "MAECallbackSender"]

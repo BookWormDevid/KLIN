@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.application.interfaces import (
+    IMAECallbackSender,
     IMAEInference,
     IMAEProcessProducer,
     IMAERepository,
@@ -18,7 +19,7 @@ from app.application.services import MAEService
 from app.config import app_settings
 from app.infrastructure.database import MAERepository
 from app.infrastructure.producers import MAEProcessProducer
-from app.infrastructure.services import MAEProcessor
+from app.infrastructure.services import MAECallbackSender, MAEProcessor
 
 
 class InfrastructureProvider(Provider):
@@ -54,7 +55,7 @@ class InfrastructureProvider(Provider):
 
     MAE_producer = provide(MAEProcessProducer, provides=IMAEProcessProducer)
 
-    # callbacksender
+    MAE_callback_sender = provide(MAECallbackSender, provides=IMAECallbackSender)
 
 
 class ApplicationProvider(Provider):

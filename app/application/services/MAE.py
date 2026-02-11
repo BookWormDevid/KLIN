@@ -1,8 +1,10 @@
+import os
 import uuid
 from dataclasses import dataclass
 
 from app.application.dto import MAEProcessDto, MAEReadDto, MAEUploadDto
 from app.application.interfaces import (
+    IMAECallbackSender,
     IMAEInference,
     IMAEProcessProducer,
     IMAERepository,
@@ -15,39 +17,42 @@ class MAEService:
     _MAE_repository: IMAERepository
     _MAE_inference_service: IMAEInference
     _MAE_process_producer: IMAEProcessProducer
+    _MAE_callback_sender: IMAECallbackSender
 
     async def MAE_image(self, data: MAEUploadDto) -> MAEModel:
-        MAE = MAEModel(
+        mae = MAEModel(
             response_url=data.response_url,
             video_path=data.video_path,
             state=ProcessingState.PENDING,
         )
-        MAE = await self._MAE_repository.create(MAE)
+        mae = await self._MAE_repository.create(mae)
 
-        await self._MAE_process_producer.send(MAEProcessDto(MAE_id=MAE.id))
+        await self._MAE_process_producer.send(MAEProcessDto(MAE_id=mae.id))
 
-        return MAE
+        return mae
 
     async def perform_MAE(self, MAE_id: uuid.UUID) -> None:
-        # пиши сервисную часть
-
-        MAE: MAEModel = await self._MAE_repository.get_by_id(MAE_id)
+        mae: MAEModel = await self._MAE_repository.get_by_id(MAE_id)
 
         try:
-            result_MAE = await self._MAE_inference_service.analyze(MAE)
-            MAE.result = result_MAE
-            MAE.state = ProcessingState.FINISHED
-            # callback
-            print(f"✅ Успех : {MAE.result}")
+            process = await self._MAE_inference_service.analyze(mae)
+            mae.result = process.result
+            mae.state = ProcessingState.FINISHED
+            await self._MAE_callback_sender.post_consumer(mae)
+            print(f"✅ Успех : {mae.result}")
 
         except Exception as e:
-            MAE.result = str(e)
-            MAE.state = ProcessingState.ERROR
-            # callback
-            print(f"❌ Ошибка : {MAE.result}")
+            mae.result = str(e)
+            mae.state = ProcessingState.ERROR
+            await self._MAE_callback_sender.post_consumer(mae)
+            print(f"❌ Ошибка : {mae.result}")
 
         finally:
-            await self._MAE_repository.update(MAE)
+            try:
+                if mae.video_path and os.path.exists(mae.video_path):
+                    os.remove(mae.video_path)
+            except Exception as e:
+                print(f"Не удалось удалить временный файл. {e}")
 
     async def get_inference_status(self, mae_id: uuid.UUID) -> MAEReadDto:
         mae = await self._MAE_repository.get_by_id(mae_id)

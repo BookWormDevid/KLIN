@@ -1,16 +1,23 @@
+import asyncio
 import logging
-import torch
-import cv2
 import os
-import numpy as np
 import time
-import tempfile
 from pathlib import Path
+from typing import Any
+from transformers.models.videomae import VideoMAEConfig
+import aiohttp
+import async_timeout
+import cv2
+import msgspec
+import numpy as np
+import torch
 from transformers import (
     VideoMAEForVideoClassification,
     VideoMAEImageProcessor,
 )
-from app.application.interfaces import IMAEInference
+
+from app.application.dto import MAEResultDto
+from app.application.interfaces import IMAECallbackSender, IMAEInference
 from app.models import MAEModel
 
 logger = logging.getLogger(__name__)
@@ -18,55 +25,61 @@ logger = logging.getLogger(__name__)
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
 mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
 
-class MAEProcessor(IMAEInference):
 
+class MAEProcessor(IMAEInference):
     def __init__(self) -> None:
+        self.model: VideoMAEForVideoClassification | None = None
+        self.processor: VideoMAEImageProcessor | None = None
         self.mae_model: str | None = None
-        self.chunk_size: int = 16
-        self.frame_size: tuple[int, int] = (224, 224)
+        self.chunk_size = 16
+        self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.config = VideoMAEConfig()
+    def ensure_model_loaded(self) -> None:
+        if self.model is not None:
+            return
+        self.mae_model = self.find_model_path()
         self.processor = VideoMAEImageProcessor.from_pretrained(
-            mae_dir, local_files_only=True
+            self.mae_model, local_files_only=True
         )
-        model: VideoMAEForVideoClassification = (
-            VideoMAEForVideoClassification.from_pretrained(
-                mae_dir, local_files_only=True
-            )
+
+        model = VideoMAEForVideoClassification.from_pretrained(
+            self.mae_model, local_files_only=True
         )
-        self.model = model.to(self.device)  # type: ignore
+
+        self.model = model.to(self.device) # type: ignore
         self.model.eval()
 
-    def _find_model_path(self) -> str:
+    def find_model_path(self) -> str:
         """Автоматически найти путь к модели"""
 
-        BASE_DIR_MAE = Path(__file__).parent.parent
-        print(BASE_DIR_MAE)
-        self.mae_model = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
+        base_dir_mae = Path(__file__).parent.parent.parent.parent.parent
+        print(base_dir_mae)
+        self.mae_model = str(base_dir_mae / "videomae_results" / "videomae-ufc-crime")
+        return self.mae_model
 
-        return str(self.mae_model)
+    # def save_video_bytes(self, video_bytes: bytes, suffix: str = ".mp4") -> str:
+    #     if not video_bytes:
+    #         raise ValueError("video_bytes пустой")
+    #
+    #     try:
+    #         local_temp_dir = Path("tmp").resolve()
+    #         local_temp_dir.mkdir(parents=True, exist_ok=True)
+    #
+    #         with tempfile.NamedTemporaryFile(
+    #                 delete=False,
+    #                 suffix=suffix,
+    #                 dir=local_temp_dir
+    #         ) as tmp_file:
+    #
+    #             tmp_file.write(video_bytes)
+    #             tmp_path = tmp_file.name
+    #
+    #             return str(tmp_path)
+    #     except Exception as e:
+    #         raise RuntimeError(f"Не удалось сохранить видео во временный файл: {e}") from e
 
-    def save_video_bytes(self, video_bytes: bytes, suffix: str = ".mp4") -> str:
-        if not video_bytes:
-            raise ValueError("video_bytes пустой")
-
-        try:
-            local_temp_dir = Path("tmp").resolve()
-            local_temp_dir.mkdir(parents=True, exist_ok=True)
-
-            with tempfile.NamedTemporaryFile(
-                    delete=False,
-                    suffix=suffix,
-                    dir=local_temp_dir
-            ) as tmp_file:
-
-                tmp_file.write(video_bytes)
-                tmp_path = tmp_file.name
-
-                return str(tmp_path)
-        except Exception as e:
-            raise RuntimeError(f"Не удалось сохранить видео во временный файл: {e}") from e
-
-    def _read_video_frames(self, video_path: str) -> tuple:
+    async def _read_video_frames(self, video_path: str) -> tuple:
         """Чтение видео и возврат кадров + информация о видео"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -101,7 +114,7 @@ class MAEProcessor(IMAEInference):
 
         return np.array(frames, dtype=np.uint8), video_info
 
-    def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
+    async def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""
         t = len(frames)
         padding_needed = (-t) % self.chunk_size
@@ -111,21 +124,27 @@ class MAEProcessor(IMAEInference):
             frames = np.vstack((frames, padding))
 
         num_chunks = len(frames) // self.chunk_size
+        if num_chunks is None:
+            raise ValueError("Chunk size is empty")
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
-    def predict_video(self, video_path: str, batch_size: int = 2) -> dict:
-        """Предсказание для одного видео"""
-        start_time = time.time()
-        video_name = os.path.basename(video_path)
+    async def analyze(self, mae_request: MAEModel) -> MAEResultDto:
+        if self.processor is None or self.model is None:
+            self.ensure_model_loaded()
+        assert self.processor is not None
+        assert self.model is not None
 
+        start_time = time.time()
+        video_name = os.path.basename(mae_request.video_path)
         try:
             print(f"[API] Начало обработки видео: {video_name}")
-            frames, video_info = self._read_video_frames(video_path)
-            print(f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}")
+            frames, video_info = await self._read_video_frames(mae_request.video_path)
+            print(
+                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
+            )
 
-            chunks = self._chunk_frames(frames)
+            chunks = await self._chunk_frames(frames)
             print(f"[API] Создано чанков: {len(chunks)}")
-
             all_logits = []
             with torch.no_grad():
                 # Обрабатываем по одному чанку (16 кадров)
@@ -133,7 +152,7 @@ class MAEProcessor(IMAEInference):
                     # chunk.shape == (16, 224, 224, 3)
                     inputs = self.processor(
                         list(chunk),  # список из 16 numpy-массивов
-                        return_tensors="pt"
+                        return_tensors="pt",
                     ).to(self.device)
 
                     outputs = self.model(**inputs)
@@ -169,56 +188,54 @@ class MAEProcessor(IMAEInference):
             print(f"Время обработки: {processing_time:.1f} сек")
             print("=" * 60 + "\n")
 
-            return {
-                "video_name": video_name,
-                "video_path": video_path,
-                "predicted_class": predicted_class,
-                "confidence": float(confidence),
-                "total_frames": video_info["total_frames"],
-                "video_duration": video_info["duration"],
-                "video_fps": video_info["fps"],
-                "processing_time": processing_time,
-            }
+            return MAEResultDto(result=predicted_class)
 
         except Exception as e:
-            print(f"[API] Ошибка обработки видео {video_name}: {e}")
-            return {
-                "video_name": video_name,
-                "video_path": video_path,
-                "predicted_class": "ERROR",
-                "confidence": 0.0,
-                "error": str(e),
-                "processing_time": time.time() - start_time,
-            }
+            logger.error(f"Ошибка обработки {e}")
+            raise
 
-    async def analyze(self, model: MAEModel) -> str: ...
-    #     """
-    #         Принимает видео в виде bytes, сохраняет во временный файл,
-    #         передаёт в predict_video и возвращает результат.
-    #         """
-    #     video_path = None
-    #     try:
-    #         # 1️⃣ Сохраняем видео во временный файл
-    #         video_path = self.save_video_bytes(video_bytes)
-    #
-    #         # 2️⃣ Запускаем инференс
-    #         result = self.predict_video(video_path)
-    #
-    #         return result
-    #
-    #     except Exception as e:
-    #         logger.exception("Ошибка при предсказании видео из байт")
-    #         return {
-    #             "video_name": "unknown",
-    #             "predicted_class": "ERROR",
-    #             "confidence": 0.0,
-    #             "error": str(e),
-    #         }
-    #
-    #     finally:
-    #         # 3️⃣ Удаляем временный файл, если он существует
-    #         if video_path and Path(video_path).exists():
-    #             try:
-    #                 Path(video_path).unlink()
-    #             except Exception:
-    #                 pass
+
+class MAECallbackSender(IMAECallbackSender):
+    async def post_consumer(self, model: MAEModel) -> None:
+        if not model.response_url:
+            return
+
+        payload: dict[str, Any] = {
+            "mae_id": str(model.id),
+            "result": model.result,
+            "state": model.state,
+        }
+
+        data = msgspec.json.encode(payload)
+
+        max_attempts = 3
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                async with async_timeout.timeout(30):  # 30 секунд таймаут
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            model.response_url,
+                            data=data,
+                            headers={"Content-Type": "application/json"},
+                            timeout=aiohttp.ClientTimeout(total=30),
+                        ) as resp:
+                            if 200 <= resp.status < 300:
+                                return
+
+                            body = await resp.text()
+                            raise RuntimeError(f"HTTP {resp.status}, body={body}")
+
+            except Exception as exc:
+                if attempt == max_attempts:
+                    logger.error(
+                        "Callback failed after %d attempts. "
+                        "transcription_id=%s response_url=%s error=%s",
+                        max_attempts,
+                        model.id,
+                        model.response_url,
+                        exc,
+                    )
+                    return
+
+                await asyncio.sleep(2**attempt)

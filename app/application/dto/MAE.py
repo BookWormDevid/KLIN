@@ -9,8 +9,10 @@ class MAEUploadDto(msgspec.Struct, frozen=True):
     response_url: str
     video_path: str
 
+
 class MAEResultDto(msgspec.Struct, frozen=True):
-    result: str
+    result: str | None
+
 
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID
