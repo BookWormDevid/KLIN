@@ -4,7 +4,6 @@ import os
 import time
 from pathlib import Path
 from typing import Any
-from transformers.models.videomae import VideoMAEConfig
 import aiohttp
 import async_timeout
 import cv2
@@ -34,7 +33,6 @@ class MAEProcessor(IMAEInference):
         self.chunk_size = 16
         self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.config = VideoMAEConfig()
     def ensure_model_loaded(self) -> None:
         if self.model is not None:
             return
