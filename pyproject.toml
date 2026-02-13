@@ -27,6 +27,8 @@ dependencies = [
     "transformers>=4.57.3",
     "uvicorn>=0.40.0",
     "yt-dlp>=2025.12.8",
+    "ultralytics>=8.4.14",
+    "evaluate>=0.4.6",
 ]
 
 [dependency-groups]
@@ -36,7 +38,6 @@ dev = [
     "types-requests>=2.32.4.20260107",
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
-    "ultralytics>=8.4.14",
 ]
 
 [[tool.uv.index]]

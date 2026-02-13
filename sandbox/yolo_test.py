@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ultralytics import YOLO
+from ultralytics.models.yolo import YOLO
 
 parent = Path(__file__).resolve().parent
 

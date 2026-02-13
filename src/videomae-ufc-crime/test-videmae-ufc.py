@@ -21,7 +21,7 @@ model = model.to(device)  # type: ignore[arg-type]
 model.eval()
 
 # Маппинги берём прямо из модели
-id2label = model.config.id2label
+id2label = model.config.id2label or {}
 # label2id = model.config.label2id   # если понадобится
 
 print("Классы модели:", id2label)
@@ -116,7 +116,7 @@ with torch.no_grad():
         logits = outputs.logits
         probs = torch.softmax(logits, dim=-1)
         pred_idx = int(torch.argmax(probs, dim=-1).item())
-        pred_label = id2label[pred_idx]
+        pred_label = id2label.get(pred_idx, str(pred_idx))
         confidence = probs[0, pred_idx].item()
 
         print(f"Файл: {filename}")
