@@ -4,8 +4,10 @@ import time
 from pathlib import Path
 
 import cv2
+import httpx
 import numpy as np
 import torch
+import yt_dlp
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = Path(__file__).parent.parent
@@ -64,6 +66,49 @@ class VideoClassifier:
             raise RuntimeError(
                 f"Не удалось сохранить видео во временный файл: {e}"
             ) from e
+
+    def _download_video_from_url(self, url: str) -> str:
+        """Скачивание видео по URL (поддерживает прямые ссылки и платформы)."""
+        local_temp_dir = Path("tmp").resolve()
+        local_temp_dir.mkdir(parents=True, exist_ok=True)
+
+        url_path = url.split("?", 1)[0].lower()
+        video_extensions = (".mp4", ".avi", ".mov", ".mkv", ".wmv", ".flv", ".webm")
+        is_direct_video = any(url_path.endswith(ext) for ext in video_extensions)
+
+        if is_direct_video:
+            suffix = Path(url_path).suffix or ".mp4"
+            with httpx.stream(
+                "GET", url, follow_redirects=True, timeout=60.0
+            ) as response:
+                response.raise_for_status()
+                with tempfile.NamedTemporaryFile(
+                    delete=False, suffix=suffix, dir=local_temp_dir
+                ) as tmp_file:
+                    for chunk in response.iter_bytes():
+                        tmp_file.write(chunk)
+                    return tmp_file.name
+
+        ydl_opts = {
+            "outtmpl": str(local_temp_dir / "video_%(id)s.%(ext)s"),
+            "format": "best[ext=mp4]/best",
+            "noplaylist": True,
+            "quiet": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filepath = None
+            if isinstance(info, dict):
+                requested = info.get("requested_downloads") or []
+                if requested:
+                    filepath = requested[0].get("filepath")
+                if not filepath:
+                    filepath = ydl.prepare_filename(info)
+
+        if not filepath or not os.path.exists(filepath):
+            raise RuntimeError("Не удалось скачать видео по URL")
+
+        return str(filepath)
 
     def _read_video_frames(self, video_path: str) -> tuple:
         """Чтение видео и возврат кадров + информация о видео"""

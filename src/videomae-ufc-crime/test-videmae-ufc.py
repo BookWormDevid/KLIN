@@ -10,13 +10,14 @@ from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 video_folder = r"C:\Users\meksi\Desktop\d"  # ← поменяй на свою
 
 # Устройство
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_path = r"/videomae_results/videomae-ufc-crime"
 
 processor = VideoMAEImageProcessor.from_pretrained(model_path, local_files_only=True)
 model = VideoMAEForVideoClassification.from_pretrained(
     model_path, local_files_only=True, ignore_mismatched_sizes=True
-).to(device)
+)
+model = model.to(device)  # type: ignore[arg-type]
 model.eval()
 
 # Маппинги берём прямо из модели
@@ -114,7 +115,7 @@ with torch.no_grad():
         outputs = model(**inputs)
         logits = outputs.logits
         probs = torch.softmax(logits, dim=-1)
-        pred_idx = torch.argmax(probs, dim=-1).item()
+        pred_idx = int(torch.argmax(probs, dim=-1).item())
         pred_label = id2label[pred_idx]
         confidence = probs[0, pred_idx].item()
 

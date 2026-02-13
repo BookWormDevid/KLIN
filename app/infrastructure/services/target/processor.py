@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+
 import aiohttp
 import async_timeout
 import cv2
@@ -33,6 +34,7 @@ class MAEProcessor(IMAEInference):
         self.chunk_size = 16
         self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     def ensure_model_loaded(self) -> None:
         if self.model is not None:
             return
@@ -45,7 +47,7 @@ class MAEProcessor(IMAEInference):
             self.mae_model, local_files_only=True
         )
 
-        self.model = model.to(self.device) # type: ignore
+        self.model = model.to(self.device)  # type: ignore
         self.model.eval()
 
     def find_model_path(self) -> str:

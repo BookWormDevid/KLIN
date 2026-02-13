@@ -1,10 +1,10 @@
 import os
 
-import evaluate
+import evaluate  # type: ignore[import-not-found]
 import mlflow.pytorch
 import numpy as np
-from datasets import Dataset, DatasetDict
-from decord import VideoReader, cpu
+from datasets import Dataset, DatasetDict  # type: ignore[import-not-found]
+from decord import VideoReader, cpu  # type: ignore[import-not-found]
 from transformers import (
     Trainer,
     TrainingArguments,
@@ -192,7 +192,6 @@ with mlflow.start_run(run_name="videomae-large-ucf-crime"):
         args=args,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
-        tokenizer=processor,
         compute_metrics=compute_metrics,
     )
 

@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 from transformers import (
     VideoMAEForVideoClassification,
     VideoMAEImageProcessor,
@@ -87,18 +87,13 @@ class VideoFolderClassifier:
                 for i in range(0, len(chunks), batch_size):
                     batch_chunks = chunks[i : i + batch_size]
 
-                    # Формируем список списков кадров в формате uint8
-                    images = [
-                        [
-                            frame.astype(np.uint8) for frame in clip
-                        ]  # clip shape: (chunk_size, H, W, 3)
-                        for clip in batch_chunks
-                    ]
+                    # Формируем список клипов в формате uint8
+                    images = [clip.astype(np.uint8) for clip in batch_chunks]
 
                     # Проверка форм
                     for clip in images:
-                        assert len(clip) == self.chunk_size, (
-                            f"chunk size mismatch: {len(clip)}"
+                        assert clip.shape[0] == self.chunk_size, (
+                            f"chunk size mismatch: {clip.shape[0]}"
                         )
                         for frame in clip:
                             assert frame.shape[:2] == self.frame_size, (
