@@ -1,11 +1,12 @@
 import os
 
-import evaluate  # type: ignore[import-not-found]
-import mlflow.pytorch
+import cv2
+import evaluate  # type: ignore[import-untyped]
+import mlflow.pytorch as mlflow_pytorch
 import numpy as np
-from datasets import Dataset, DatasetDict  # type: ignore[import-not-found]
-from decord import VideoReader, cpu  # type: ignore[import-not-found]
+from datasets import Dataset, DatasetDict  # type: ignore[import-untyped]
 from transformers import (
+    EvalPrediction,
     Trainer,
     TrainingArguments,
     VideoMAEForVideoClassification,
@@ -52,13 +53,28 @@ processor = VideoMAEImageProcessor.from_pretrained("MCG-NJU/videomae-large")
 # ──────────────────────────────────────────────────────────────────────────────
 def sample_frames(video_path, num_frames=16):
     try:
-        vr = VideoReader(video_path, ctx=cpu(0))
-        total_frames = len(vr)
-        if total_frames == 0:
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
             return None
-        indices = np.linspace(0, total_frames - 1, num_frames, dtype=int)
-        frames = vr.get_batch(indices).asnumpy()
-        return list(frames)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if total_frames == 0:
+            cap.release()
+            return None
+        indices = set(np.linspace(0, total_frames - 1, num_frames, dtype=int))
+        frames = []
+        for i in range(total_frames):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if i in indices:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame)
+        cap.release()
+        if len(frames) == 0:
+            return None
+        while len(frames) < num_frames:
+            frames.append(frames[-1])
+        return frames
     except Exception as e:
         print(f"Ошибка загрузки {video_path}: {e}")
         return None
@@ -128,9 +144,12 @@ model = VideoMAEForVideoClassification.from_pretrained(
 accuracy = evaluate.load("accuracy")
 
 
-def compute_metrics(eval_pred):
+def compute_metrics(eval_pred: EvalPrediction) -> dict[str, float]:
     predictions = np.argmax(eval_pred.predictions, axis=-1)
-    return accuracy.compute(predictions=predictions, references=eval_pred.label_ids)
+    result = accuracy.compute(predictions=predictions, references=eval_pred.label_ids)
+    if result is None:
+        return {}
+    return dict(result)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -196,7 +215,7 @@ with mlflow.start_run(run_name="videomae-large-ucf-crime"):
     )
 
     # Включаем автологгер для transformers → mlflow будет логировать loss, accuracy и т.д.
-    mlflow.pytorch.autolog(log_models=False)  # модели сохраним вручную
+    mlflow_pytorch.autolog(log_models=False)  # модели сохраним вручную
 
     print("Начало обучения...")
     trainer.train()

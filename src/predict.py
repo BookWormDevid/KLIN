@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
+from typing import Any, TypedDict, cast
 
 import cv2
 import httpx
@@ -11,6 +12,13 @@ import yt_dlp
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = Path(__file__).parent.parent
+
+
+class YtDlpParams(TypedDict, total=False):
+    outtmpl: str
+    format: str
+    noplaylist: bool
+    quiet: bool
 
 
 class VideoClassifier:
@@ -89,13 +97,13 @@ class VideoClassifier:
                         tmp_file.write(chunk)
                     return tmp_file.name
 
-        ydl_opts = {
+        ydl_opts: YtDlpParams = {
             "outtmpl": str(local_temp_dir / "video_%(id)s.%(ext)s"),
             "format": "best[ext=mp4]/best",
             "noplaylist": True,
             "quiet": True,
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=True)
             filepath = None
             if isinstance(info, dict):
