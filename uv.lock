@@ -1651,7 +1651,6 @@ dependencies = [
     { name = "torch" },
     { name = "torchvision" },
     { name = "transformers" },
-    { name = "ultralytics" },
     { name = "uvicorn" },
     { name = "yt-dlp" },
 ]
@@ -1689,7 +1688,6 @@ requires-dist = [
     { name = "torch", specifier = ">=2.10.0", index = "https://download.pytorch.org/whl/cu128" },
     { name = "torchvision", specifier = ">=0.24.0", index = "https://download.pytorch.org/whl/cu128" },
     { name = "transformers", specifier = ">=4.57.3" },
-    { name = "ultralytics", specifier = ">=8.4.14" },
     { name = "uvicorn", specifier = ">=0.40.0" },
     { name = "yt-dlp", specifier = ">=2025.12.8" },
 ]
