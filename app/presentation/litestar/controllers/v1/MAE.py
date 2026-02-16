@@ -10,11 +10,12 @@ from litestar import Controller, MediaType, Response, get, post
 from litestar.datastructures import UploadFile
 from litestar.enums import RequestEncodingType
 from litestar.exceptions import HTTPException
-from litestar.params import Body, Parameter
+from litestar.params import Body
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 from app.application.dto import MAEReadDto, MAEUploadDto
 from app.application.services import MAEService
+
 
 class MAEController(Controller):
     path = "/MAE"
@@ -70,14 +71,15 @@ class MAEController(Controller):
 
     @get("/health/ready")
     @inject
-    async def readiness_check(self, mae_service: FromDishka[MAEService], MAE_id: UUID) -> Response[MAEReadDto]:
+    async def readiness_check(
+        self, mae_service: FromDishka[MAEService], MAE_id: UUID
+    ) -> Response[MAEReadDto]:
         try:
             # Проверяем подключение к БД
             check = await mae_service.get_inference_status(MAE_id)
             return Response(check)
-        except Exception as e:
+        except ValueError as e:
             # Если БД недоступна - сервис не готов
-            raise HTTPException(
-                status_code=503,
-                detail=f"Database unavailable: {str(e)}"
+            raise HTTPException from e(
+                status_code=503, detail=f"Database unavailable: {str(e)}"
             )

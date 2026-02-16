@@ -11,7 +11,9 @@ class MAEUploadDto(msgspec.Struct, frozen=True):
 
 
 class MAEResultDto(msgspec.Struct, frozen=True):
-    result: str | None
+    event: str | None
+    confidence: int | None
+    objects: str
 
 
 class MAEReadDto(msgspec.Struct, frozen=True):

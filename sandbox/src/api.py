@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # Импортируем ваш существующий VideoClassifier
-from predict import VideoClassifier
+from src.predict import VideoClassifier
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 

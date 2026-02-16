@@ -2,7 +2,7 @@ import os
 import uuid
 from dataclasses import dataclass
 
-from app.application.dto import MAEProcessDto, MAEReadDto, MAEUploadDto
+from app.application.dto import MAEProcessDto, MAEReadDto, MAEResultDto, MAEUploadDto
 from app.application.interfaces import (
     IMAECallbackSender,
     IMAEInference,
@@ -36,7 +36,7 @@ class MAEService:
 
         try:
             process = await self._MAE_inference_service.analyze(mae)
-            mae.result = process.result
+            mae.result = MAEResultDto(process)
             mae.state = ProcessingState.FINISHED
             await self._MAE_callback_sender.post_consumer(mae)
             print(f"✅ Успех : {mae.result}")
@@ -60,5 +60,3 @@ class MAEService:
         if not mae:
             raise ValueError(f"MAE {mae_id} not found")
         return MAEReadDto.from_model(mae)
-
-
