@@ -75,7 +75,7 @@ class MAEProcessor(IMAEInference):
 
         self.yolo.to(str(self.device))
 
-    def run_yolo(self, frames: np.ndarray) -> list[dict]:
+    async def run_yolo(self, frames: np.ndarray) -> list[dict]:
         assert self.yolo is not None
 
         results = []

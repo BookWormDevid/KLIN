@@ -1,10 +1,24 @@
 from pathlib import Path
+from ultralytics import YOLO
 
-from ultralytics.models.yolo import YOLO
+# Путь к папке проекта
+parent = Path(__file__).resolve().parent.parent
 
-parent = Path(__file__).resolve().parent
+print(parent)
+# Проверяем, существует ли видео
+video_path = parent / "videos/d/fi004.mp4"
+if not video_path.exists():
+    raise FileNotFoundError(f"Видео не найдено: {video_path}")
 
-model = YOLO(parent / "models/yolo_small_weights.pt")
+# Загружаем модель (автоматически скачает, если нет)
+model = YOLO("../models/yolov8x.pt")  # маленькая универсальная модель YOLO
 
+# Делаем предсказание на видео
+results = model.predict(
+    source=video_path,
+    show=True,     # показывать видео с предсказаниями
+    conf=0.6,       # порог уверенности
+    save=False      # не сохранять результат, можно поставить True
+)
 
-model.predict(source=parent / "videos/fi004.mp4", show=True, conf=0.6)
+print("Предсказание завершено!")
