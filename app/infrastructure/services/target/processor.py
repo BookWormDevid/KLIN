@@ -213,7 +213,7 @@ class MAEProcessor(IMAEInference):
                 predicted_class = id2label.get(predicted_idx, str(predicted_idx))
 
                 # ---------- YOLO ----------
-                yolo_results = self.run_yolo(frames)
+                yolo_results = await self.run_yolo(frames)
 
             # =====================================================
             #               Обработка YOLO
@@ -245,7 +245,7 @@ class MAEProcessor(IMAEInference):
             )
 
         except Exception as e:
-            logger.error(f"Ошибка обработки видео {video_name}: {e}")
+            logger.error(f"Ошибка обработки {e}")
             raise
 
 
@@ -256,7 +256,9 @@ class MAECallbackSender(IMAECallbackSender):
 
         payload: dict[str, Any] = {
             "mae_id": str(model.id),
-            "result": model.result,
+            "event": str(model.event),
+            "confidence": str(model.confidence),
+            "objects": str(model.objects),
             "state": model.state,
         }
 

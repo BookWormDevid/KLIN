@@ -11,19 +11,21 @@ class MAEUploadDto(msgspec.Struct, frozen=True):
 
 
 class MAEResultDto(msgspec.Struct, frozen=True):
-    event: str
+    event: str | None
     confidence: float | None
     objects: list[str]
 
 
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID
-    result: dict
+    event: str | None
+    confidence: float | None
+    objects: list[str]
     state: ProcessingState
 
     @classmethod
     def from_model(cls, model: MAEModel) -> "MAEReadDto":
-        return MAEReadDto(id=model.id, result=model.result, state=model.state)
+        return MAEReadDto(id=model.id, event=model.event,confidence=model.confidence,objects=model.objects, state=model.state)
 
 
 class MAEProcessDto(msgspec.Struct, frozen=True):

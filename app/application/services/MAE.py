@@ -38,16 +38,18 @@ class MAEService:
 
         try:
             process = await self._MAE_inference_service.analyze(mae)
-            mae.result = msgspec.json.decode(msgspec.json.encode(process))
+            mae.event = process.event
+            mae.confidence = process.confidence
+            mae.objects = process.objects
             mae.state = ProcessingState.FINISHED
             await self._MAE_callback_sender.post_consumer(mae)
-            print(f"✅ Успех : {mae.result}")
+            print(f"✅ Успех : {mae.event}, {mae.confidence}, {mae.objects}")
 
         except Exception as e:
-            mae.result["event"] = str(e)
+            mae.event = str(e)
             mae.state = ProcessingState.ERROR
             await self._MAE_callback_sender.post_consumer(mae)
-            print(f"❌ Ошибка : {mae.result}")
+            print(f"❌ Ошибка : {mae.event}, {mae.confidence}, {mae.objects}")
 
         finally:
             try:

@@ -1,7 +1,6 @@
 import enum
 
-from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import String, ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -19,4 +18,7 @@ class MAEModel(BaseModel):
     response_url: Mapped[str] = mapped_column(nullable=True)
     video_path: Mapped[str] = mapped_column(String(), nullable=False)
     state: Mapped[ProcessingState] = mapped_column(String())
-    result: Mapped[dict] = mapped_column(JSONB(), default={})
+    event: Mapped[str] = mapped_column(String(), nullable=True)
+    confidence: Mapped[float] = mapped_column(nullable=True)
+    objects: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+
