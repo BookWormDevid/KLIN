@@ -49,6 +49,7 @@ class MAEService:
 
         finally:
             try:
+                await self._MAE_repository.update(mae)
                 if mae.video_path and os.path.exists(mae.video_path):
                     os.remove(mae.video_path)
             except Exception as e:
@@ -59,3 +60,5 @@ class MAEService:
         if not mae:
             raise ValueError(f"MAE {mae_id} not found")
         return MAEReadDto.from_model(mae)
+
+

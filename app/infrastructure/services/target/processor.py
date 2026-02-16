@@ -129,10 +129,8 @@ class MAEProcessor(IMAEInference):
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
     async def analyze(self, mae_request: MAEModel) -> MAEResultDto:
-        if self.processor is None or self.model is None:
+        if self.model is None:
             self.ensure_model_loaded()
-        assert self.processor is not None
-        assert self.model is not None
 
         start_time = time.time()
         video_name = os.path.basename(mae_request.video_path)
