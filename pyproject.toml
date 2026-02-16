@@ -29,6 +29,7 @@ dependencies = [
     "yt-dlp>=2025.12.8",
     "ultralytics>=8.4.14",
     "evaluate>=0.4.6",
+    "opencv-python>=4.13.0.92",
 ]
 
 [dependency-groups]

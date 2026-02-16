@@ -4,6 +4,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+from ultralytics import YOLO
 
 import aiohttp
 import async_timeout
@@ -31,14 +32,15 @@ class MAEProcessor(IMAEInference):
         self.model: VideoMAEForVideoClassification | None = None
         self.processor: VideoMAEImageProcessor | None = None
         self.mae_model: str | None = None
+        self.yolo: YOLO | str | None = None
         self.chunk_size = 16
         self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def ensure_model_loaded(self) -> None:
+    def ensure_mae_model_loaded(self) -> None:
         if self.model is not None:
             return
-        self.mae_model = self.find_model_path()
+        self.mae_model = self.find_mae_path()
         self.processor = VideoMAEImageProcessor.from_pretrained(
             self.mae_model, local_files_only=True
         )
@@ -50,7 +52,7 @@ class MAEProcessor(IMAEInference):
         self.model = model.to(self.device)  # type: ignore
         self.model.eval()
 
-    def find_model_path(self) -> str:
+    def find_mae_path(self) -> str:
         """Автоматически найти путь к модели"""
 
         base_dir_mae = Path(__file__).parent.parent.parent.parent.parent
@@ -58,26 +60,47 @@ class MAEProcessor(IMAEInference):
         self.mae_model = str(base_dir_mae / "videomae_results" / "videomae-ufc-crime")
         return self.mae_model
 
-    # def save_video_bytes(self, video_bytes: bytes, suffix: str = ".mp4") -> str:
-    #     if not video_bytes:
-    #         raise ValueError("video_bytes пустой")
-    #
-    #     try:
-    #         local_temp_dir = Path("tmp").resolve()
-    #         local_temp_dir.mkdir(parents=True, exist_ok=True)
-    #
-    #         with tempfile.NamedTemporaryFile(
-    #                 delete=False,
-    #                 suffix=suffix,
-    #                 dir=local_temp_dir
-    #         ) as tmp_file:
-    #
-    #             tmp_file.write(video_bytes)
-    #             tmp_path = tmp_file.name
-    #
-    #             return str(tmp_path)
-    #     except Exception as e:
-    #         raise RuntimeError(f"Не удалось сохранить видео во временный файл: {e}") from e
+    def find_yolo_path(self) -> str:
+        base_yolo_path = Path(__file__).parent.parent.parent.parent.parent
+        print(base_yolo_path)
+        self.yolo = str(base_yolo_path / "models" / "yolov8x.pt")
+        return self.yolo
+
+    def ensure_yolo_loaded(self) -> None:
+        if self.yolo is not None:
+            return
+
+        weights_path = self.find_yolo_path()
+        self.yolo = YOLO(weights_path)
+
+        self.yolo.to(str(self.device))
+
+    def run_yolo(self, frames: np.ndarray) -> list[dict]:
+        assert self.yolo is not None
+
+        results = []
+        n = 5
+
+        # запускать не на каждом кадре (нагрузка!)
+        for i in range(0, len(frames), n):  # каждый n-й кадр
+            frame = frames[i]
+
+            preds = self.yolo(frame,
+                              conf=0.6, # уверенность с которой будет показывать. Меньше conf не будет показывать
+                              show=True, # показывает обрабатываемый ролик
+                              save=False)
+
+            for r in preds:
+                if r.boxes is None:
+                    continue
+
+                for box in r.boxes:
+                    results.append({
+                        "class_id": int(box.cls.item()),
+                        "confidence": float(box.conf.item()),
+                    })
+
+        return results
 
     async def _read_video_frames(self, video_path: str) -> tuple:
         """Чтение видео и возврат кадров + информация о видео"""
@@ -129,67 +152,121 @@ class MAEProcessor(IMAEInference):
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
     async def analyze(self, mae_request: MAEModel) -> MAEResultDto:
+        # Загрузка моделей (один раз)
         if self.model is None:
-            self.ensure_model_loaded()
+            self.ensure_mae_model_loaded()
+
+        if self.yolo is None:
+            self.ensure_yolo_loaded()
+
+        assert self.model is not None
+        assert self.processor is not None
+        assert self.yolo is not None
 
         start_time = time.time()
         video_name = os.path.basename(mae_request.video_path)
+
         try:
             print(f"[API] Начало обработки видео: {video_name}")
-            frames, video_info = await self._read_video_frames(mae_request.video_path)
-            print(
-                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
+
+            # ---- Чтение видео ----
+            frames, video_info = await self._read_video_frames(
+                mae_request.video_path
             )
 
+            print(
+                f"[API] Прочитано кадров: {len(frames)} "
+                f"из {video_info['total_frames']}"
+            )
+
+            # ---- Подготовка чанков для MAE ----
             chunks = await self._chunk_frames(frames)
             print(f"[API] Создано чанков: {len(chunks)}")
-            all_logits = []
+
+            # =====================================================
+            #                 MAE + YOLO
+            # =====================================================
+
             with torch.no_grad():
-                # Обрабатываем по одному чанку (16 кадров)
+
+                # ---------- MAE ----------
+                all_logits = []
+
                 for chunk in chunks:
-                    # chunk.shape == (16, 224, 224, 3)
                     inputs = self.processor(
-                        list(chunk),  # список из 16 numpy-массивов
-                        return_tensors="pt",
+                        list(chunk),
+                        return_tensors="pt"
                     ).to(self.device)
 
                     outputs = self.model(**inputs)
-                    all_logits.append(outputs.logits)  # (1, num_classes)
+                    all_logits.append(outputs.logits)
 
-            # Агрегация результатов
-            if all_logits:
-                # Среднее по всем чанкам
-                final_logits = torch.mean(torch.cat(all_logits, dim=0), dim=0)
-                probabilities = torch.nn.functional.softmax(final_logits, dim=0)
-                predicted_idx = int(final_logits.argmax().item())
-                confidence = probabilities[predicted_idx].item()
-            else:
-                predicted_idx = 0
-                confidence = 0.5
+                if all_logits:
+                    final_logits = torch.mean(
+                        torch.cat(all_logits, dim=0),
+                        dim=0
+                    )
+                    probabilities = torch.nn.functional.softmax(
+                        final_logits,
+                        dim=0
+                    )
+                    predicted_idx = int(final_logits.argmax().item())
+                    confidence = float(
+                        probabilities[predicted_idx].item()
+                    )
+                else:
+                    predicted_idx = 0
+                    confidence = 0.0
 
-            # Получение имени класса
-            id2label: dict = self.model.config.id2label or {}
-            predicted_class = id2label.get(predicted_idx, str(predicted_idx))
+                id2label: dict = self.model.config.id2label or {}
+                predicted_class = id2label.get(
+                    predicted_idx,
+                    str(predicted_idx)
+                )
+
+                # ---------- YOLO ----------
+                yolo_results = self.run_yolo(frames)
+
+            # =====================================================
+            #               Обработка YOLO
+            # =====================================================
+
+            detected_classes = list({
+                r["class_id"] for r in yolo_results
+            })
+
+            detected_objects = []
+            if detected_classes:
+                names = self.yolo.names
+                detected_objects = [
+                    names[c] for c in detected_classes
+                ]
 
             processing_time = time.time() - start_time
 
-            # Вывод результатов
+            # ---- Лог ----
             print("\n" + "=" * 60)
             print("РЕЗУЛЬТАТЫ АНАЛИЗА ВИДЕО")
             print("=" * 60)
             print(f"Видео: {video_name}")
-            print(f"Результат: {predicted_class}")
+            print(f"Событие (MAE): {predicted_class}")
             print(f"Уверенность: {confidence:.2%}")
+            print(f"Объекты (YOLO): {detected_objects}")
             print(f"Длительность: {video_info['duration']:.1f} сек")
-            print(f"Всего кадров: {video_info['total_frames']}")
-            print(f"FPS: {video_info['fps']:.2f}")
-            print(f"Время обработки: {processing_time:.1f} сек")
+            print(f"Время обработки: {processing_time:.2f} сек")
             print("=" * 60 + "\n")
 
-            return MAEResultDto(result=predicted_class)
+            # ---- Финальный результат ----
+            final_result = {
+                "event": predicted_class,
+                "event_confidence": confidence,
+                "objects": detected_objects,
+            }
+
+            return MAEResultDto(predicted_class)
 
         except Exception as e:
-            logger.error(f"Ошибка обработки {e}")
+            logger.error(f"Ошибка обработки видео {video_name}: {e}")
             raise
 
 
