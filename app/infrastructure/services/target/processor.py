@@ -32,7 +32,8 @@ class MAEProcessor(IMAEInference):
         self.model: VideoMAEForVideoClassification | None = None
         self.processor: VideoMAEImageProcessor | None = None
         self.mae_model: str | None = None
-        self.yolo: YOLO | str | None = None
+        self.yolo_path: str | None = None
+        self.yolo: YOLO | None = None
         self.chunk_size = 16
         self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,8 +64,8 @@ class MAEProcessor(IMAEInference):
     def find_yolo_path(self) -> str:
         base_yolo_path = Path(__file__).parent.parent.parent.parent.parent
         print(base_yolo_path)
-        self.yolo = str(base_yolo_path / "models" / "yolov8x.pt")
-        return self.yolo
+        self.yolo_path = str(base_yolo_path / "models" / "yolov8x.pt")
+        return self.yolo_path
 
     def ensure_yolo_loaded(self) -> None:
         if self.yolo is not None:
@@ -81,7 +82,6 @@ class MAEProcessor(IMAEInference):
         results = []
         n = 5
 
-        # запускать не на каждом кадре (нагрузка!)
         for i in range(0, len(frames), n):  # каждый n-й кадр
             frame = frames[i]
 
@@ -240,14 +240,9 @@ class MAEProcessor(IMAEInference):
             print(f"Время обработки: {processing_time:.2f} сек")
             print("=" * 60 + "\n")
 
-            # ---- Финальный результат ----
-            final_result = {
-                "event": predicted_class,
-                "confidence": confidence,
-                "objects": detected_objects,
-            }
-
-            return MAEResultDto(final_result)
+            return MAEResultDto(
+                event=predicted_class, confidence=confidence, objects=detected_objects
+            )
 
         except Exception as e:
             logger.error(f"Ошибка обработки видео {video_name}: {e}")

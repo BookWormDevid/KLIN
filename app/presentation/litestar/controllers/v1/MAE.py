@@ -75,11 +75,9 @@ class MAEController(Controller):
         self, mae_service: FromDishka[MAEService], MAE_id: UUID
     ) -> Response[MAEReadDto]:
         try:
-            # Проверяем подключение к БД
             check = await mae_service.get_inference_status(MAE_id)
             return Response(check)
-        except ValueError as e:
-            # Если БД недоступна - сервис не готов
-            raise HTTPException from e(
+        except ConnectionError as e:
+            raise HTTPException(
                 status_code=503, detail=f"Database unavailable: {str(e)}"
-            )
+            ) from e
