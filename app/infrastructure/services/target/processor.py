@@ -4,7 +4,6 @@ import os
 import time
 from pathlib import Path
 from typing import Any
-from ultralytics import YOLO
 
 import aiohttp
 import async_timeout
@@ -16,6 +15,7 @@ from transformers import (
     VideoMAEForVideoClassification,
     VideoMAEImageProcessor,
 )
+from ultralytics import YOLO
 
 from app.application.dto import MAEResultDto
 from app.application.interfaces import IMAECallbackSender, IMAEInference
@@ -32,7 +32,8 @@ class MAEProcessor(IMAEInference):
         self.model: VideoMAEForVideoClassification | None = None
         self.processor: VideoMAEImageProcessor | None = None
         self.mae_model: str | None = None
-        self.yolo: YOLO | str | None = None
+        self.yolo_path: str | None = None
+        self.yolo: YOLO | None = None
         self.chunk_size = 16
         self.frame_size = (224, 224)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -63,8 +64,8 @@ class MAEProcessor(IMAEInference):
     def find_yolo_path(self) -> str:
         base_yolo_path = Path(__file__).parent.parent.parent.parent.parent
         print(base_yolo_path)
-        self.yolo = str(base_yolo_path / "models" / "yolov8x.pt")
-        return self.yolo
+        self.yolo_path = str(base_yolo_path / "models" / "yolov8x.pt")
+        return self.yolo_path
 
     def ensure_yolo_loaded(self) -> None:
         if self.yolo is not None:
@@ -81,24 +82,27 @@ class MAEProcessor(IMAEInference):
         results = []
         n = 5
 
-        # запускать не на каждом кадре (нагрузка!)
         for i in range(0, len(frames), n):  # каждый n-й кадр
             frame = frames[i]
 
-            preds = self.yolo(frame,
-                              conf=0.6, # уверенность с которой будет показывать. Меньше conf не будет показывать
-                              show=True, # показывает обрабатываемый ролик
-                              save=False)
+            preds = self.yolo(
+                frame,
+                conf=0.6,  # уверенность с которой будет показывать. Меньше conf не будет показывать
+                show=True,  # показывает обрабатываемый ролик
+                save=False,
+            )
 
             for r in preds:
                 if r.boxes is None:
                     continue
 
                 for box in r.boxes:
-                    results.append({
-                        "class_id": int(box.cls.item()),
-                        "confidence": float(box.conf.item()),
-                    })
+                    results.append(
+                        {
+                            "class_id": int(box.cls.item()),
+                            "confidence": float(box.conf.item()),
+                        }
+                    )
 
         return results
 
@@ -170,13 +174,10 @@ class MAEProcessor(IMAEInference):
             print(f"[API] Начало обработки видео: {video_name}")
 
             # ---- Чтение видео ----
-            frames, video_info = await self._read_video_frames(
-                mae_request.video_path
-            )
+            frames, video_info = await self._read_video_frames(mae_request.video_path)
 
             print(
-                f"[API] Прочитано кадров: {len(frames)} "
-                f"из {video_info['total_frames']}"
+                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
             )
 
             # ---- Подготовка чанков для MAE ----
@@ -188,41 +189,28 @@ class MAEProcessor(IMAEInference):
             # =====================================================
 
             with torch.no_grad():
-
                 # ---------- MAE ----------
                 all_logits = []
 
                 for chunk in chunks:
-                    inputs = self.processor(
-                        list(chunk),
-                        return_tensors="pt"
-                    ).to(self.device)
+                    inputs = self.processor(list(chunk), return_tensors="pt").to(
+                        self.device
+                    )
 
                     outputs = self.model(**inputs)
                     all_logits.append(outputs.logits)
 
                 if all_logits:
-                    final_logits = torch.mean(
-                        torch.cat(all_logits, dim=0),
-                        dim=0
-                    )
-                    probabilities = torch.nn.functional.softmax(
-                        final_logits,
-                        dim=0
-                    )
+                    final_logits = torch.mean(torch.cat(all_logits, dim=0), dim=0)
+                    probabilities = torch.nn.functional.softmax(final_logits, dim=0)
                     predicted_idx = int(final_logits.argmax().item())
-                    confidence = float(
-                        probabilities[predicted_idx].item()
-                    )
+                    confidence = float(probabilities[predicted_idx].item())
                 else:
                     predicted_idx = 0
                     confidence = 0.0
 
                 id2label: dict = self.model.config.id2label or {}
-                predicted_class = id2label.get(
-                    predicted_idx,
-                    str(predicted_idx)
-                )
+                predicted_class = id2label.get(predicted_idx, str(predicted_idx))
 
                 # ---------- YOLO ----------
                 yolo_results = self.run_yolo(frames)
@@ -231,16 +219,12 @@ class MAEProcessor(IMAEInference):
             #               Обработка YOLO
             # =====================================================
 
-            detected_classes = list({
-                r["class_id"] for r in yolo_results
-            })
+            detected_classes = list({r["class_id"] for r in yolo_results})
 
             detected_objects = []
             if detected_classes:
                 names = self.yolo.names
-                detected_objects = [
-                    names[c] for c in detected_classes
-                ]
+                detected_objects = [names[c] for c in detected_classes]
 
             processing_time = time.time() - start_time
 
@@ -256,14 +240,9 @@ class MAEProcessor(IMAEInference):
             print(f"Время обработки: {processing_time:.2f} сек")
             print("=" * 60 + "\n")
 
-            # ---- Финальный результат ----
-            final_result = {
-                "event": predicted_class,
-                "event_confidence": confidence,
-                "objects": detected_objects,
-            }
-
-            return MAEResultDto(predicted_class)
+            return MAEResultDto(
+                event=predicted_class, confidence=confidence, objects=detected_objects
+            )
 
         except Exception as e:
             logger.error(f"Ошибка обработки видео {video_name}: {e}")

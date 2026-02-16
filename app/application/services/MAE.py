@@ -2,6 +2,8 @@ import os
 import uuid
 from dataclasses import dataclass
 
+import msgspec
+
 from app.application.dto import MAEProcessDto, MAEReadDto, MAEUploadDto
 from app.application.interfaces import (
     IMAECallbackSender,
@@ -36,13 +38,13 @@ class MAEService:
 
         try:
             process = await self._MAE_inference_service.analyze(mae)
-            mae.result = process.result
+            mae.result = msgspec.json.decode(msgspec.json.encode(process))
             mae.state = ProcessingState.FINISHED
             await self._MAE_callback_sender.post_consumer(mae)
             print(f"✅ Успех : {mae.result}")
 
         except Exception as e:
-            mae.result = str(e)
+            mae.result["event"] = str(e)
             mae.state = ProcessingState.ERROR
             await self._MAE_callback_sender.post_consumer(mae)
             print(f"❌ Ошибка : {mae.result}")
@@ -60,5 +62,3 @@ class MAEService:
         if not mae:
             raise ValueError(f"MAE {mae_id} not found")
         return MAEReadDto.from_model(mae)
-
-

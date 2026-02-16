@@ -11,12 +11,14 @@ class MAEUploadDto(msgspec.Struct, frozen=True):
 
 
 class MAEResultDto(msgspec.Struct, frozen=True):
-    result: str | None
+    event: str
+    confidence: float | None
+    objects: list[str]
 
 
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID
-    result: str | None
+    result: dict
     state: ProcessingState
 
     @classmethod
