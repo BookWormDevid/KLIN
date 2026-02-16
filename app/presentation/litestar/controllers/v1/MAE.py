@@ -64,16 +64,6 @@ class MAEController(Controller):
         inference = await mae_service.get_inference_status(MAE_id)
         return Response(inference)
 
-    @get("/recent", status_code=HTTP_200_OK)
-    @inject
-    async def get_recent_inferences(
-            self,
-            mae_service: FromDishka[MAEService],
-            limit: int = Parameter(query="limit", default=20, ge=1, le=100),
-    ) -> list[MAEReadDto]:
-        inferences = await mae_service.get_recent_inferences(limit=limit)
-        return [MAEReadDto.from_model(obj) for obj in inferences]
-
     @get(path="/health/live", media_type=MediaType.TEXT)
     def health_check(self) -> str:
         return "healthy"
