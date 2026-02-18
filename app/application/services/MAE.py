@@ -2,8 +2,6 @@ import os
 import uuid
 from dataclasses import dataclass
 
-import msgspec
-
 from app.application.dto import MAEProcessDto, MAEReadDto, MAEUploadDto
 from app.application.interfaces import (
     IMAECallbackSender,
@@ -64,3 +62,7 @@ class MAEService:
         if not mae:
             raise ValueError(f"MAE {mae_id} not found")
         return MAEReadDto.from_model(mae)
+
+    async def get_n_imferences(self, count: int) -> list[MAEModel]:
+        imfer_list = await self._MAE_repository.get_first_n(count)
+        return imfer_list

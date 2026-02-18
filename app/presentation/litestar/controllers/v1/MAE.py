@@ -81,3 +81,15 @@ class MAEController(Controller):
             raise HTTPException(
                 status_code=503, detail=f"Database unavailable: {str(e)}"
             ) from e
+
+    @get("/", status_code=HTTP_200_OK)
+    @inject
+    async def get_all(
+        self, mae_service: FromDishka[MAEService]
+    ) -> Response[list[MAEReadDto]]:
+        imfer_list = await mae_service.get_n_imferences(100)
+        dto_ready_list = []
+        for imference in imfer_list:
+            dto_ready_list.append(MAEReadDto.from_model(imference))
+
+        return Response(dto_ready_list)

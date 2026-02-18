@@ -25,7 +25,18 @@ class MAEReadDto(msgspec.Struct, frozen=True):
 
     @classmethod
     def from_model(cls, model: MAEModel) -> "MAEReadDto":
-        return MAEReadDto(id=model.id, event=model.event,confidence=model.confidence,objects=model.objects, state=model.state)
+        return MAEReadDto(
+            id=model.id,
+            event=model.event,
+            confidence=model.confidence,
+            objects=model.objects,
+            state=model.state,
+        )
+
+
+class TimeReadDto(msgspec.Struct, frozen=True):
+    datetime: str
+    data: MAEReadDto
 
 
 class MAEProcessDto(msgspec.Struct, frozen=True):
