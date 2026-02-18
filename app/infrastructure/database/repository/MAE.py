@@ -35,3 +35,14 @@ class MAERepository(IMAERepository):
             async with session.begin():
                 await session.merge(model)
             await session.commit()
+
+    async def get_first_n(self, count: int) -> list[MAEModel]:
+        async with self.session() as session:
+            mass_query = (
+                select(MAEModel).order_by(MAEModel.created_at.desc()).limit(count)
+            )
+            imfers = await session.execute(mass_query)
+            imfer_list: list[MAEModel] = list(imfers.scalars().all())
+            if not imfer_list:
+                raise ValueError
+            return imfer_list

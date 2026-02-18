@@ -21,6 +21,9 @@ class IMAERepository(Protocol):
     @abstractmethod
     async def update(self, model: MAEModel) -> None: ...
 
+    @abstractmethod
+    async def get_first_n(self, count: int) -> list[MAEModel]: ...
+
 
 class IMAEProcessProducer(Protocol):
     @abstractmethod

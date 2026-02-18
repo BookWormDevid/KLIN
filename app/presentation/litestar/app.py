@@ -5,7 +5,7 @@ from pathlib import Path
 from dishka import make_async_container
 from dishka.integrations.litestar import setup_dishka
 from faststream.rabbit import RabbitBroker
-from litestar import Litestar, Router
+from litestar import Litestar
 from litestar.config.cors import CORSConfig
 from litestar.middleware.logging import LoggingMiddlewareConfig
 from litestar.openapi import OpenAPIConfig
@@ -14,13 +14,7 @@ from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
 
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
-from app.presentation.litestar.controllers import MAEController
-
-# Роутер с префиксом /api/v1
-api_v1_router = Router(
-    path="/api/v1",
-    route_handlers=[MAEController],
-)
+from app.presentation.litestar.controllers import api_router
 
 # Путь к фронтенду
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
@@ -28,14 +22,14 @@ FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
 
 @asynccontextmanager
 async def lifespan(app: Litestar) -> AsyncIterator[None]:
-    container = app.state.dishka_container
-    rabbit_broker = await container.get(RabbitBroker)
-    await rabbit_broker.connect()
     try:
+        container = app.state.dishka_container
+        rabbit_broker = await container.get(RabbitBroker)
+
+        await rabbit_broker.connect()
         yield
     finally:
-        await rabbit_broker.close()
-        container.close()
+        app.state.dishka_container.close()
 
 
 def create_litestar_app() -> Litestar:
@@ -44,7 +38,7 @@ def create_litestar_app() -> Litestar:
     )
 
     app = Litestar(
-        route_handlers=[api_v1_router],
+        route_handlers=[api_router],
         cors_config=CORSConfig(allow_origins=["*"]),
         openapi_config=OpenAPIConfig(
             title="MAE Inference",
