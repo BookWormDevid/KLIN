@@ -74,7 +74,7 @@ class MAEProcessor(IMAEInference):
         weights_path = self.find_yolo_path()
         self.yolo = YOLO(weights_path)
 
-        self.yolo.to(str(self.device))
+        self.yolo.to(self.device)
 
     async def run_yolo(self, frames: np.ndarray) -> list[dict]:
         assert self.yolo is not None
@@ -88,7 +88,7 @@ class MAEProcessor(IMAEInference):
             preds = self.yolo(
                 frame,
                 conf=0.6,  # уверенность с которой будет показывать. Меньше conf не будет показывать
-                show=True,  # показывает обрабатываемый ролик
+                show=False,  # показывает обрабатываемый ролик
                 save=False,
             )
 
