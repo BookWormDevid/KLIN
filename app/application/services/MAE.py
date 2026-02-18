@@ -2,8 +2,6 @@ import os
 import uuid
 from dataclasses import dataclass
 
-import msgspec
-
 from app.application.dto import MAEProcessDto, MAEReadDto, MAEUploadDto
 from app.application.interfaces import (
     IMAECallbackSender,

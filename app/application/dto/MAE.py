@@ -1,5 +1,4 @@
 import uuid
-
 import msgspec
 
 from app.models import MAEModel, ProcessingState
@@ -15,7 +14,6 @@ class MAEResultDto(msgspec.Struct, frozen=True):
     confidence: float | None
     objects: list[str]
 
-
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID
     event: str | None
@@ -26,7 +24,6 @@ class MAEReadDto(msgspec.Struct, frozen=True):
     @classmethod
     def from_model(cls, model: MAEModel) -> "MAEReadDto":
         return MAEReadDto(id=model.id, event=model.event,confidence=model.confidence,objects=model.objects, state=model.state)
-
 
 class MAEProcessDto(msgspec.Struct, frozen=True):
     MAE_id: uuid.UUID

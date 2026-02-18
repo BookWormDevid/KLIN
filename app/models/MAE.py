@@ -15,10 +15,10 @@ class ProcessingState(str, enum.Enum):
 class MAEModel(BaseModel):
     __tablename__ = "MAE"
 
-    response_url: Mapped[str] = mapped_column(nullable=True)
+    response_url: Mapped[str | None] = mapped_column(nullable=True)
     video_path: Mapped[str] = mapped_column(String(), nullable=False)
     state: Mapped[ProcessingState] = mapped_column(String())
-    event: Mapped[str] = mapped_column(String(), nullable=True)
-    confidence: Mapped[float] = mapped_column(nullable=True)
+    event: Mapped[str | None] = mapped_column(String(), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(nullable=True)
     objects: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
 
