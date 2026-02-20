@@ -91,12 +91,12 @@ class MAEProcessor(IMAEInference):
                 show=False,  # показывает обрабатываемый ролик
                 save=False,
             )
-
             for r in preds:
                 if r.boxes is None:
                     continue
 
                 for box in r.boxes:
+                    print(box)
                     results.append(
                         {
                             "class_id": int(box.cls.item()),
