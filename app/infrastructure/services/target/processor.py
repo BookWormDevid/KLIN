@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +77,7 @@ class MAEProcessor(IMAEInference):
 
         self.yolo.to(self.device)
 
-    async def run_yolo(self, frames: np.ndarray) -> list[dict]:
+    async def run_yolo(self, frames: np.ndarray, fps: float) -> list[dict]:
         assert self.yolo is not None
 
         results = []
@@ -84,6 +85,7 @@ class MAEProcessor(IMAEInference):
 
         for i in range(0, len(frames), n):  # каждый n-й кадр
             frame = frames[i]
+            timesteps = i / fps  # время в секундах
 
             preds = self.yolo(
                 frame,
@@ -96,11 +98,13 @@ class MAEProcessor(IMAEInference):
                     continue
 
                 for box in r.boxes:
-                    print(box)
+                    xyxyn = box.xyxyn[0].tolist()
                     results.append(
                         {
                             "class_id": int(box.cls.item()),
-                            "confidence": float(box.conf.item()),
+                            "timesteps": float(timesteps),
+                            "bbox": xyxyn,
+
                         }
                     )
 
@@ -117,9 +121,7 @@ class MAEProcessor(IMAEInference):
         fps = cap.get(cv2.CAP_PROP_FPS)
         duration = total_frames / fps if fps > 0 else 0
 
-        # Читаем кадры (ограничиваем для скорости)
-        max_frames: int = min(total_frames, 100)
-        for _i in range(max_frames):
+        for _ in range(total_frames):
             ret, frame = cap.read()
             if not ret:
                 break
@@ -159,91 +161,103 @@ class MAEProcessor(IMAEInference):
         # Загрузка моделей (один раз)
         if self.model is None:
             self.ensure_mae_model_loaded()
-
         if self.yolo is None:
             self.ensure_yolo_loaded()
-
         assert self.model is not None
         assert self.processor is not None
         assert self.yolo is not None
-
         start_time = time.time()
         video_name = os.path.basename(mae_request.video_path)
-
         try:
             print(f"[API] Начало обработки видео: {video_name}")
-
             # ---- Чтение видео ----
             frames, video_info = await self._read_video_frames(mae_request.video_path)
-
+            fps = video_info["fps"]
             print(
                 f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
             )
-
             # ---- Подготовка чанков для MAE ----
             chunks = await self._chunk_frames(frames)
             print(f"[API] Создано чанков: {len(chunks)}")
-
             # =====================================================
-            #                 MAE + YOLO
+            # MAE + YOLO
             # =====================================================
-
             with torch.no_grad():
                 # ---------- MAE ----------
-                all_logits = []
-
-                for chunk in chunks:
+                chunk_results = []
+                actual_frames = video_info["frames_read"]
+                id2label: dict = self.model.config.id2label or {}
+                for i, chunk in enumerate(chunks):
+                    start_frame = i * self.chunk_size
+                    end_frame = min((i + 1) * self.chunk_size, actual_frames) - 1
+                    if start_frame >= actual_frames:
+                        break
+                    start_time_chunk = start_frame / fps if fps > 0 else 0
+                    end_time_chunk = (end_frame + 1) / fps if fps > 0 else 0
                     inputs = self.processor(list(chunk), return_tensors="pt").to(
                         self.device
                     )
-
                     outputs = self.model(**inputs)
-                    all_logits.append(outputs.logits)
+                    logits = outputs.logits[0]
+                    probabilities = torch.nn.functional.softmax(logits, dim=0)
+                    predicted_idx = int(logits.argmax().item())
+                    confident = float(probabilities[predicted_idx].item())
+                    answer = id2label.get(predicted_idx, str(predicted_idx))
+                    chunk_results.append({
+                        "time": [start_time_chunk, end_time_chunk],
+                        "answer": answer,
+                        "confident": confident
+                    })
 
-                if all_logits:
-                    final_logits = torch.mean(torch.cat(all_logits, dim=0), dim=0)
-                    probabilities = torch.nn.functional.softmax(final_logits, dim=0)
-                    predicted_idx = int(final_logits.argmax().item())
-                    confidence = float(probabilities[predicted_idx].item())
+                if chunk_results:
+                    all_classes = list(set(d["answer"] for d in chunk_results))
                 else:
-                    predicted_idx = 0
-                    confidence = 0.0
-
-                id2label: dict = self.model.config.id2label or {}
-                predicted_class = id2label.get(predicted_idx, str(predicted_idx))
+                    all_classes = []
 
                 # ---------- YOLO ----------
-                yolo_results = await self.run_yolo(frames)
+                yolo_results = await self.run_yolo(frames, fps)
+                # =====================================================
+                # Обработка YOLO
+                # =====================================================
+                detected_classes = list({r["class_id"] for r in yolo_results})
+                detected_objects = []
+                if detected_classes:
+                    names = self.yolo.names
+                    detected_objects = [names[c] for c in detected_classes]
+                bbox_by_time = defaultdict(list)
 
-            # =====================================================
-            #               Обработка YOLO
-            # =====================================================
+                for detection in yolo_results:
+                    timesteps = detection["timesteps"]
+                    bbox = detection["bbox"]
+                    bbox_by_time[timesteps].append(bbox)
 
-            detected_classes = list({r["class_id"] for r in yolo_results})
-
-            detected_objects = []
-            if detected_classes:
-                names = self.yolo.names
-                detected_objects = [names[c] for c in detected_classes]
+                bbox_dict = dict(bbox_by_time)
 
             processing_time = time.time() - start_time
-
             # ---- Лог ----
             print("\n" + "=" * 60)
             print("РЕЗУЛЬТАТЫ АНАЛИЗА ВИДЕО")
             print("=" * 60)
             print(f"Видео: {video_name}")
-            print(f"Событие (MAE): {predicted_class}")
-            print(f"Уверенность: {confidence:.2%}")
-            print(f"Объекты (YOLO): {detected_objects}")
             print(f"Длительность: {video_info['duration']:.1f} сек")
             print(f"Время обработки: {processing_time:.2f} сек")
             print("=" * 60 + "\n")
 
-            return MAEResultDto(
-                event=predicted_class, confidence=confidence, objects=detected_objects
-            )
+            # json_result = {
+            #     "mae": chunk_results,
+            #     "yolo": bbox_dict,
+            #     "all_classes": all_classes,
+            #     "objects": detected_objects,
+            #     "bbox_by_time": bbox_dict,
+            # }
 
+            return MAEResultDto(
+                mae=msgspec.json.encode(chunk_results).decode("utf-8"),
+                yolo=msgspec.json.encode(bbox_dict).decode("utf-8"),
+                all_classes=all_classes,
+                objects=detected_objects,
+
+            )
         except Exception as e:
             logger.error(f"Ошибка обработки {e}")
             raise
@@ -256,9 +270,10 @@ class MAECallbackSender(IMAECallbackSender):
 
         payload: dict[str, Any] = {
             "mae_id": str(model.id),
-            "event": str(model.event),
-            "confidence": str(model.confidence),
-            "objects": str(model.objects),
+            "mae": model.mae,
+            "yolo": model.yolo,
+            "objects": model.objects,
+            "all_classes": model.all_classes,
             "state": model.state,
         }
 

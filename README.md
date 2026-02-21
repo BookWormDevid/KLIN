@@ -38,7 +38,7 @@ make # Линтер Ruff + Mypy
 ### Что делать дальше?
 
 Тест процессора. Изменить формат чтения видео. Оценивать каждый чанк и выводить результат по нему. Вывод всех классов что нашёл со всех чанков. Всё вместе положить в json. 
-get в каком формате отправить данные - json(time: tuple(start: float, end: float), answer: str), confident процент с видео, objects, bounding box всё с yolo. 
+get в каком формате отправить данные - json(time: tuple(start: float, end: float), answer: str, confident: float), objects, bounding box, timesteps всё с yolo. 
 get_filltered фильтровать по запросу answer в бд.
 
 2. Bounding box от yolo хранить и выводить xyxyn

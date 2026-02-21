@@ -39,6 +39,7 @@ def create_litestar_app() -> Litestar:
 
     app = Litestar(
         route_handlers=[api_router],
+        request_max_body_size=200 * 1024 * 1024,
         cors_config=CORSConfig(allow_origins=["*"]),
         openapi_config=OpenAPIConfig(
             title="MAE Inference",

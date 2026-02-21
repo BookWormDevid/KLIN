@@ -29,7 +29,7 @@ class MAEController(Controller):
         response_url: Annotated[str, Body(media_type=RequestEncodingType.MULTI_PART)],
         mae_service: FromDishka[MAEService],
     ) -> MAEReadDto:
-        MAX_SIZE = 100 * 1024 * 1024  # 100MB
+        MAX_SIZE = 200 * 2048 * 2048
         tmp_dir = "tmp"
         os.makedirs(tmp_dir, exist_ok=True)
 
