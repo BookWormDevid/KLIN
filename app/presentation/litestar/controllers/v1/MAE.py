@@ -1,7 +1,7 @@
 import os
 import uuid
 from collections.abc import Sequence
-from typing import Annotated, List
+from typing import Annotated
 from uuid import UUID
 
 from dishka import FromDishka

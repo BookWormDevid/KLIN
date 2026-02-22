@@ -104,7 +104,6 @@ class MAEProcessor(IMAEInference):
                             "class_id": int(box.cls.item()),
                             "timesteps": float(timesteps),
                             "bbox": xyxyn,
-
                         }
                     )
 
@@ -203,11 +202,13 @@ class MAEProcessor(IMAEInference):
                     predicted_idx = int(logits.argmax().item())
                     confident = float(probabilities[predicted_idx].item())
                     answer = id2label.get(predicted_idx, str(predicted_idx))
-                    chunk_results.append({
-                        "time": [start_time_chunk, end_time_chunk],
-                        "answer": answer,
-                        "confident": confident
-                    })
+                    chunk_results.append(
+                        {
+                            "time": [start_time_chunk, end_time_chunk],
+                            "answer": answer,
+                            "confident": confident,
+                        }
+                    )
 
                 if chunk_results:
                     all_classes = list(set(d["answer"] for d in chunk_results))
@@ -256,7 +257,6 @@ class MAEProcessor(IMAEInference):
                 yolo=msgspec.json.encode(bbox_dict).decode("utf-8"),
                 all_classes=all_classes,
                 objects=detected_objects,
-
             )
         except Exception as e:
             logger.error(f"Ошибка обработки {e}")

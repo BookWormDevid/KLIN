@@ -48,7 +48,9 @@ class MAEService:
             mae.event = str(e)
             mae.state = ProcessingState.ERROR
             await self._MAE_callback_sender.post_consumer(mae)
-            print(f"❌ Ошибка : {mae.mae}, {mae.yolo}, {mae.objects}, {mae.all_classes}")
+            print(
+                f"❌ Ошибка : {mae.mae}, {mae.yolo}, {mae.objects}, {mae.all_classes}"
+            )
 
         finally:
             try:
