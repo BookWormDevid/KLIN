@@ -18,7 +18,7 @@ pre-commit install # Если надо менять код
 ### Окружениe
 
 ```bash
-# Временно пустое
+docker compose -f docker-compose.yml up --build
 ```
 
 ### Общие комманды из makefile

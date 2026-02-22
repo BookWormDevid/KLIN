@@ -12,6 +12,7 @@ services:
             - web
         ports:
             - '5432:5432'
+
     rabbitmq:
         image: rabbitmq
         restart: unless-stopped
@@ -22,6 +23,7 @@ services:
         environment:
             RABBITMQ_DEFAULT_USER: rabbitmq
             RABBITMQ_DEFAULT_PASS: rabbitmq
+
     traefik:
         image: traefik:latest
         restart: unless-stopped
@@ -38,6 +40,7 @@ services:
             - 'traefik.http.routers.traefik.rule=Host(`traefik.localhost`)'
             - 'traefik.http.services.traefik.loadbalancer.server.port=8080'
         command: --api.insecure=true --providers.docker
+
     pgadmin:
         image: dpage/pgadmin4
         restart: unless-stopped
@@ -54,6 +57,30 @@ services:
         depends_on:
             - traefik
             - postgresql
+
+    prometheus:
+        image: prom/prometheus:latest
+        restart: unless-stopped
+        networks:
+            - web
+        ports:
+            - '9090:9090'
+        volumes:
+            - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus_data:/prometheus
+        labels:
+            - 'traefik.enable=true'
+            - 'traefik.docker.network=web'
+            - 'traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)'
+            - 'traefik.http.services.prometheus.loadbalancer.server.port=9090'
+        depends_on:
+            - traefik
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+
 networks:
     web:
         external: true
+
+volumes:
+    prometheus_data:

@@ -1712,13 +1712,12 @@ dependencies = [
     { name = "fastapi" },
     { name = "faststream", extra = ["rabbit"] },
     { name = "httpx" },
-    { name = "litestar" },
+    { name = "litestar", extra = ["prometheus"] },
     { name = "mlflow" },
     { name = "msgspec" },
     { name = "opencv-python" },
     { name = "opencv-python-headless" },
     { name = "pandas" },
-    { name = "prometheus-client" },
     { name = "python-multipart" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1755,13 +1754,12 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.127.0" },
     { name = "faststream", extras = ["rabbit"], specifier = ">=0.6.6" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "litestar", specifier = ">=2.19.0" },
+    { name = "litestar", extras = ["prometheus"], specifier = ">=2.19.0" },
     { name = "mlflow", specifier = ">=3.8.1" },
     { name = "msgspec", specifier = ">=0.20.0" },
     { name = "opencv-python", specifier = "==4.13.0.92" },
     { name = "opencv-python-headless", specifier = ">=4.12.0.88" },
     { name = "pandas", specifier = ">=2.3.3" },
-    { name = "prometheus-client", specifier = ">=0.24.1" },
     { name = "python-multipart", specifier = ">=0.0.21" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "structlog", specifier = ">=25.5.0" },
@@ -1892,6 +1890,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/f1/96/86dd853ea6b3570e699515b24e8476e00f554e9038f48d3bc84eb4d55429/litestar-2.21.0.tar.gz", hash = "sha256:3bde5e97ae9054db83d0fb8738c57871be5257e3a4a27d8109f914302681ec02", size = 375390, upload-time = "2026-02-14T15:16:10.049Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/e9/35bc58351570bd08e134fb53c93e5d88558c4bc31ce6568574bbb60dca42/litestar-2.21.0-py3-none-any.whl", hash = "sha256:b8bd76cb7f4b6585f3bb9b952a42e5a8bfbf0256d52bf2cfb9b4fe7fd5534a35", size = 567574, upload-time = "2026-02-14T15:16:07.718Z" },
+]
+
+[package.optional-dependencies]
+prometheus = [
+    { name = "prometheus-client" },
 ]
 
 [[package]]

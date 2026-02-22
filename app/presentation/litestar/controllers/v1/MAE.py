@@ -66,7 +66,7 @@ class MAEController(Controller):
         return Response(inference)
 
     @get(path="/health/live", media_type=MediaType.TEXT)
-    def health_check(self) -> str:
+    async def health_check(self) -> str:
         return "healthy"
 
     @get("/health/ready")

@@ -10,9 +10,10 @@ from litestar.config.cors import CORSConfig
 from litestar.middleware.logging import LoggingMiddlewareConfig
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
+from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
-from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
+
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
 from app.presentation.litestar.controllers import api_router
 
@@ -29,7 +30,7 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
         await rabbit_broker.connect()
         yield
     finally:
-        app.state.dishka_container.close()
+        await app.state.dishka_container.close()
 
 
 def create_litestar_app(group_path: bool = False) -> Litestar:
