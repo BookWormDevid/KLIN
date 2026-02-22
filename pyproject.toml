@@ -32,6 +32,7 @@ dependencies = [
     "opencv-python==4.13.0.92",
     "supervision==0.22.0",
     "timm==1.0.14",
+    "prometheus-client>=0.24.1",
 ]
 
 [dependency-groups]
