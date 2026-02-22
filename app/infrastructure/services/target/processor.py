@@ -104,7 +104,6 @@ class MAEProcessor(IMAEInference):
                             "class_id": int(box.cls.item()),
                             "timesteps": float(timesteps),
                             "bbox": xyxyn,
-
                         }
                     )
 
@@ -114,7 +113,7 @@ class MAEProcessor(IMAEInference):
         """Чтение видео и возврат кадров + информация о видео"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
-            raise ValueError(f"Cannot open video: {video_path}")
+            raise ValueError(f"Невозможно открыть видео: {video_path}")
 
         frames = []
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -132,7 +131,7 @@ class MAEProcessor(IMAEInference):
         cap.release()
 
         if len(frames) == 0:
-            raise ValueError(f"No frames read from video: {video_path}")
+            raise ValueError(f"Кадры не прочитаны: {video_path}")
 
         video_info = {
             "total_frames": total_frames,
@@ -146,15 +145,22 @@ class MAEProcessor(IMAEInference):
     async def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""
         t = len(frames)
+        if t == 0:
+            raise ValueError("Нет кадров для процессирования: входящий массив пустой")
+
         padding_needed = (-t) % self.chunk_size
 
         if padding_needed > 0:
-            padding = np.zeros((padding_needed, *self.frame_size, 3), dtype=np.uint8)
+            last_frame = frames[-1]
+            padding = np.tile(last_frame, (padding_needed, 1, 1, 1))
             frames = np.vstack((frames, padding))
 
         num_chunks = len(frames) // self.chunk_size
-        if num_chunks is None:
-            raise ValueError("Chunk size is empty")
+        if num_chunks == 0:
+            raise ValueError(
+                "Чанки не создались: видео очень короткое даже после паддинга"
+            )
+
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
     async def analyze(self, mae_request: MAEModel) -> MAEResultDto:
@@ -203,11 +209,13 @@ class MAEProcessor(IMAEInference):
                     predicted_idx = int(logits.argmax().item())
                     confident = float(probabilities[predicted_idx].item())
                     answer = id2label.get(predicted_idx, str(predicted_idx))
-                    chunk_results.append({
-                        "time": [start_time_chunk, end_time_chunk],
-                        "answer": answer,
-                        "confident": confident
-                    })
+                    chunk_results.append(
+                        {
+                            "time": [start_time_chunk, end_time_chunk],
+                            "answer": answer,
+                            "confident": confident,
+                        }
+                    )
 
                 if chunk_results:
                     all_classes = list(set(d["answer"] for d in chunk_results))
@@ -256,7 +264,6 @@ class MAEProcessor(IMAEInference):
                 yolo=msgspec.json.encode(bbox_dict).decode("utf-8"),
                 all_classes=all_classes,
                 objects=detected_objects,
-
             )
         except Exception as e:
             logger.error(f"Ошибка обработки {e}")
@@ -301,7 +308,7 @@ class MAECallbackSender(IMAECallbackSender):
                 if attempt == max_attempts:
                     logger.error(
                         "Callback failed after %d attempts. "
-                        "transcription_id=%s response_url=%s error=%s",
+                        "model.id=%s response_url=%s error=%s",
                         max_attempts,
                         model.id,
                         model.response_url,

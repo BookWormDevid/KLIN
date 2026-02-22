@@ -1,4 +1,5 @@
 import uuid
+
 import msgspec
 
 from app.models import MAEModel, ProcessingState
@@ -15,24 +16,26 @@ class MAEResultDto(msgspec.Struct, frozen=True):
     objects: list[str] | None
     all_classes: list[str] | None
 
+
 class MAEReadDto(msgspec.Struct, frozen=True):
     id: uuid.UUID
     mae: str | None
-    yolo: float | None
+    yolo: str | None
     objects: list[str] | None
     all_classes: list[str] | None
     state: ProcessingState
 
     @classmethod
     def from_model(cls, model: MAEModel) -> "MAEReadDto":
-        return MAEReadDto(id=model.id, mae=model.mae, yolo=model.yolo, objects=model.objects, all_classes=model.all_classes, state=model.state)
+        return MAEReadDto(
+            id=model.id,
+            mae=model.mae,
+            yolo=model.yolo,
+            objects=model.objects,
+            all_classes=model.all_classes,
+            state=model.state,
+        )
+
 
 class MAEProcessDto(msgspec.Struct, frozen=True):
     MAE_id: uuid.UUID
-
-
-#     time: List[float, float]
-#     answers: List[str]
-#     confidence: List[float]
-#     objects: List[str]
-#     bounding_box: Dict[float, Dict[List[float]]

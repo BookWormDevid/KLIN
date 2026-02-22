@@ -38,17 +38,19 @@ class MAEService:
             process = await self._MAE_inference_service.analyze(mae)
             mae.mae = process.mae
             mae.yolo = process.yolo
-            mae.objects = process.objects
-            mae.all_classes = process.all_classes
+            mae.objects = process.objects if process.objects is not None else []
+            mae.all_classes = process.all_classes if process.all_classes is not None else []
             mae.state = ProcessingState.FINISHED
             await self._MAE_callback_sender.post_consumer(mae)
             print(f"✅ Успех : {mae.mae}, {mae.yolo}, {mae.objects}, {mae.all_classes}")
 
         except Exception as e:
-            mae.event = str(e)
+            mae.mae = str(e)
             mae.state = ProcessingState.ERROR
             await self._MAE_callback_sender.post_consumer(mae)
-            print(f"❌ Ошибка : {mae.mae}, {mae.yolo}, {mae.objects}, {mae.all_classes}")
+            print(
+                f"❌ Ошибка : {mae.mae}"
+            )
 
         finally:
             try:

@@ -73,9 +73,9 @@ ML System Design Doc +-
 
 REST-сервис?
 
-	Имеется не менее трех эндпоинтов -
+	Имеется не менее трех эндпоинтов +
 	Есть healthcheck +
-	Есть OpenAPI документация в Swagger -
+	Есть OpenAPI документация в Swagger +
 
 
 Мониторинг ?
