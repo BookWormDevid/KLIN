@@ -1,6 +1,25 @@
 version: '3.9'
 
 services:
+    node_exporter:
+        image: prom/node-exporter:latest
+        container_name: node_exporter
+        restart: unless-stopped
+        networks:
+            - web
+        ports:
+            - "9100:9100"
+        volumes:
+            - /proc:/host/proc:ro
+            - /sys:/host/sys:ro
+            - /:/rootfs:ro
+        command:
+            - '--path.procfs=/host/proc'
+            - '--path.sysfs=/host/sys'
+            - '--path.rootfs=/rootfs'
+            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+
+
     postgresql:
         image: postgres:17.0
         restart: unless-stopped
@@ -14,15 +33,31 @@ services:
             - '5432:5432'
 
     rabbitmq:
-        image: rabbitmq
+        image: rabbitmq:3-management
         restart: unless-stopped
         networks:
             - web
         ports:
-            - '5672:5672'
+            - "5672:5672"
+            - "15672:15672"
         environment:
             RABBITMQ_DEFAULT_USER: rabbitmq
             RABBITMQ_DEFAULT_PASS: rabbitmq
+
+    rabbitmq_exporter:
+        image: kbudde/rabbitmq-exporter:latest
+        container_name: rabbitmq_exporter
+        restart: unless-stopped
+        environment:
+            RABBITMQ_URL: "http://rabbitmq:rabbitmq@rabbitmq:15672"
+            RABBIT_USER: "rabbitmq"
+            RABBIT_PASSWORD: "rabbitmq"
+        networks:
+            - web
+        ports:
+            - "9419:9419"
+        depends_on:
+            - rabbitmq
 
     traefik:
         image: traefik:latest

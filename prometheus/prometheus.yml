@@ -1,13 +1,48 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  scrape_timeout: 10s
 
 scrape_configs:
+  # Prometheus сам себя
   - job_name: "prometheus"
     static_configs:
       - targets: ["prometheus:9090"]
 
-  - job_name: "litestar_app"
+  # =========================
+  # Litestar (/metrics)
+  # =========================
+
+  # Вариант A: Litestar в Docker (сервис называется litestar_app в docker-compose)
+  #- job_name: "litestar_app"
+  #  metrics_path: /metrics
+  #  static_configs:
+  #    - targets: ["litestar_app:8000"]
+
+  # Вариант B: Litestar на ХОСТЕ (если /metrics открывается как http://localhost:8000/metrics)
+  # Раскомментируй этот job и закомментируй вариант A выше.
+  - job_name: "litestar_app_host"
     metrics_path: /metrics
     static_configs:
       - targets: ["host.docker.internal:8000"]
+
+  # =========================
+  # Node Exporter
+  # =========================
+
+  # Вариант A: node_exporter в Docker (сервис называется node_exporter)
+  - job_name: "node"
+    static_configs:
+      - targets: ["node_exporter:9100"]
+
+  # Вариант B: node_exporter на ХОСТЕ (если он слушает порт 9100 на хосте)
+  # - job_name: "node_host"
+  #   static_configs:
+  #     - targets: ["host.docker.internal:9100"]
+
+  # =========================
+  # RabbitMQ Exporter
+  # =========================
+  - job_name: "rabbitmq"
+    static_configs:
+      - targets: ["rabbitmq_exporter:9419"]
