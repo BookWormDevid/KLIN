@@ -112,6 +112,7 @@ services:
             - traefik
         extra_hosts:
             - "host.docker.internal:host-gateway"
+
     grafana:
       image: grafana/grafana-enterprise:latest
       restart: unless-stopped
@@ -127,6 +128,7 @@ services:
       depends_on:
         - traefik
         - prometheus
+
 networks:
     web:
         external: true
