@@ -77,10 +77,25 @@ services:
             - traefik
         extra_hosts:
             - "host.docker.internal:host-gateway"
-
+    grafana:
+      image: grafana/grafana-enterprise:latest
+      restart: unless-stopped
+      networks:
+        - web
+      volumes:
+        - grafana_data:/var/lib/grafana
+      labels:
+        - 'traefik.enable=true'
+        - 'traefik.docker.network=web'
+        - 'traefik.http.routers.grafana.rule=Host(`grafana.localhost`)'
+        - 'traefik.http.services.grafana.loadbalancer.server.port=3000'
+      depends_on:
+        - traefik
+        - prometheus
 networks:
     web:
         external: true
 
 volumes:
     prometheus_data:
+    grafana_data:
