@@ -81,7 +81,7 @@ class MAEProcessor(IMAEInference):
         assert self.yolo is not None
 
         results = []
-        n = 5
+        n = 2
 
         for i in range(0, len(frames), n):  # каждый n-й кадр
             frame = frames[i]
@@ -89,7 +89,10 @@ class MAEProcessor(IMAEInference):
 
             preds = self.yolo(
                 frame,
-                conf=0.6,  # уверенность с которой будет показывать. Меньше conf не будет показывать
+                conf=0.6, # уверенность с которой будет показывать. Меньше conf не будет показывать
+                iou=0.45, # подавить дубликаты
+                classes=[0, 24, 28, 39, 43], # классы объектов
+                half=True, # fp16 для скорости
                 show=False,  # показывает обрабатываемый ролик
                 save=False,
             )

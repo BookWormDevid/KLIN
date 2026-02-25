@@ -19,7 +19,7 @@ app = FastStream(broker)
 MAE_service = container.get(MAEService)
 
 
-@broker.subscriber(app_settings.MAE_queue)
+@broker.subscriber(app_settings.MAE_queue, consume_args={"prefetch_count": 1},)
 async def base_handler(message: RabbitMessage) -> None:
     data = msgspec.json.decode(message.body, type=MAEProcessDto)
 
