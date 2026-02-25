@@ -1,6 +1,7 @@
 """
 endpoint'ы приложения
 """
+
 import os
 import uuid
 from collections.abc import Sequence
@@ -24,6 +25,7 @@ class KlinController(Controller):
     """
     Класс с endpoint'ами
     """
+
     path = "/Klin"
     tags: Sequence[str] | None = ["Klin"]
 

@@ -1,6 +1,7 @@
 """
 Бизнес логика сервиса
 """
+
 # pylint: disable= broad-exception-caught
 import os
 import uuid
@@ -17,6 +18,7 @@ class KlinService:
     """
     Класс бизнес логики
     """
+
     _klin_repository: IKlinRepository
     _klin_inference_service: IKlinInference
     _klin_process_producer: IKlinProcessProducer
@@ -55,7 +57,9 @@ class KlinService:
             )
             klin.state = ProcessingState.FINISHED
             await self._klin_callback_sender.post_consumer(klin)
-            print(f"✅ Успех : {klin.mae}, {klin.yolo}, {klin.objects}, {klin.all_classes}")
+            print(
+                f"✅ Успех : {klin.mae}, {klin.yolo}, {klin.objects}, {klin.all_classes}"
+            )
 
         except Exception as e:
             klin.mae = str(e)

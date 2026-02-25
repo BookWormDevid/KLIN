@@ -2,6 +2,7 @@
 """
 Настройки litestar, prometheus, swagger, контейнера dishka
 """
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path

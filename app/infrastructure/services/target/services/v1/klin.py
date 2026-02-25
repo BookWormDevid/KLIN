@@ -20,6 +20,6 @@ class MAEController(Controller):
         Klin_service: FromDishka[KlinService],
         data: KlinUploadDto,
     ) -> Response[KlinReadDto]:
-        MAE = await Klin_service.MAE_image(data)
+        MAE = await Klin_service.klin_image(data)
 
         return Response(KlinReadDto.from_model(MAE))

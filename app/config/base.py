@@ -3,6 +3,7 @@
 Предоставляет функциональность для чтения переменных окружения,
 их парсинга и кэширования с обработкой ошибок.
 """
+
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ class BaseSettings:
     """
     Базовый класс для настроек приложения с поддержкой переменных окружения.
     """
+
     env_properties: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod

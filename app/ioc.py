@@ -17,7 +17,7 @@ from app.application.services import KlinService
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinProcessProducer
-from app.infrastructure.services import KlinCallbackSender, InferenceProcessor
+from app.infrastructure.services import InferenceProcessor, KlinCallbackSender
 
 
 class InfrastructureProvider(Provider):
@@ -26,6 +26,7 @@ class InfrastructureProvider(Provider):
     Создает движок базы данных, сессии, брокера сообщений
     и инфраструктурные сервисы.
     """
+
     scope = Scope.APP
 
     @provide
@@ -40,12 +41,10 @@ class InfrastructureProvider(Provider):
             pool_pre_ping=True,
             connect_args={
                 "server_settings": {
-                    "idle_in_transaction_session_timeout":
-                        f"{app_settings.db_idle_in_transaction_session_timeout}",
-                    "statement_timeout":
-                        f"{app_settings.db_statement_timeout}",
+                    "idle_in_transaction_session_timeout": f"{app_settings.db_idle_in_transaction_session_timeout}",
+                    "statement_timeout": f"{app_settings.db_statement_timeout}",
                 }
-            }
+            },
         )
         yield engine
 
@@ -74,6 +73,7 @@ class ApplicationProvider(Provider):
     """
     Провайдер сервисов приложения.
     """
+
     scope = Scope.APP
     MAE_service = provide(KlinService)
 
@@ -82,8 +82,6 @@ class VideoProvider(Provider):
     """
     Провайдер для обработки видео и инференса MAE и Yolo.
     """
+
     scope = Scope.APP
-    InferenceProcessor = provide(
-        InferenceProcessor,
-        provides=IKlinInference
-    )
+    InferenceProcessor = provide(InferenceProcessor, provides=IKlinInference)

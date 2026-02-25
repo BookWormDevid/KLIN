@@ -1,6 +1,7 @@
 """
 Настройки приложения с валидацией
 """
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     """
     В классе представлены методы для передачи настроек
     """
+
     app_host: str = "192.168.210.85"
     app_port: int = 8008
 

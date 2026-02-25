@@ -1,6 +1,7 @@
 """
 Бочка для передачи методов
 """
+
 from .exceptions import EnvVariableNotExistError
 from .settings import app_settings
 

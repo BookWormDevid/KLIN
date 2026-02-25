@@ -1,6 +1,7 @@
 """
 Бочка для передачи методов
 """
+
 from .klin import (IKlinCallbackSender, IKlinInference, IKlinProcessProducer,
                    IKlinRepository)
 
