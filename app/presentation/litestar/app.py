@@ -1,3 +1,7 @@
+# pylint: disable=redefined-outer-name
+"""
+Настройки litestar, prometheus, swagger, контейнера dishka
+"""
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +27,13 @@ FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
 
 @asynccontextmanager
 async def lifespan(app: Litestar) -> AsyncIterator[None]:
+    """
+    Управляет жизненным циклом приложения.
+
+    Выполняет инициализацию и закрытие ресурсов при запуске/остановке:
+    Подключение к RabbitMQ
+    Закрытие DI-контейнера
+    """
     try:
         container = app.state.dishka_container
         rabbit_broker = await container.get(RabbitBroker)
@@ -34,6 +45,9 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
 
 
 def create_litestar_app(group_path: bool = False) -> Litestar:
+    """
+    Создаёт и настраивает экземпляр Litestar приложения.
+    """
     container = make_async_container(
         InfrastructureProvider(), ApplicationProvider(), VideoProvider()
     )
@@ -46,7 +60,7 @@ def create_litestar_app(group_path: bool = False) -> Litestar:
         request_max_body_size=100 * 1024 * 1024,
         cors_config=CORSConfig(allow_origins=["*"]),
         openapi_config=OpenAPIConfig(
-            title="MAE Inference",
+            title="Klin Inference",
             version="1.0.0",
             path="/api/docs",
             render_plugins=[SwaggerRenderPlugin()],

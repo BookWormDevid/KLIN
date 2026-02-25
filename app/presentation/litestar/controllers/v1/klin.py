@@ -1,3 +1,6 @@
+"""
+endpoint'ы приложения
+"""
 import os
 import uuid
 from collections.abc import Sequence
@@ -13,13 +16,16 @@ from litestar.exceptions import HTTPException
 from litestar.params import Body
 from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
-from app.application.dto import MAEReadDto, MAEUploadDto
-from app.application.services import MAEService
+from app.application.dto import KlinReadDto, KlinUploadDto
+from app.application.services import KlinService
 
 
-class MAEController(Controller):
-    path = "/MAE"
-    tags: Sequence[str] | None = ["MAE"]
+class KlinController(Controller):
+    """
+    Класс с endpoint'ами
+    """
+    path = "/Klin"
+    tags: Sequence[str] | None = ["Klin"]
 
     @post("/upload", status_code=HTTP_201_CREATED, media_type=MediaType.JSON)
     @inject
@@ -27,9 +33,12 @@ class MAEController(Controller):
         self,
         data: Annotated[UploadFile, Body(media_type=RequestEncodingType.MULTI_PART)],
         response_url: Annotated[str, Body(media_type=RequestEncodingType.MULTI_PART)],
-        mae_service: FromDishka[MAEService],
-    ) -> MAEReadDto:
-        MAX_SIZE = 200 * 2048 * 2048
+        klin_service: FromDishka[KlinService],
+    ) -> KlinReadDto:
+        """
+        Скачивает видео, преобразует его в формат mp4 и сохраняет в папку tmp.
+        """
+        max_size = 200 * 2048 * 2048
         tmp_dir = "tmp"
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -42,40 +51,49 @@ class MAEController(Controller):
             while chunk := await data.read(1024 * 1024):
                 size += len(chunk)
 
-                if size > MAX_SIZE:
+                if size > max_size:
                     f.close()
                     os.remove(tmp_path)
                     raise HTTPException(status_code=413, detail="File too large")
 
                 f.write(chunk)
 
-        upload_dto = MAEUploadDto(response_url=response_url, video_path=tmp_path)
+        upload_dto = KlinUploadDto(response_url=response_url, video_path=tmp_path)
 
-        mae_model = await mae_service.MAE_image(upload_dto)
+        klin_model = await klin_service.klin_image(upload_dto)
 
-        return MAEReadDto.from_model(mae_model)
+        return KlinReadDto.from_model(klin_model)
 
-    @get("/{MAE_id:uuid}", status_code=HTTP_200_OK)
+    @get("/{Klin_id:uuid}", status_code=HTTP_200_OK)
     @inject
     async def get_inference_status(
         self,
-        mae_service: FromDishka[MAEService],
-        MAE_id: UUID,
-    ) -> Response[MAEReadDto]:
-        inference = await mae_service.get_inference_status(MAE_id)
+        klin_service: FromDishka[KlinService],
+        klin_id: UUID,
+    ) -> Response[KlinReadDto]:
+        """
+        Получает всю информацию об конкретном id
+        """
+        inference = await klin_service.get_inference_status(klin_id)
         return Response(inference)
 
     @get(path="/health/live", media_type=MediaType.TEXT)
     async def health_check(self) -> str:
+        """
+        Проверяет функционирует ли приложение litestar
+        """
         return "healthy"
 
     @get("/health/ready")
     @inject
     async def readiness_check(
-        self, mae_service: FromDishka[MAEService], MAE_id: UUID
-    ) -> Response[MAEReadDto]:
+        self, klin_service: FromDishka[KlinService], klin_id: UUID
+    ) -> Response[KlinReadDto]:
+        """
+        Проверяет функционирует ли база данных
+        """
         try:
-            check = await mae_service.get_inference_status(MAE_id)
+            check = await klin_service.get_inference_status(klin_id)
             return Response(check)
         except ConnectionError as e:
             raise HTTPException(
@@ -85,11 +103,14 @@ class MAEController(Controller):
     @get("/", status_code=HTTP_200_OK)
     @inject
     async def get_all(
-        self, mae_service: FromDishka[MAEService]
-    ) -> Response[list[MAEReadDto]]:
-        imfer_list = await mae_service.get_n_imferences(100)
+        self, klin_service: FromDishka[KlinService]
+    ) -> Response[list[KlinReadDto]]:
+        """
+        Получает вывод последних 100 записей в базе данных
+        """
+        imfer_list = await klin_service.get_n_imferences(100)
         dto_ready_list = []
         for imference in imfer_list:
-            dto_ready_list.append(MAEReadDto.from_model(imference))
+            dto_ready_list.append(KlinReadDto.from_model(imference))
 
         return Response(dto_ready_list)

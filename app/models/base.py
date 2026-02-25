@@ -1,3 +1,8 @@
+# pylint: disable=too-few-public-methods
+# pylint: disable=unnecessary-lambda
+"""
+Базовая модель бд
+"""
 import uuid
 from datetime import datetime, timezone
 
@@ -8,6 +13,9 @@ mapper_registry = registry(metadata=MetaData())
 
 
 class Model(DeclarativeBase):
+    """
+    Инициализация базы данных
+    """
     registry = mapper_registry
     metadata = mapper_registry.metadata
 
@@ -15,6 +23,13 @@ class Model(DeclarativeBase):
 
 
 class BaseModel(Model):
+    """
+    Колонки базовой модели
+    id
+    is_removed поле мягкого удаления
+    created_at когда создано новое поле
+    updated_at когда поле обновлено последний раз
+    """
     __abstract__ = True
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -32,4 +47,7 @@ class BaseModel(Model):
 
 
 def get_native_utc_now() -> datetime:
+    """
+    Получает текущее время в UTC без часового пояса
+    """
     return datetime.now(timezone.utc).replace(tzinfo=None)

@@ -1,3 +1,3 @@
-from .processor import MAECallbackSender, MAEProcessor
+from .processor import KlinCallbackSender, InferenceProcessor
 
-__all__ = ["MAEProcessor", "MAECallbackSender"]
+__all__ = ["InferenceProcessor", "KlinCallbackSender"]

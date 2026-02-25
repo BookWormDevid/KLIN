@@ -1,13 +1,11 @@
-from .MAE import (
-    MAEProcessDto,
-    MAEReadDto,
-    MAEResultDto,
-    MAEUploadDto,
-)
+"""
+Бочка для передачи методов
+"""
+from .klin import KlinProcessDto, KlinReadDto, KlinResultDto, KlinUploadDto
 
 __all__ = (
-    "MAEUploadDto",
-    "MAEResultDto",
-    "MAEReadDto",
-    "MAEProcessDto",
+    "KlinUploadDto",
+    "KlinResultDto",
+    "KlinReadDto",
+    "KlinProcessDto",
 )

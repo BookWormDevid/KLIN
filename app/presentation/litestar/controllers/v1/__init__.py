@@ -1,3 +1,6 @@
-from .MAE import MAEController
+"""
+Бочка для передачи методов
+"""
+from .klin import KlinController
 
-__all__ = ("MAEController",)
+__all__ = ("KlinController",)

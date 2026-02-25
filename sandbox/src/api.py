@@ -6,7 +6,6 @@ import uuid
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
 # Импортируем ваш существующий VideoClassifier
 from src.predict import VideoClassifier
 

@@ -1,3 +1,8 @@
+# pylint: disable=invalid-name
+"""
+Предоставляет функциональность для чтения переменных окружения,
+их парсинга и кэширования с обработкой ошибок.
+"""
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -10,10 +15,16 @@ TProp = TypeVar("TProp")
 
 @dataclass
 class BaseSettings:
+    """
+    Базовый класс для настроек приложения с поддержкой переменных окружения.
+    """
     env_properties: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
     def get_env_variable(key: str) -> str:
+        """
+        Получает значение переменной окружения по ключу.
+        """
         value = os.environ.get(key)
 
         if value is None:
@@ -27,6 +38,12 @@ class BaseSettings:
         parser: Callable[[str], TProp],
         default_value: None | TProp = None,
     ) -> TProp:
+        """
+        Получает и парсит значение переменной окружения с кэшированием.
+        При первом обращении читает переменную из окружения, парсит её
+        с помощью указанной функции и сохраняет результат в кэше.
+        При повторных обращениях возвращает значение из кэша.
+        """
         if key in self.env_properties:
             return self.env_properties[key]  # type: ignore
 

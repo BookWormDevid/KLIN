@@ -1,5 +1,8 @@
-from .repository import MAERepository
+"""
+Бочка для передачи методов
+"""
+from .repository import KlinRepository
 
 __all__ = [
-    "MAERepository",
+    "KlinRepository",
 ]

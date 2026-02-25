@@ -1,8 +1,12 @@
-from .MAE import IMAECallbackSender, IMAEInference, IMAEProcessProducer, IMAERepository
+"""
+Бочка для передачи методов
+"""
+from .klin import (IKlinCallbackSender, IKlinInference, IKlinProcessProducer,
+                   IKlinRepository)
 
 __all__ = (
-    "IMAERepository",
-    "IMAEInference",
-    "IMAEProcessProducer",
-    "IMAECallbackSender",
+    "IKlinRepository",
+    "IKlinInference",
+    "IKlinProcessProducer",
+    "IKlinCallbackSender",
 )

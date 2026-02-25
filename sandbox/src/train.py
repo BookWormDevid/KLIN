@@ -5,21 +5,14 @@ from typing import Any
 
 import numpy as np
 import torch
-from sklearn.metrics import (
-    accuracy_score,
-    balanced_accuracy_score,
-    precision_recall_fscore_support,
-    roc_auc_score,
-)
+from sklearn.metrics import (accuracy_score, balanced_accuracy_score,
+                             precision_recall_fscore_support, roc_auc_score)
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Dataset
 from torchvision import transforms
-from transformers import (
-    Trainer,
-    TrainingArguments,
-    VideoMAEForVideoClassification,
-    VideoMAEImageProcessor,
-)
+from transformers import (Trainer, TrainingArguments,
+                          VideoMAEForVideoClassification,
+                          VideoMAEImageProcessor)
 
 import mlflow
 from helpers import ReadAllFrames

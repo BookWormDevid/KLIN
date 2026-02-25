@@ -1,3 +1,6 @@
-from .MAE import MAEService
+"""
+Бочка для передачи методов
+"""
+from .klin import KlinService
 
-__all__ = ("MAEService",)
+__all__ = ("KlinService",)

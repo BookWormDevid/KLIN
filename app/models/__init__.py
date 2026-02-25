@@ -1,8 +1,11 @@
+"""
+Бочка для передачи методов
+"""
 from .base import BaseModel, Model
-from .MAE import MAEModel, ProcessingState
+from .klin import KlinModel, ProcessingState
 
 __all__ = (
-    "MAEModel",
+    "KlinModel",
     "ProcessingState",
     "BaseModel",
     "Model",

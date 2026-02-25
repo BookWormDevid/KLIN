@@ -1,6 +1,6 @@
-from .target import MAECallbackSender, MAEProcessor
+from .target import KlinCallbackSender, InferenceProcessor
 
 __all__ = [
-    "MAEProcessor",
-    "MAECallbackSender",
+    "InferenceProcessor",
+    "KlinCallbackSender",
 ]

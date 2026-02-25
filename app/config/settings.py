@@ -1,3 +1,6 @@
+"""
+Настройки приложения с валидацией
+"""
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +13,9 @@ load_dotenv()
 
 @dataclass
 class Settings(BaseSettings):
+    """
+    В классе представлены методы для передачи настроек
+    """
     app_host: str = "192.168.210.85"
     app_port: int = 8008
 
@@ -20,33 +26,51 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
-    MAE_queue = "MAE-queue"
+    Klin_queue = "Klin-queue"
 
     @property
     def database_url(self) -> str:
+        """
+        Ссылка базы данных
+        """
         return self.resolve_env_property("DATABASE_URL", str)
 
     @property
     def db_pool_size(self) -> bool:
+        """
+        Размер пула соединений
+        """
         return bool(self.resolve_env_property("DB_POOL_SIZE", int, default_value=5))
 
     @property
     def broker_max_consumers(self) -> int | None:
+        """
+        Максимальное число подписчиков в broker
+        """
         v = self.resolve_env_property("BROKER_MAX_CONSUMERS", int, default_value=0)
 
         return v or None
 
     @property
     def rabbit_url(self) -> str:
+        """
+        Ссылка на rabbit
+        """
         return self.resolve_env_property("RABBIT_URL", str)
 
     @property
     def debug(self) -> bool:
+        """
+        Режим отладки
+        """
         return bool(self.resolve_env_property("DEBUG", int, default_value=0))
 
     @property
-    def MAE_secret(self) -> str:
-        return self.resolve_env_property("MAE_SECRET", str)
+    def klin_secret(self) -> str:
+        """
+        Ссылка на секреты
+        """
+        return self.resolve_env_property("KLIN_SECRET", str)
 
 
 app_settings = Settings()

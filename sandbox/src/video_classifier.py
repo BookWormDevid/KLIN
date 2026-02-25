@@ -7,10 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm  # type: ignore[import-untyped]
-from transformers import (
-    VideoMAEForVideoClassification,
-    VideoMAEImageProcessor,
-)
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
@@ -92,16 +89,16 @@ class VideoFolderClassifier:
 
                     # Проверка форм
                     for clip in images:
-                        assert clip.shape[0] == self.chunk_size, (
-                            f"chunk size mismatch: {clip.shape[0]}"
-                        )
+                        assert (
+                            clip.shape[0] == self.chunk_size
+                        ), f"chunk size mismatch: {clip.shape[0]}"
                         for frame in clip:
-                            assert frame.shape[:2] == self.frame_size, (
-                                f"frame size mismatch: {frame.shape[:2]}"
-                            )
-                            assert frame.shape[2] == 3, (
-                                f"frame channels mismatch: {frame.shape[2]}"
-                            )
+                            assert (
+                                frame.shape[:2] == self.frame_size
+                            ), f"frame size mismatch: {frame.shape[:2]}"
+                            assert (
+                                frame.shape[2] == 3
+                            ), f"frame channels mismatch: {frame.shape[2]}"
 
                     # Подготовка входа для модели
                     inputs = self.processor(images, return_tensors="pt").to(self.device)

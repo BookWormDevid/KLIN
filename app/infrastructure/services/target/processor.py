@@ -12,15 +12,12 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-from transformers import (
-    VideoMAEForVideoClassification,
-    VideoMAEImageProcessor,
-)
+from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
-from app.application.dto import MAEResultDto
-from app.application.interfaces import IMAECallbackSender, IMAEInference
-from app.models import MAEModel
+from app.application.dto import KlinResultDto
+from app.application.interfaces import IKlinCallbackSender, IKlinInference
+from app.models import KlinModel
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +25,7 @@ BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
 mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
 
 
-class MAEProcessor(IMAEInference):
+class InferenceProcessor(IKlinInference):
     def __init__(self) -> None:
         self.model: VideoMAEForVideoClassification | None = None
         self.processor: VideoMAEImageProcessor | None = None
@@ -166,7 +163,7 @@ class MAEProcessor(IMAEInference):
 
         return frames.reshape(num_chunks, self.chunk_size, *self.frame_size, 3)
 
-    async def analyze(self, mae_request: MAEModel) -> MAEResultDto:
+    async def analyze(self, mae_request: KlinModel) -> KlinResultDto:
         # Загрузка моделей (один раз)
         if self.model is None:
             self.ensure_mae_model_loaded()
@@ -262,7 +259,7 @@ class MAEProcessor(IMAEInference):
             #     "bbox_by_time": bbox_dict,
             # }
 
-            return MAEResultDto(
+            return KlinResultDto(
                 mae=msgspec.json.encode(chunk_results).decode("utf-8"),
                 yolo=msgspec.json.encode(bbox_dict).decode("utf-8"),
                 all_classes=all_classes,
@@ -273,13 +270,13 @@ class MAEProcessor(IMAEInference):
             raise
 
 
-class MAECallbackSender(IMAECallbackSender):
-    async def post_consumer(self, model: MAEModel) -> None:
+class KlinCallbackSender(IKlinCallbackSender):
+    async def post_consumer(self, model: KlinModel) -> None:
         if not model.response_url:
             return
 
         payload: dict[str, Any] = {
-            "mae_id": str(model.id),
+            "klin_id": str(model.id),
             "mae": model.mae,
             "yolo": model.yolo,
             "objects": model.objects,

@@ -1,5 +1,5 @@
-from .MAE import MAEProcessProducer
+from .klin import KlinProcessProducer
 
 __all__ = [
-    "MAEProcessProducer",
+    "KlinProcessProducer",
 ]
