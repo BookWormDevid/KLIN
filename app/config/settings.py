@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     В классе представлены методы для передачи настроек
     """
 
-    app_host: str = "192.168.210.85"
-    app_port: int = 8008
+    app_host: str = "0.0.0.0"
+    app_port: int = 8000
 
     log_level: Any = "info"
 
