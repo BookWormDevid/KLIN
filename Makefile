@@ -7,3 +7,5 @@ lint:
 	uv run ruff format
 
 	uv run -m mypy .
+
+	uv run pylint app
