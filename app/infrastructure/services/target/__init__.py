@@ -1,3 +1,3 @@
-from .processor import KlinCallbackSender, InferenceProcessor
+from .processor import InferenceProcessor, KlinCallbackSender
 
 __all__ = ["InferenceProcessor", "KlinCallbackSender"]

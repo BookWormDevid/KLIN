@@ -15,6 +15,7 @@ class KlinUploadDto(msgspec.Struct, frozen=True):
     DTO для загрузки видео на обработку.
     Содержит URL для ответа и путь к видеофайлу.
     """
+
     response_url: str
     video_path: str
 
@@ -26,6 +27,7 @@ class KlinResultDto(msgspec.Struct, frozen=True):
     найденные координаты bounding box
     и все классы найденные MAE.
     """
+
     mae: str | None
     yolo: str | None
     objects: list[str] | None
@@ -37,6 +39,7 @@ class KlinReadDto(msgspec.Struct, frozen=True):
     DTO для чтения результата из базы данных.
     Включает идентификатор, результаты обработки и текущее состояние.
     """
+
     id: uuid.UUID
     mae: str | None
     yolo: str | None
@@ -63,4 +66,5 @@ class KlinProcessDto(msgspec.Struct, frozen=True):
     """
     DTO для передачи идентификатора задачи в очередь обработки.
     """
+
     klin_id: uuid.UUID

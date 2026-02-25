@@ -1,6 +1,7 @@
 """
 Объединяет все контроллеры версии 1 API под общим префиксом /api/v1.
 """
+
 from litestar import Router
 
 from .v1 import KlinController

@@ -1,6 +1,7 @@
 """
 Запуск приложения
 """
+
 from dishka import make_async_container
 
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider

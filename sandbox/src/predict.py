@@ -41,9 +41,7 @@ class VideoClassifier:
         )
         self.model = VideoMAEForVideoClassification.from_pretrained(
             model_path, local_files_only=True
-        ).to(
-            self.device
-        )  # type: ignore
+        ).to(self.device)  # type: ignore
         self.model.eval()
 
         print(f"[API] Модель загружена! Доступные классы: {self.model.config.id2label}")
