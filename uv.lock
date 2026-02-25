@@ -1746,7 +1746,6 @@ dependencies = [
     { name = "evaluate" },
     { name = "fastapi" },
     { name = "faststream", extra = ["rabbit"] },
-    { name = "flake8" },
     { name = "httpx" },
     { name = "litestar", extra = ["prometheus"] },
     { name = "mlflow" },
@@ -1754,7 +1753,6 @@ dependencies = [
     { name = "opencv-python" },
     { name = "opencv-python-headless" },
     { name = "pandas" },
-    { name = "pylint" },
     { name = "python-multipart" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -1771,10 +1769,12 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "flake8" },
     { name = "mypy" },
     { name = "pandas-stubs", version = "2.3.3.260113", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas-stubs", version = "3.0.0.260204", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pre-commit" },
+    { name = "pylint" },
     { name = "ruff" },
     { name = "types-requests" },
 ]
@@ -1790,7 +1790,6 @@ requires-dist = [
     { name = "evaluate", specifier = ">=0.4.6" },
     { name = "fastapi", specifier = ">=0.127.0" },
     { name = "faststream", extras = ["rabbit"], specifier = ">=0.6.6" },
-    { name = "flake8", specifier = ">=7.3.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "litestar", extras = ["prometheus"], specifier = ">=2.19.0" },
     { name = "mlflow", specifier = ">=3.8.1" },
@@ -1798,7 +1797,6 @@ requires-dist = [
     { name = "opencv-python", specifier = "==4.13.0.92" },
     { name = "opencv-python-headless", specifier = ">=4.12.0.88" },
     { name = "pandas", specifier = ">=2.3.3" },
-    { name = "pylint", specifier = ">=4.0.5" },
     { name = "python-multipart", specifier = ">=0.0.21" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "structlog", specifier = ">=25.5.0" },
@@ -1814,9 +1812,11 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "flake8", specifier = ">=7.3.0" },
     { name = "mypy", specifier = ">=1.5.8" },
     { name = "pandas-stubs" },
     { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pylint", specifier = ">=4.0.5" },
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "types-requests", specifier = ">=2.32.4.20260107" },
 ]

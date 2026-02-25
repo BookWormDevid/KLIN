@@ -5,9 +5,13 @@ import evaluate  # type: ignore[import-untyped]
 import mlflow.pytorch as mlflow_pytorch
 import numpy as np
 from datasets import Dataset, DatasetDict  # type: ignore[import-untyped]
-from transformers import (EvalPrediction, Trainer, TrainingArguments,
-                          VideoMAEForVideoClassification,
-                          VideoMAEImageProcessor)
+from transformers import (
+    EvalPrediction,
+    Trainer,
+    TrainingArguments,
+    VideoMAEForVideoClassification,
+    VideoMAEImageProcessor,
+)
 
 import mlflow
 

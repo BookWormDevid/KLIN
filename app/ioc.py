@@ -8,11 +8,19 @@ from collections.abc import Iterator
 
 from dishka import Provider, Scope, provide
 from faststream.rabbit import RabbitBroker
-from sqlalchemy.ext.asyncio import (AsyncEngine, AsyncSession,
-                                    async_sessionmaker, create_async_engine)
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
-from app.application.interfaces import (IKlinCallbackSender, IKlinInference,
-                                        IKlinProcessProducer, IKlinRepository)
+from app.application.interfaces import (
+    IKlinCallbackSender,
+    IKlinInference,
+    IKlinProcessProducer,
+    IKlinRepository,
+)
 from app.application.services import KlinService
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository

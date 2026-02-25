@@ -8,8 +8,12 @@ import uuid
 from dataclasses import dataclass
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
-from app.application.interfaces import (IKlinCallbackSender, IKlinInference,
-                                        IKlinProcessProducer, IKlinRepository)
+from app.application.interfaces import (
+    IKlinCallbackSender,
+    IKlinInference,
+    IKlinProcessProducer,
+    IKlinRepository,
+)
 from app.models import KlinModel, ProcessingState
 
 
