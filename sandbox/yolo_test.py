@@ -7,7 +7,7 @@ parent = Path(__file__).resolve().parent.parent
 
 print(parent)
 # Проверяем, существует ли видео
-video_path = parent / "videos/d/fi004.mp4"
+video_path = parent / "videos/fi004.mp4"
 if not video_path.exists():
     raise FileNotFoundError(f"Видео не найдено: {video_path}")
 

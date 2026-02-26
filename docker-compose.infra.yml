@@ -56,7 +56,6 @@ services:
             - web
         ports:
             - "9419:9419"
-            - "5672:5672"
             - "15692:15692"
         depends_on:
             - rabbitmq

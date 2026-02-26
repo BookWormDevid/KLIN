@@ -17,14 +17,17 @@ pre-commit install # Если надо менять код
 
 ### Окружениe
 
+! ВАЖНО ! Сделать .env файл, с полями как у example.env
+
 ```bash
-docker compose -f docker-compose.yml up --build
+docker compose -f docker-compose.infra.yml up --build -d
+docker compose -f docker-compose.yml up --build -d
 ```
 
 ### Общие комманды из makefile
 
 ```bash
-make # Линтер Ruff + Mypy
+make # Линтер Ruff + Mypy + PyLint
 ```
 
 ### API

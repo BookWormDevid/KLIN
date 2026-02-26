@@ -12,29 +12,47 @@ dependencies = [
     "asyncpg>=0.31.0",
     "dishka>=1.7.2",
     "fastapi>=0.127.0",
-    "faststream[rabbit]>=0.6.6",
+    "faststream[cli,rabbit]>=0.6.6",
     "httpx>=0.28.1",
-    "litestar[prometheus]>=2.19.0",
+    "litestar[prometheus,structlog]>=2.19.0",
     "mlflow>=3.8.1",
     "msgspec>=0.20.0",
-    "opencv-python-headless>=4.12.0.88",
     "pandas>=2.3.3",
     "python-multipart>=0.0.21",
     "scikit-learn>=1.7.2",
-    "structlog>=25.5.0",
     "torch>=2.10.0",
     "torchvision>=0.24.0",
     "transformers>=4.57.3",
-    "uvicorn>=0.40.0",
     "yt-dlp>=2025.12.8",
     "ultralytics==8.4.14",
     "evaluate>=0.4.6",
-    "opencv-python==4.13.0.92",
     "supervision==0.22.0",
     "timm==1.0.14",
+    "sqlalchemy[asyncio]>=2.0.46",
+    "alembic>=1.18.4",
+    "python-dotenv>=1.2.1",
 ]
 
+
 [dependency-groups]
+app_docker = [
+    "aiohttp>=3.13.3",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "dishka>=1.8.0",
+    "faststream[cli,rabbit]>=0.6.6",
+    "granian>=2.7.2",
+    "litestar[prometheus,structlog]>=2.21.0",
+    "msgspec>=0.20.0",
+    "numpy>=2.2.6",
+    "opencv-python-headless>=4.13.0.92",
+    "python-dotenv>=1.2.1",
+    "sqlalchemy[asyncio]>=2.0.46",
+    "transformers>=5.2.0",
+    "ultralytics>=8.4.14",
+]
+
+
 dev = [
     "mypy>=1.5.8",
     "pandas-stubs",
@@ -43,7 +61,9 @@ dev = [
     "ruff>=0.14.10",
     "flake8>=7.3.0",
     "pylint>=4.0.5",
+    "uvicorn>=0.41.0",
 ]
+
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -83,3 +103,8 @@ select = [
     "UP", # pyupgrade
 ]
 ignore = ["E501"]
+
+[tool.pytest.ini_options]
+markers = [
+    "???: tests that require a running ??? inference server",
+]
