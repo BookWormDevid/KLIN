@@ -1,3 +1,7 @@
+"""
+Бочка для передачи методов
+"""
+
 from .klin import KlinProcessProducer
 
 __all__ = [

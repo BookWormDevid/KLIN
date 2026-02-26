@@ -66,7 +66,7 @@ class KlinController(Controller):
 
         return KlinReadDto.from_model(klin_model)
 
-    @get("/{Klin_id:uuid}", status_code=HTTP_200_OK)
+    @get("/{klin_id:uuid}", status_code=HTTP_200_OK)
     @inject
     async def get_inference_status(
         self,

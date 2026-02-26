@@ -1,3 +1,7 @@
+"""
+Взаимодействие с брокером rabbitbroker
+"""
+
 from dataclasses import dataclass
 
 import msgspec
@@ -10,9 +14,16 @@ from app.config import app_settings
 
 @dataclass()
 class KlinProcessProducer(IKlinProcessProducer):
+    """
+    Класс для взаимодействия с брокером
+    """
+
     _rabbit_broker: RabbitBroker
 
     async def send(self, data: KlinProcessDto) -> None:
+        """
+        Отправка данных для брокера
+        """
         await self._rabbit_broker.publish(
             msgspec.json.encode(data), queue=app_settings.Klin_queue
         )

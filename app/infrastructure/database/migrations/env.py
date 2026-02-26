@@ -1,3 +1,8 @@
+# pylint: disable=no-member
+"""
+Подключение alembic к бд
+"""
+
 from logging.config import fileConfig
 
 from alembic import context

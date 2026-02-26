@@ -49,6 +49,7 @@ class InfrastructureProvider(Provider):
             pool_pre_ping=True,
             connect_args={
                 "server_settings": {
+                    # pylint: disable=C0301
                     "idle_in_transaction_session_timeout": f"{app_settings.db_idle_in_transaction_session_timeout}",
                     "statement_timeout": f"{app_settings.db_statement_timeout}",
                 }

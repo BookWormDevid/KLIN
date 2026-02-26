@@ -1,3 +1,7 @@
+"""
+HTTP контроллер для загрузки видео и запуска обработки
+"""
+
 from collections.abc import Sequence
 
 from dishka import FromDishka
@@ -10,16 +14,24 @@ from app.application.services import KlinService
 
 
 class MAEController(Controller):
+    """
+    Обрабатывает POST-запрос загрузки и запускает бизнес-логику через сервис.
+    """
+
     path = "/MAE"
     tags: Sequence[str] | None = ["MAE"]
 
     @post("/upload", status_code=HTTP_201_CREATED)
     @inject
-    async def MAE_image(
+    async def mae_image(
         self,
-        Klin_service: FromDishka[KlinService],
+        klin_service: FromDishka[KlinService],
         data: KlinUploadDto,
     ) -> Response[KlinReadDto]:
-        MAE = await Klin_service.klin_image(data)
+        """
+        Принимает данные загрузки, передаёт их в KlinService
+        и возвращает результат обработки.
+        """
+        mae = await klin_service.klin_image(data)
 
-        return Response(KlinReadDto.from_model(MAE))
+        return Response(KlinReadDto.from_model(mae))
