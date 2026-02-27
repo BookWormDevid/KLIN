@@ -28,7 +28,7 @@ from app.models import KlinModel
 logger = logging.getLogger(__name__)
 
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
-mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
+mae_dir = BASE_DIR_MAE / "models" / "videomae-ucf-crime"
 
 
 @dataclass
@@ -112,9 +112,7 @@ class InferenceProcessor(IKlinInference):
 
         base_dir_mae = Path(__file__).parent.parent.parent.parent.parent
         print(base_dir_mae)
-        self.mae.mae_model = str(
-            base_dir_mae / "videomae_results" / "videomae-ufc-crime"
-        )
+        self.mae.mae_model = str(mae_dir)
         return self.mae.mae_model
 
     def find_yolo_path(self) -> str:
