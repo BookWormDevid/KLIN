@@ -30,8 +30,7 @@ remote/YOLO
 remote/videomae-base-finetuned-KLIN
 videomae_results
 videomae_results-old
-sandbox/videos/
-sandbox/models/
+*versions
 
 
 # PyInstaller
@@ -241,4 +240,4 @@ dvc_remote/
 .dvc/state-journal
 .dvc/state-wal
 videos/
-models/
+models/*
