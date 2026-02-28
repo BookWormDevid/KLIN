@@ -28,8 +28,7 @@ from app.models import KlinModel
 logger = logging.getLogger(__name__)
 
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
-mae_dir = BASE_DIR_MAE / "models" / "videomae-ucf-crime"
-
+mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
 
 @dataclass
 class VideoMAEConfig:

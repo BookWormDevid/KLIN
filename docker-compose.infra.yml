@@ -1,6 +1,31 @@
 version: '3.9'
 
 services:
+
+    postgres_exporter-klin:
+      image: prometheuscommunity/postgres-exporter:latest
+      restart: unless-stopped
+      networks:
+        - web
+      environment:
+        DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgresql:5432/klin?sslmode=disable"
+      ports:
+        - "9187:9187"
+      depends_on:
+        - postgresql
+
+    postgres_exporter-ml:
+      image: prometheuscommunity/postgres-exporter:latest
+      restart: unless-stopped
+      networks:
+        - web
+      environment:
+        DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgresql:5432/ml?sslmode=disable"
+      ports:
+        - "9188:9187"
+      depends_on:
+        - postgresql
+
     node_exporter:
         image: prom/node-exporter:latest
         container_name: node_exporter
