@@ -11,8 +11,6 @@ node_modules
 .vscode
 .ruff_cache
 .mypy_cache
-images/
-videos/
 sandbox/
 monitoring/
 mlruns/
@@ -20,7 +18,7 @@ mlflow/
 helpers/
 data/
 tests/
-tmp/
+docs/
 start.bat
 ML_System_Design_Doc.md
 README.md

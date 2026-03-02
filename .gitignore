@@ -1,14 +1,14 @@
 # Project-specific ignores
-videos/
+tests/videos/*
 models/*
-tmp/*
+tmp
 remote/MCG-NJU
 remote/YOLO
 remote/videomae-base-finetuned-KLIN
 videomae_results
 videomae_results-old
 *versions
-
+data/raw/*
 
 
 
