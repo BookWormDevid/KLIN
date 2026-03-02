@@ -150,7 +150,7 @@ services:
         -./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
         - grafana_data:/var/lib/grafana
       environment:
-        - GF_SECURITY_ADMIN_PASSWORD=admin
+        - GF_SECURITY_ADMIN_PASSWORD=sheningans
       labels:
         - 'traefik.enable=true'
         - 'traefik.docker.network=web'
