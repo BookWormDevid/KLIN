@@ -16,3 +16,20 @@ repos:
         args: [--fix]
         types: [python]
       - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - types-requests
+          - pandas-stubs
+        exclude: |
+          (?x)^(
+            data/|
+            videomae_results/|
+            mlflow/|
+            mlruns/|
+            sandbox/
+          )$
