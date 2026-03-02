@@ -128,8 +128,8 @@ services:
         ports:
             - '9090:9090'
         volumes:
-            - ./monitoring/prometheus/prometheus.yml:/etc/monitoring/prometheus/prometheus.yml:ro
-            - prometheus_data:/monitoring/prometheus
+            - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - prometheus_data:/prometheus
         labels:
             - 'traefik.enable=true'
             - 'traefik.docker.network=web'
