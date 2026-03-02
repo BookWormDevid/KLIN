@@ -16,3 +16,12 @@ repos:
         args: [--fix]
         types: [python]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        files: .

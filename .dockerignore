@@ -1,3 +1,4 @@
+# general
 .git
 .venv
 **/__pycache__
@@ -11,6 +12,8 @@ node_modules
 .vscode
 .ruff_cache
 .mypy_cache
+
+# project-specific
 sandbox/
 monitoring/
 mlruns/
@@ -20,5 +23,4 @@ data/
 tests/
 docs/
 start.bat
-ML_System_Design_Doc.md
 README.md

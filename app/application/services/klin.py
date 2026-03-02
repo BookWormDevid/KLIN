@@ -2,7 +2,7 @@
 Бизнес логика сервиса
 """
 
-# pylint: disable= broad-exception-caught
+import logging
 import os
 import uuid
 from dataclasses import dataclass
@@ -15,6 +15,9 @@ from app.application.interfaces import (
     IKlinRepository,
 )
 from app.models import KlinModel, ProcessingState
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -61,23 +64,37 @@ class KlinService:
             )
             klin.state = ProcessingState.FINISHED
             await self._klin_callback_sender.post_consumer(klin)
-            print(
-                f"✅ Успех :{klin.mae}, {klin.yolo}, {klin.objects}, {klin.all_classes}"
-            )
+            logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
-        except Exception as e:
-            klin.mae = str(e)
+        except Exception as exc:  # pylint: disable=broad-except
+            klin.mae = str(exc)
             klin.state = ProcessingState.ERROR
             await self._klin_callback_sender.post_consumer(klin)
-            print(f"❌ Ошибка : {klin.mae}")
+            logger.exception(
+                "Klin processing failed. klin_id=%s error=%s",
+                klin_id,
+                exc,
+            )
 
         finally:
             try:
                 await self._klin_repository.update(klin)
-                if klin.video_path and os.path.exists(klin.video_path):
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.exception(
+                    "Failed to persist klin state. klin_id=%s error=%s",
+                    klin_id,
+                    exc,
+                )
+
+            if klin.video_path and os.path.exists(klin.video_path):
+                try:
                     os.remove(klin.video_path)
-            except Exception as e:
-                print(f"Не удалось удалить временный файл. {e}")
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to delete temp file. path=%s error=%s",
+                        klin.video_path,
+                        exc,
+                    )
 
     async def get_inference_status(self, klin_id: uuid.UUID) -> KlinReadDto:
         """

@@ -59,7 +59,7 @@ def create_litestar_app(group_path: bool = False) -> Litestar:
     app = Litestar(
         route_handlers=[api_router, PrometheusController],
         middleware=[prometheus_config.middleware],
-        request_max_body_size=100 * 1024 * 1024,
+        request_max_body_size=200 * 1024 * 1024,
         cors_config=CORSConfig(allow_origins=["*"]),
         openapi_config=OpenAPIConfig(
             title="Klin Inference",
@@ -90,6 +90,3 @@ def create_litestar_app(group_path: bool = False) -> Litestar:
     setup_dishka(container, app)
     app.state.dishka_container = container
     return app
-
-
-app = create_litestar_app()

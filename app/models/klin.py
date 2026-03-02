@@ -39,5 +39,8 @@ class KlinModel(BaseModel):
     state: Mapped[ProcessingState] = mapped_column(String())
     mae: Mapped[str | None] = mapped_column(String(), nullable=True)
     yolo: Mapped[str | None] = mapped_column(String(), nullable=True)
-    all_classes: Mapped[list[str]] = mapped_column(ARRAY(String()), nullable=True)
-    objects: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True)
+    all_classes: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String()),
+        nullable=True,
+    )
+    objects: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)

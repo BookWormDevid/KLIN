@@ -40,7 +40,7 @@ class KlinController(Controller):
         """
         Скачивает видео, преобразует его в формат mp4 и сохраняет в папку tmp.
         """
-        max_size = 200 * 2048 * 2048
+        max_size = 200 * 1024 * 1024
         tmp_dir = "tmp"
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -89,17 +89,19 @@ class KlinController(Controller):
     @get("/health/ready")
     @inject
     async def readiness_check(
-        self, klin_service: FromDishka[KlinService], klin_id: UUID
-    ) -> Response[KlinReadDto]:
+        self, klin_service: FromDishka[KlinService]
+    ) -> Response[dict[str, str]]:
         """
-        Проверяет функционирует ли база данных
+        Проверяет функционирует ли сервис (не бд)
         """
         try:
-            check = await klin_service.get_inference_status(klin_id)
-            return Response(check)
-        except ConnectionError as e:
+            await klin_service.get_n_imferences(1)
+            return Response({"status": "ready"})
+        except ValueError:
+            return Response({"status": "ready"})
+        except Exception as e:  # pylint: disable=broad-except
             raise HTTPException(
-                status_code=503, detail=f"Database unavailable: {str(e)}"
+                status_code=503, detail=f"Service unavailable: {str(e)}"
             ) from e
 
     @get("/", status_code=HTTP_200_OK)
