@@ -42,6 +42,8 @@ class InfrastructureProvider(Provider):
         """
         Создает и возвращает асинхронный движок базы данных.
         """
+        db_idle_timeout = app_settings.db_idle_in_transaction_session_timeout
+
         engine = create_async_engine(
             app_settings.database_url,
             pool_size=app_settings.db_pool_size,
@@ -49,8 +51,7 @@ class InfrastructureProvider(Provider):
             pool_pre_ping=True,
             connect_args={
                 "server_settings": {
-                    # pylint: disable=C0301
-                    "idle_in_transaction_session_timeout": f"{app_settings.db_idle_in_transaction_session_timeout}",
+                    "idle_in_transaction_session_timeout": f"{db_idle_timeout}",
                     "statement_timeout": f"{app_settings.db_statement_timeout}",
                 }
             },

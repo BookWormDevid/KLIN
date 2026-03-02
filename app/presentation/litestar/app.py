@@ -22,6 +22,7 @@ from litestar.static_files import StaticFilesConfig
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
 from app.presentation.litestar.controllers import api_router
 
+
 # Путь к фронтенду
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
 

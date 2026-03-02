@@ -9,6 +9,7 @@ from .klin import (
     IKlinRepository,
 )
 
+
 __all__ = (
     "IKlinRepository",
     "IKlinInference",

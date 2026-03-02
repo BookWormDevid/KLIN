@@ -11,6 +11,7 @@ from typing import Any, TypeVar
 
 from .exceptions import EnvVariableNotExistError
 
+
 TProp = TypeVar("TProp")
 
 

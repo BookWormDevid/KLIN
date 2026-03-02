@@ -5,6 +5,7 @@ from mlflow.tracking import MlflowClient
 
 import mlflow
 
+
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 mlflow_db_path = BASE_DIR / "mlflow" / "mlflow.db"
 

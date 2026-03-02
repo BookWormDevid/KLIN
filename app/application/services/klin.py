@@ -62,7 +62,7 @@ class KlinService:
             klin.state = ProcessingState.FINISHED
             await self._klin_callback_sender.post_consumer(klin)
             print(
-                f"✅ Успех : {klin.mae}, {klin.yolo}, {klin.objects}, {klin.all_classes}"
+                f"✅ Успех :{klin.mae}, {klin.yolo}, {klin.objects}, {klin.all_classes}"
             )
 
         except Exception as e:

@@ -1,0 +1,51 @@
+[MASTER]
+ignore = migrations, .venv, venv, .env
+max-module-lines = 1200
+jobs = 0
+
+[MESSAGES CONTROL]
+disable =
+    broad-exception-caught,
+
+
+[DESIGN]
+max-locals = 30
+max-statements = 60
+max-branches = 15
+max-nested-blocks = 5
+min-public-methods = 1
+
+[FORMAT]
+max-line-length = 120
+docstring-min-length = 5
+
+[VARIABLES]
+dummy-variables-rgx = _|dummy|ignore
+
+[BASIC]
+# По умолчанию: [a-z_][a-z0-9_]{2,30}$
+# variable-rgx = [a-z_][a-z0-9_]{0,30}$
+# function-rgx = [a-z_][a-z0-9_]{2,50}$
+# class-rgx = [A-Z_][a-zA-Z0-9]+$
+# const-rgx = (([A-Z_][A-Z0-9_]*)|(__.*__))$
+# argument-rgx = [a-z_][a-z0-9_]{0,30}$
+
+[IMPORTS]
+known-standard-library = sys, os, re, typing, collections, datetime
+known-third-party = flask, pytest, sqlalchemy
+
+[TYPECHECK]
+ignored-classes = SQLAlchemy, scoped_session
+
+generated-members =
+    request,
+    response,
+    status_code,
+    json,
+    text
+
+[MISCELLANEOUS]
+notes = FIXME, XXX, TODO
+
+[LOGGING]
+logging-format-style = old

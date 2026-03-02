@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
+
 # Папка с тестовыми видео
 video_folder = r"C:\Users\meksi\Desktop\d"  # ← поменяй на свою
 
@@ -14,9 +15,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_path = r"/videomae_results/videomae-ufc-crime"
 
 processor = VideoMAEImageProcessor.from_pretrained(model_path, local_files_only=True)
+
 model = VideoMAEForVideoClassification.from_pretrained(
     model_path, local_files_only=True, ignore_mismatched_sizes=True
 )
+
 model = model.to(device)  # type: ignore[arg-type]
 model.eval()
 
@@ -121,6 +124,6 @@ with torch.no_grad():
 
         print(f"Файл: {filename}")
         print(
-            f"→ Предсказание: {pred_label} (id {pred_idx}) | уверенность: {confidence:.3f}"
+            f" Предсказание: {pred_label} (id {pred_idx})уверенность: {confidence:.3f}"
         )
         print("-" * 60)

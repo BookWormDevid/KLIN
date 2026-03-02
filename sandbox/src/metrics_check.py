@@ -61,7 +61,8 @@ class MetricCheck:
         for layer, row in layer_summary.head(10).iterrows():
             trainable_pct = row["trainable"] * 100
             print(
-                f"  {layer:20} {row['parameters']:>12,} params ({trainable_pct:.1f}% trainable)"
+                f"  {layer:20} {row['parameters']:>12,}params"
+                f" ({trainable_pct:.1f}% trainable)"
             )
 
         return layer_df
@@ -141,11 +142,9 @@ class MetricCheck:
             # Вывод числовой статистики
             print(f"\n📈 СТАТИСТИКА МОДЕЛИ {model_name}:")
             print("   Веса классификатора:")
-            print(f"     - Среднее: {stats_data['Среднее']:.6f}")
-            print(f"     - Стандартное отклонение: {stats_data['Стд. откл.']:.6f}")
-            print(
-                f"     - Диапазон: [{stats_data['Мин.']:.6f}, {stats_data['Макс.']:.6f}]"
-            )
+            print(f"- Среднее: {stats_data['Среднее']:.6f}")
+            print(f"- Стандартное отклонение: {stats_data['Стд. откл.']:.6f}")
+            print(f"- Диапазон: [{stats_data['Мин.']:.6f}, {stats_data['Макс.']:.6f}]")
             print(f"   Смещения по классам: {classifier_bias}")
 
         except Exception as e:

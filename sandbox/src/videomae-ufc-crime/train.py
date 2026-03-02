@@ -15,6 +15,7 @@ from transformers import (
 
 import mlflow
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Маппинг классов
 # ──────────────────────────────────────────────────────────────────────────────
@@ -214,7 +215,8 @@ with mlflow.start_run(run_name="videomae-large-ucf-crime"):
         compute_metrics=compute_metrics,
     )
 
-    # Включаем автологгер для transformers → mlflow будет логировать loss, accuracy и т.д.
+    # Включаем автологгер для transformers
+    # mlflow будет логировать loss, accuracy и т.д.
     mlflow_pytorch.autolog(log_models=False)  # модели сохраним вручную
 
     print("Начало обучения...")

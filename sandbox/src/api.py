@@ -10,6 +10,7 @@ from pydantic import BaseModel
 # Импортируем ваш существующий VideoClassifier
 from src.predict import VideoClassifier
 
+
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
 app = FastAPI(
@@ -94,7 +95,8 @@ async def predict_video(file: UploadFile = default_files):
     if file_ext not in allowed_extensions:
         raise HTTPException(
             status_code=400,
-            detail=f"Неподдерживаемый формат файла. Разрешенные форматы: {', '.join(allowed_extensions)}",
+            detail="Неподдерживаемый формат файла. Разрешенные форматы:"
+            f"{', '.join(allowed_extensions)}",
         )
 
     # Создаем временный файл для загруженного видео

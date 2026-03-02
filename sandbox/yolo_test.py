@@ -2,6 +2,7 @@ from pathlib import Path
 
 from ultralytics import YOLO
 
+
 # Путь к папке проекта
 parent = Path(__file__).resolve().parent.parent
 

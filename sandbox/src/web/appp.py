@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+
 app = FastAPI(title="КЛИН - Анализ видео", version="1.0")
 
 # Статические файлы
@@ -32,7 +33,8 @@ async def analyze_video_file(file: UploadFile = File(...)):  # NOQA: B008
             return JSONResponse(
                 content={
                     "success": False,
-                    "error": f"Неподдерживаемый формат. Используйте: {', '.join(allowed)}",
+                    "error": "Неподдерживаемый формат. Используйте:"
+                    f" {', '.join(allowed)}",
                 },
                 status_code=400,
             )
@@ -103,7 +105,8 @@ async def analyze_video_url(request: Request):
         return JSONResponse(
             content={
                 "success": False,
-                "error": "Таймаут при загрузке видео. Попробуйте другое видео или загрузите файл.",
+                "error": "Таймаут при загрузке видео."
+                "Попробуйте другое видео или загрузите файл.",
             },
             status_code=408,
         )

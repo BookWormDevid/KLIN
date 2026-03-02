@@ -3,12 +3,14 @@
 Процессор для взаимодействия с приложением litestar
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
 import time
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -24,12 +26,13 @@ from ultralytics import YOLO
 from app.application.dto import KlinResultDto
 from app.application.interfaces import IKlinCallbackSender, IKlinInference
 from app.config import app_settings
-from app.models import KlinModel
+from app.models.klin import KlinModel
+
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
-mae_dir = BASE_DIR_MAE / app_settings.videomae_path
+MAE_DIR = BASE_DIR_MAE / app_settings.videomae_path
 
 
 @dataclass
@@ -59,14 +62,23 @@ class ProcessorConfig:
     Переменные для процессора
     """
 
-    chunk_size = 16
-    frame_size = (224, 224)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    chunk_size: int = 16
+    frame_size: tuple[int, int] = (224, 224)
+    device: torch.device = field(
+        default_factory=lambda: torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+    )
+    yolo_stride: int = 2
+    yolo_conf: float = 0.6
+    yolo_iou: float = 0.45
+    yolo_classes: list[int] = field(default_factory=lambda: [0])
 
 
 class InferenceProcessor(IKlinInference):
     """
-    Процессор. Содержит методы подключения моделей, обработки видео с помощью videomae и yolo.
+    Процессор. Содержит методы подключения моделей,
+    обработки видео с помощью videomae и yolo.
     """
 
     def __init__(self) -> None:
@@ -85,6 +97,19 @@ class InferenceProcessor(IKlinInference):
         self.yolo = YoloConfig()
         self.processing = ProcessorConfig()
 
+    def _ensure_models_loaded(self) -> None:
+        """
+        Проверка, что обе модели загружены.
+        """
+        if self.mae.model is None:
+            self.ensure_mae_model_loaded()
+        if self.yolo.yolo is None:
+            self.ensure_yolo_loaded()
+
+        assert self.mae.model is not None
+        assert self.mae.processor is not None
+        assert self.yolo.yolo is not None
+
     def ensure_mae_model_loaded(self) -> None:
         """
         Проверка, что модель videomae загружена.
@@ -93,6 +118,7 @@ class InferenceProcessor(IKlinInference):
         """
         if self.mae.model is not None:
             return
+
         self.mae.mae_model = self.find_mae_path()
         self.mae.processor = VideoMAEImageProcessor.from_pretrained(
             self.mae.mae_model, local_files_only=True
@@ -110,10 +136,7 @@ class InferenceProcessor(IKlinInference):
         Автоматически найти путь к модели videomae
         Ищет по заданному пути
         """
-
-        base_dir_mae = Path(__file__).parent.parent.parent.parent.parent
-        print(base_dir_mae)
-        self.mae.mae_model = str(mae_dir)
+        self.mae.mae_model = str(MAE_DIR)
         return self.mae.mae_model
 
     def find_yolo_path(self) -> str:
@@ -122,7 +145,6 @@ class InferenceProcessor(IKlinInference):
         Ищет по заданному пути
         """
         base_yolo_path = Path(__file__).parent.parent.parent.parent.parent
-        print(base_yolo_path)
         self.yolo.yolo_path = str(base_yolo_path / "models" / "yolov8x.pt")
         return self.yolo.yolo_path
 
@@ -138,7 +160,7 @@ class InferenceProcessor(IKlinInference):
 
         self.yolo.yolo.to(self.processing.device)
 
-    async def run_yolo(self, frames: np.ndarray, fps: float) -> list[dict]:
+    async def run_yolo(self, frames: np.ndarray, fps: float) -> list[dict[str, Any]]:
         """
         Запуск yolo
         Возвращает список с
@@ -148,22 +170,24 @@ class InferenceProcessor(IKlinInference):
         """
         assert self.yolo.yolo is not None
 
-        results = []
-        n = 2
+        results: list[dict[str, Any]] = []
+        step = self.processing.yolo_stride
+        use_half = self.processing.device.type != "cpu"
 
-        for i in range(0, len(frames), n):  # каждый n-й кадр
+        for i in range(0, len(frames), step):
             frame = frames[i]
-            timesteps = i / fps  # время в секундах
+            timesteps = i / fps if fps > 0 else 0.0
 
             preds = self.yolo.yolo(
                 frame,
-                conf=0.6,  # уверенность с которой будет показывать. Меньше conf не будет показывать
-                iou=0.45,  # подавить дубликаты
-                classes=[0],  # классы объектов
-                half=True,  # fp16 для скорости
-                show=False,  # показывает обрабатываемый ролик
+                conf=self.processing.yolo_conf,
+                iou=self.processing.yolo_iou,
+                classes=self.processing.yolo_classes,
+                half=use_half,
+                show=False,
                 save=False,
             )
+
             for r in preds:
                 if r.boxes is None:
                     continue
@@ -180,16 +204,18 @@ class InferenceProcessor(IKlinInference):
 
         return results
 
-    async def _read_video_frames(self, video_path: str) -> tuple:
+    async def _read_video_frames(
+        self, video_path: str
+    ) -> tuple[np.ndarray, dict[str, Any]]:
         """Чтение видео и возврат кадров + информация о видео"""
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError(f"Невозможно открыть видео: {video_path}")
 
-        frames = []
+        frames: list[np.ndarray] = []
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        duration = total_frames / fps if fps > 0 else 0
+        fps = float(cap.get(cv2.CAP_PROP_FPS))
+        duration = (total_frames / fps) if fps > 0 else 0.0
 
         for _ in range(total_frames):
             ret, frame = cap.read()
@@ -201,7 +227,7 @@ class InferenceProcessor(IKlinInference):
 
         cap.release()
 
-        if len(frames) == 0:
+        if not frames:
             raise ValueError(f"Кадры не прочитаны: {video_path}")
 
         video_info = {
@@ -232,8 +258,89 @@ class InferenceProcessor(IKlinInference):
                 "Чанки не создались: видео очень короткое даже после паддинга"
             )
 
+        frame_h, frame_w = self.processing.frame_size
         return frames.reshape(
-            num_chunks, self.processing.chunk_size, *self.processing.frame_size, 3
+            num_chunks, self.processing.chunk_size, frame_h, frame_w, 3
+        )
+
+    async def _process_mae(
+        self, *, chunks: np.ndarray, fps: float, actual_frames: int
+    ) -> list[dict[str, Any]]:
+        """
+        Классификация чанков через VideoMAE.
+        """
+        assert self.mae.model is not None
+        assert self.mae.processor is not None
+
+        results: list[dict[str, Any]] = []
+        id2label: dict[int, str] = self.mae.model.config.id2label or {}
+
+        with torch.no_grad():
+            for i, chunk in enumerate(chunks):
+                start_frame = i * self.processing.chunk_size
+                if start_frame >= actual_frames:
+                    break
+
+                end_frame = min((i + 1) * self.processing.chunk_size, actual_frames) - 1
+                start_time = start_frame / fps if fps > 0 else 0.0
+                end_time = (end_frame + 1) / fps if fps > 0 else 0.0
+
+                inputs = self.mae.processor(list(chunk), return_tensors="pt").to(
+                    self.processing.device
+                )
+                outputs = self.mae.model(**inputs)
+                logits = outputs.logits[0]
+                probs = torch.nn.functional.softmax(logits, dim=0)
+
+                pred_idx = int(logits.argmax().item())
+                conf = float(probs[pred_idx].item())
+                answer = id2label.get(pred_idx, str(pred_idx))
+
+                results.append(
+                    {
+                        "time": [start_time, end_time],
+                        "answer": answer,
+                        "confident": conf,
+                    }
+                )
+
+        return results
+
+    async def _process_yolo(
+        self, *, frames: np.ndarray, fps: float
+    ) -> tuple[dict[float, list[list[float]]], list[str]]:
+        """
+        Детекция объектов через YOLO + агрегация bbox по таймстемпам.
+        """
+        yolo_results = await self.run_yolo(frames, fps)
+
+        bbox_by_time: dict[float, list[list[float]]] = defaultdict(list)
+        detected_class_ids: set[int] = set()
+
+        for detection in yolo_results:
+            timesteps = float(detection["timesteps"])
+            bbox_by_time[timesteps].append(detection["bbox"])
+            detected_class_ids.add(int(detection["class_id"]))
+
+        assert self.yolo.yolo is not None
+        names = self.yolo.yolo.names
+        objects = [names[class_id] for class_id in detected_class_ids]
+        return dict(bbox_by_time), objects
+
+    def _log_processing(
+        self, video_name: str, video_info: dict[str, Any], processing_time: float
+    ) -> None:
+        """
+        Финальный лог обработки.
+        """
+        logger.info(
+            "РЕЗУЛЬТАТЫ АНАЛИЗА ВИДЕО: video=%s"
+            "duration=%.1fs processing=%.2fs frames=%d/%d",
+            video_name,
+            float(video_info["duration"]),
+            processing_time,
+            int(video_info["frames_read"]),
+            int(video_info["total_frames"]),
         )
 
     async def analyze(self, model: KlinModel) -> KlinResultDto:
@@ -242,8 +349,7 @@ class InferenceProcessor(IKlinInference):
         Проверяет, что все модели загружены
         Читает кадры с видео
         Делит видео на чанки для обработки
-        Обработка videomae
-        Обработка yolo
+        Обработка videomae + yolo
         Возвращает:
         список mae [{time: [start_time_chunk, end_time_chunk], answer, confident}]
         start_time_chunk - старт времени, когда найден класс
@@ -256,111 +362,40 @@ class InferenceProcessor(IKlinInference):
         all_classes - список все классы что выдало videomae
         objects - список все классы что выдало yolo
         """
-        # Загрузка моделей (один раз)
-        if self.mae.model is None:
-            self.ensure_mae_model_loaded()
-        if self.yolo.yolo is None:
-            self.ensure_yolo_loaded()
-        assert self.mae.model is not None
-        assert self.mae.processor is not None
-        assert self.yolo.yolo is not None
-        start_time = time.time()
+        self._ensure_models_loaded()
+
+        start_ts = time.time()
         video_name = os.path.basename(model.video_path)
+
         try:
-            print(f"[API] Начало обработки видео: {video_name}")
-            # ---- Чтение видео ----
+            logger.info("[API] Начало обработки видео: %s", video_name)
+
             frames, video_info = await self._read_video_frames(model.video_path)
-            fps = video_info["fps"]
-            print(
-                f"[API] Прочитано кадров: {len(frames)} из {video_info['total_frames']}"
-            )
-            # ---- Подготовка чанков для MAE ----
+            fps = float(video_info["fps"])
             chunks = await self._chunk_frames(frames)
-            print(f"[API] Создано чанков: {len(chunks)}")
-            # =====================================================
-            # MAE + YOLO
-            # =====================================================
-            with torch.no_grad():
-                # ---------- MAE ----------
-                chunk_results = []
-                actual_frames = video_info["frames_read"]
-                id2label: dict = self.mae.model.config.id2label or {}
-                for i, chunk in enumerate(chunks):
-                    start_frame = i * self.processing.chunk_size
-                    end_frame = (
-                        min((i + 1) * self.processing.chunk_size, actual_frames) - 1
-                    )
-                    if start_frame >= actual_frames:
-                        break
-                    start_time_chunk = start_frame / fps if fps > 0 else 0
-                    end_time_chunk = (end_frame + 1) / fps if fps > 0 else 0
-                    inputs = self.mae.processor(list(chunk), return_tensors="pt").to(
-                        self.processing.device
-                    )
-                    outputs = self.mae.model(**inputs)
-                    logits = outputs.logits[0]
-                    probabilities = torch.nn.functional.softmax(logits, dim=0)
-                    predicted_idx = int(logits.argmax().item())
-                    confident = float(probabilities[predicted_idx].item())
-                    answer = id2label.get(predicted_idx, str(predicted_idx))
-                    chunk_results.append(
-                        {
-                            "time": [start_time_chunk, end_time_chunk],
-                            "answer": answer,
-                            "confident": confident,
-                        }
-                    )
 
-                if chunk_results:
-                    all_classes = list(set(d["answer"] for d in chunk_results))
-                else:
-                    all_classes = []
+            mae_results = await self._process_mae(
+                chunks=chunks,
+                fps=fps,
+                actual_frames=int(video_info["frames_read"]),
+            )
+            yolo_bbox, detected_objects = await self._process_yolo(
+                frames=frames,
+                fps=fps,
+            )
+            all_classes = list({result["answer"] for result in mae_results})
 
-                # ---------- YOLO ----------
-                yolo_results = await self.run_yolo(frames, fps)
-                # =====================================================
-                # Обработка YOLO
-                # =====================================================
-                detected_classes = list({r["class_id"] for r in yolo_results})
-                detected_objects = []
-                if detected_classes:
-                    names = self.yolo.yolo.names
-                    detected_objects = [names[c] for c in detected_classes]
-                bbox_by_time = defaultdict(list)
-
-                for detection in yolo_results:
-                    timesteps = detection["timesteps"]
-                    bbox = detection["bbox"]
-                    bbox_by_time[timesteps].append(bbox)
-
-                bbox_dict = dict(bbox_by_time)
-
-            processing_time = time.time() - start_time
-            # ---- Лог ----
-            print("\n" + "=" * 60)
-            print("РЕЗУЛЬТАТЫ АНАЛИЗА ВИДЕО")
-            print("=" * 60)
-            print(f"Видео: {video_name}")
-            print(f"Длительность: {video_info['duration']:.1f} сек")
-            print(f"Время обработки: {processing_time:.2f} сек")
-            print("=" * 60 + "\n")
-
-            # json_result = {
-            #     "mae": chunk_results,
-            #     "yolo": bbox_dict,
-            #     "all_classes": all_classes,
-            #     "objects": detected_objects,
-            #     "bbox_by_time": bbox_dict,
-            # }
+            processing_time = time.time() - start_ts
+            self._log_processing(video_name, video_info, processing_time)
 
             return KlinResultDto(
-                mae=msgspec.json.encode(chunk_results).decode("utf-8"),
-                yolo=msgspec.json.encode(bbox_dict).decode("utf-8"),
+                mae=msgspec.json.encode(mae_results).decode("utf-8"),
+                yolo=msgspec.json.encode(yolo_bbox).decode("utf-8"),
                 all_classes=all_classes,
                 objects=detected_objects,
             )
-        except Exception as e:
-            logger.error(f"Ошибка обработки {e}")
+        except Exception as exc:
+            logger.exception("Ошибка обработки видео %s: %s", video_name, exc)
             raise
 
 

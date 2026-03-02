@@ -8,6 +8,7 @@ from app.application.services import KlinService
 from app.config import app_settings
 from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
 
+
 container = make_container(
     InfrastructureProvider(), ApplicationProvider(), VideoProvider()
 )

@@ -9,6 +9,7 @@ import torch
 from tqdm import tqdm  # type: ignore[import-untyped]
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
+
 BASE_DIR = pathlib.Path(__file__).parent.parent
 
 
@@ -186,10 +187,8 @@ def process_video_folder_simple(
 
 
 if __name__ == "__main__":
-    video_path = r"C:\Users\meksi\Desktop\d\Fighting023_x264.mp4"
-    model_path = (
-        r"C:\Users\meksi\Documents\GitHub\KLIN\videomae_results\videomae-ufc-crime"
-    )
+    video_path = ""
+    model_path = ""
 
     classifier = VideoFolderClassifier(model_path=model_path)
     result = classifier.predict_video(video_path)

@@ -11,6 +11,7 @@ from sqlalchemy import engine_from_config, pool
 from app.config import app_settings
 from app.models import Model
 
+
 config = context.config
 
 if config.config_file_name is not None:
