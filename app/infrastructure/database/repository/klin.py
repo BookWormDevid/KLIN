@@ -26,14 +26,25 @@ class KlinRepository(IKlinRepository):
         Получение всех столбцов по конкретному id
         """
         async with self.session() as session:
-            stmt = select(KlinModel).where(KlinModel.id == klin_id)
-            result = await session.execute(stmt)
-
-            klin = result.scalar_one_or_none()
-            if klin is None:
-                raise Exception(f"MAE with id {klin_id} does not exist")
-
+            query = select(KlinModel).where(KlinModel.id == klin_id).limit(1)
+            klin = await session.scalar(query)
+            if not klin:
+                raise ValueError
             return klin
+
+    async def get_first_n(self, count: int) -> list[KlinModel]:
+        """
+        Получить n количество последних строк в бд
+        """
+        async with self.session() as session:
+            mass_query = (
+                select(KlinModel).order_by(KlinModel.created_at.desc()).limit(count)
+            )
+            imfers = await session.execute(mass_query)
+            imfer_list: list[KlinModel] = list(imfers.scalars().all())
+            if not imfer_list:
+                raise ValueError
+            return imfer_list
 
     async def create(self, model: KlinModel) -> KlinModel:
         """
@@ -53,17 +64,3 @@ class KlinRepository(IKlinRepository):
             async with session.begin():
                 await session.merge(model)
             await session.commit()
-
-    async def get_first_n(self, count: int) -> list[KlinModel]:
-        """
-        Получить n количество последних строк в бд
-        """
-        async with self.session() as session:
-            mass_query = (
-                select(KlinModel).order_by(KlinModel.created_at.desc()).limit(count)
-            )
-            imfers = await session.execute(mass_query)
-            imfer_list: list[KlinModel] = list(imfers.scalars().all())
-            if not imfer_list:
-                raise ValueError
-            return imfer_list
