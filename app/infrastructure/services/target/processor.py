@@ -23,12 +23,14 @@ from ultralytics import YOLO
 
 from app.application.dto import KlinResultDto
 from app.application.interfaces import IKlinCallbackSender, IKlinInference
+from app.config import app_settings
 from app.models import KlinModel
 
 logger = logging.getLogger(__name__)
 
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
-mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
+mae_dir = BASE_DIR_MAE / app_settings.videomae_path
+
 
 @dataclass
 class VideoMAEConfig:

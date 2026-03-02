@@ -3,6 +3,7 @@
 """
 Базовая модель бд
 """
+
 import uuid
 from datetime import datetime, timezone
 
@@ -16,6 +17,7 @@ class Model(DeclarativeBase):
     """
     Инициализация базы данных
     """
+
     registry = mapper_registry
     metadata = mapper_registry.metadata
 
@@ -30,6 +32,7 @@ class BaseModel(Model):
     created_at когда создано новое поле
     updated_at когда поле обновлено последний раз
     """
+
     __abstract__ = True
 
     id: Mapped[uuid.UUID] = mapped_column(

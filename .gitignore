@@ -241,3 +241,4 @@ dvc_remote/
 .dvc/state-wal
 videos/
 models/*
+tmp/

@@ -20,6 +20,7 @@ mlflow/
 helpers/
 data/
 tests/
+tmp/
 start.bat
 ML_System_Design_Doc.md
 README.md

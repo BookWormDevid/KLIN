@@ -1,6 +1,7 @@
 """
 Описание состояний строк и свойств колонок в бд
 """
+
 # pylint: disable= too-few-public-methods
 import enum
 
@@ -14,6 +15,7 @@ class ProcessingState(str, enum.Enum):
     """
     Описание состояния строки для процессора
     """
+
     PENDING = "PENDING"
     FINISHED = "FINISHED"
     ERROR = "ERROR"
@@ -29,6 +31,7 @@ class KlinModel(BaseModel):
     all_classes - вывод всех классов, что нашёл videomae
     objects - вывод yolo bounding boxes на кадрах
     """
+
     __tablename__ = "MAE"
 
     response_url: Mapped[str | None] = mapped_column(nullable=True)

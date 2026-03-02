@@ -28,7 +28,18 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
+    default_videomae_path = "models/videomae-UCF-crime"
+
     Klin_queue = "Klin-queue"
+
+    @property
+    def videomae_path(self) -> str:
+        """
+        Источник videomae
+        """
+        return self.resolve_env_property(
+            "VIDEOMAE_PATH", str, default_value=self.default_videomae_path
+        )
 
     @property
     def database_url(self) -> str:
