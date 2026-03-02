@@ -12,7 +12,7 @@ video_folder = r"C:\Users\meksi\Desktop\d"  # ← поменяй на свою
 
 # Устройство
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model_path = r"/videomae_results/videomae-ufc-crime"
+model_path = r"/videomae_results/videomae-UCF-crime"
 
 processor = VideoMAEImageProcessor.from_pretrained(model_path, local_files_only=True)
 

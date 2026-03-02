@@ -52,7 +52,7 @@ class VideoClassifier:
 
         BASE_DIR_MAE = Path(__file__).parent.parent
         print(BASE_DIR_MAE)
-        mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-ufc-crime"
+        mae_dir = BASE_DIR_MAE / "videomae_results" / "videomae-UCF-crime"
 
         return str(mae_dir)
 
