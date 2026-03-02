@@ -14,7 +14,7 @@ node_modules
 images/
 videos/
 sandbox/
-prometheus/
+monitoring/
 mlruns/
 mlflow/
 helpers/
