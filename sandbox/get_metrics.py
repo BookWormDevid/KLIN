@@ -1,19 +1,27 @@
 import json
+import os
 import pathlib
 
+from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 
 import mlflow
 
 
+load_dotenv()
+
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 mlflow_db_path = BASE_DIR / "mlflow" / "mlflow.db"
 
-mlflow.set_tracking_uri(f"sqlite:///{mlflow_db_path.as_posix()}")
+mlflow_tracking_uri = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    f"sqlite:///{mlflow_db_path.as_posix()}",
+)
+mlflow.set_tracking_uri(mlflow_tracking_uri)
 print("Tracking URI:", mlflow.get_tracking_uri())
 
 client = MlflowClient()
-RUN_ID = "2fd3f5fed4a54019a050ad1b769b11bb"
+RUN_ID = os.getenv("MLFLOW_RUN_ID", "2fd3f5fed4a54019a050ad1b769b11bb")
 
 run = client.get_run(RUN_ID)
 
@@ -34,11 +42,14 @@ for k, v in params_dict.items():
 # ───────────────────────────────────────────────
 
 DB_CONFIG = {
-    "dbname": "ml",
-    "user": "postgres",
-    "password": "postgres",
-    "host": "localhost",
-    "port": "5432",
+    "dbname": os.getenv("ML_METRICS_DB_NAME", "ml"),
+    "user": os.getenv("ML_METRICS_DB_USER", os.getenv("POSTGRES_USER", "")),
+    "password": os.getenv(
+        "ML_METRICS_DB_PASSWORD",
+        os.getenv("POSTGRES_PASSWORD", ""),
+    ),
+    "host": os.getenv("ML_METRICS_DB_HOST", "localhost"),
+    "port": os.getenv("ML_METRICS_DB_PORT", "5432"),
 }
 
 # Преобразуем словари в JSON-строки

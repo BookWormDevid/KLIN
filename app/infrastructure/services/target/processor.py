@@ -224,13 +224,13 @@ class InferenceProcessor(IKlinInference):
         start_frame: int,
         end_frame: int,
         fps: float,
-        id2label: dict[int, str],
     ) -> dict[str, Any]:
         """
         Классификация одного чанка кадров через VideoMAE.
         """
         assert self.mae.model is not None
         assert self.mae.processor is not None
+        id2label: dict[int, str] = self.mae.model.config.id2label or {}
 
         inputs = self.mae.processor(chunk_frames, return_tensors="pt").to(
             self.processing.device
@@ -282,8 +282,6 @@ class InferenceProcessor(IKlinInference):
         chunk_buffer: list[np.ndarray] = []
         chunk_start_frame = 0
         frame_idx = 0
-        id2label: dict[int, str] = self.mae.model.config.id2label or {}
-
         try:
             with torch.no_grad():
                 while True:
@@ -313,7 +311,6 @@ class InferenceProcessor(IKlinInference):
                                 start_frame=chunk_start_frame,
                                 end_frame=frame_idx,
                                 fps=fps,
-                                id2label=id2label,
                             )
                         )
                         chunk_buffer = []
@@ -335,7 +332,6 @@ class InferenceProcessor(IKlinInference):
                             start_frame=chunk_start_frame,
                             end_frame=frame_idx - 1,
                             fps=fps,
-                            id2label=id2label,
                         )
                     )
         finally:

@@ -31,6 +31,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.46",
     "alembic>=1.18.4",
     "python-dotenv>=1.2.1",
+    "pytorchvideo>=0.1.5",
 ]
 
 
@@ -62,6 +63,7 @@ dev = [
     "flake8>=7.3.0",
     "pylint>=4.0.5",
     "uvicorn>=0.41.0",
+    "pytest>=9.0.2",
 ]
 
 
@@ -105,6 +107,9 @@ select = [
 isort.lines-after-imports = 2
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = ["--import-mode=prepend"]
 markers = [
     "???: tests that require a running ??? inference server",
 ]

@@ -17,7 +17,7 @@ pre-commit install # Если надо менять код
 
 ### Окружениe
 
-! ВАЖНО ! Сделать .env файл, с полями как у example.env
+! ВАЖНО ! Сделать `.env` файл по `example.env` и заполнить все значения без дефолтных паролей.
 
 ```bash
 docker compose -f docker-compose.infra.yml up --build -d
@@ -30,6 +30,23 @@ docker compose -f docker-compose.yml up --build -d
 make # Линтер Ruff + Mypy + PyLint
 ```
 
+### EDA и обучение VideoMAE (все Action Recognition splits)
+
+```bash
+# EDA по всем fold train_*.txt/test_*.txt (по умолчанию 13 классов без Normal)
+uv run python sandbox/src/eda_action_splits.py
+
+# Если нужно EDA с Normal классом (14 классов)
+uv run python sandbox/src/eda_action_splits.py --include-normal
+
+# Обучение VideoMAE по всем fold (k-fold цикл) + логирование в MLflow
+uv run python sandbox/src/train.py
+```
+
+MLflow tracking URI берется из переменной окружения `MLFLOW_TRACKING_URI`.
+Если переменная не задана, используется локальная SQLite база `mlflow/mlflow.db`.
+Для обучения с `Normal` классом установите `INCLUDE_NORMAL_CLASS=1` перед запуском train.
+
 ### API
 
 **<http://0.0.0.0:8008/api/docs>**
@@ -37,6 +54,10 @@ make # Линтер Ruff + Mypy + PyLint
 ### Web Site
 
 **<http://0.0.0.0:8080>**
+
+### Alertmanager
+
+**<http://alertmanager.localhost>**
 
 ### Что делать дальше?
 

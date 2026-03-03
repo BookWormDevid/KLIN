@@ -8,7 +8,7 @@ services:
       networks:
         - web
       environment:
-        DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgresql:5432/klin?sslmode=disable"
+        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/klin?sslmode=disable"
       ports:
         - "9187:9187"
       depends_on:
@@ -20,7 +20,7 @@ services:
       networks:
         - web
       environment:
-        DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgresql:5432/ml?sslmode=disable"
+        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/ml?sslmode=disable"
       ports:
         - "9188:9187"
       depends_on:
@@ -49,8 +49,8 @@ services:
         image: postgres:17.0
         restart: unless-stopped
         environment:
-            POSTGRES_USER: postgres
-            POSTGRES_PASSWORD: postgres
+            POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
             POSTGRES_MAX_CONNECTIONS: 200
         networks:
             - web
@@ -66,17 +66,17 @@ services:
             - "5672:5672"
             - "15672:15672"
         environment:
-            RABBITMQ_DEFAULT_USER: rabbitmq
-            RABBITMQ_DEFAULT_PASS: rabbitmq
+            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
+            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
 
     rabbitmq_exporter:
         image: kbudde/rabbitmq-exporter:latest
         container_name: rabbitmq_exporter
         restart: unless-stopped
         environment:
-            RABBITMQ_URL: "http://rabbitmq:rabbitmq@rabbitmq:15672"
-            RABBIT_USER: "rabbitmq"
-            RABBIT_PASSWORD: "rabbitmq"
+            RABBITMQ_URL: "http://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:15672"
+            RABBIT_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
+            RABBIT_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
         networks:
             - web
         ports:
@@ -107,8 +107,8 @@ services:
         image: dpage/pgadmin4
         restart: unless-stopped
         environment:
-            PGADMIN_DEFAULT_EMAIL: admin@admin.com
-            PGADMIN_DEFAULT_PASSWORD: admin
+            PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?PGADMIN_DEFAULT_EMAIL is required}
+            PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}
         labels:
             - 'traefik.enable=true'
             - 'traefik.docker.network=web'
@@ -129,6 +129,7 @@ services:
             - '9090:9090'
         volumes:
             - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+            - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
             - prometheus_data:/prometheus
         labels:
             - 'traefik.enable=true'
@@ -140,6 +141,35 @@ services:
         extra_hosts:
             - "host.docker.internal:host-gateway"
 
+    alertmanager:
+        image: prom/alertmanager:latest
+        restart: unless-stopped
+        networks:
+            - web
+        environment:
+            ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?ALERT_EMAIL_TO is required}
+            ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:?ALERT_EMAIL_FROM is required}
+            SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+            SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
+            SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
+            SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+            TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+            TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}
+        ports:
+            - '9093:9093'
+        volumes:
+            - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+        command:
+            - '--config.file=/etc/alertmanager/alertmanager.yml'
+            - '--config.expand-env'
+        labels:
+            - 'traefik.enable=true'
+            - 'traefik.docker.network=web'
+            - 'traefik.http.routers.alertmanager.rule=Host(`alertmanager.localhost`)'
+            - 'traefik.http.services.alertmanager.loadbalancer.server.port=9093'
+        depends_on:
+            - prometheus
+
     grafana:
       image: grafana/grafana-enterprise:latest
       restart: unless-stopped
@@ -150,7 +180,7 @@ services:
         - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
         - grafana_data:/var/lib/grafana
       environment:
-        - GF_SECURITY_ADMIN_PASSWORD=sheningans
+        - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
       labels:
         - 'traefik.enable=true'
         - 'traefik.docker.network=web'

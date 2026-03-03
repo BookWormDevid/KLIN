@@ -28,7 +28,7 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       RABBIT_URL: ${RABBIT_URL}
     command:
-      [ "/code/.venv/bin/python", "-m", "faststream", "run", "app.presentation.processor_worker.app:app" ]
+      [ "/code/.venv/bin/python", "-m", "faststream", "run", "app.presentation.faststream.app:app" ]
 networks:
   web:
     external: true
