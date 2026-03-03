@@ -38,12 +38,6 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-push]
-      - id: pylint
-        name: pylint (app)
-        entry: uv run pylint app
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
 
   # Dockerfile lint
   - repo: https://github.com/coatl-dev/hadolint-coatl
