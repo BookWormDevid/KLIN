@@ -1,120 +1,155 @@
-# KLIN Klin Logical Inference Negation
+# KLIN (Klin Logical Inference Negation)
 
-**Система на ИИ моделях, которыя может находить, предсказывать и выделять агрессию на видеопотоке.**
+Сервис для детекции агрессии на видео:
+- API на Litestar
+- воркер на FastStream + RabbitMQ
+- PostgreSQL
+- мониторинг (Prometheus, Grafana, Alertmanager)
+- эксперименты и метрики через MLflow
 
-## Инструкция для запуска и дебага
+## Требования
 
-Не забыть что все консольные команды и запуски source надо делать в папке проекта!
+- `git`
+- `python` 3.10+
+- `uv`
+- `docker` + Docker Compose plugin
+- `make` (опционально, для удобных команд)
 
-### Виртуальное окружение
+## 1) Установка uv
+
+Linux/macOS:
 
 ```bash
-uv venv
-uv sync
-uv sync --dev # Если надо менять код
-pre-commit install # Если надо менять код
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### Окружениe
+Windows (PowerShell):
 
-! ВАЖНО ! Сделать `.env` файл по `example.env` и заполнить все значения без дефолтных паролей.
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+## 2) Установка зависимостей проекта
+
+```bash
+git clone https://github.com/BookWormDevid/KLIN.git
+cd KLIN
+
+uv venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+
+uv sync
+uv sync --dev # Если планируете менять код
+```
+
+## 3) Настройка `.env`
+
+```bash
+cp example.env .env
+# Windows: copy example.env .env
+```
+
+Что обязательно сделать:
+- заменить все значения вида `*_change_me`
+- убедиться, что `DATABASE_URL` и `RABBIT_URL` указывают на рабочие сервисы
+- при обучении настроить `MLFLOW_TRACKING_URI` (или оставить локальный SQLite из примера)
+
+Минимум для запуска API/воркера:
+- `DATABASE_URL`
+- `RABBIT_URL`
+
+Для полного запуска `docker-compose.infra.yml` заполните все переменные из `example.env`.
+
+## 4) Запуск в Docker (рекомендуется)
+
+Сеть `web` в compose-файлах объявлена как `external`, поэтому ее нужно создать один раз:
+
+```bash
+docker network create web
+```
+
+Поднять инфраструктуру:
 
 ```bash
 docker compose -f docker-compose.infra.yml up --build -d
+```
+
+Поднять API и воркер:
+
+```bash
 docker compose -f docker-compose.yml up --build -d
 ```
 
-### Общие комманды из makefile
+## 5) Локальный запуск приложения (без Docker для API/воркера)
+
+Поднимите зависимости (PostgreSQL и RabbitMQ), затем запускайте процессы из локального окружения:
 
 ```bash
-make # Линтер Ruff + Mypy + PyLint
+docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq
+
+uv run -m uvicorn --host 0.0.0.0 --port 8000 app.presentation.litestar.run:app
+uv run -m faststream run app.presentation.faststream.app:app
 ```
 
-### EDA и обучение VideoMAE (все Action Recognition splits)
+## 6) Полезные URL
+
+При запуске через Docker + Traefik:
+- API docs: `http://localhost/api/docs`
+- Health: `http://localhost/api/v1/Klin/health/live`
+- RabbitMQ UI: `http://localhost:15672`
+- Prometheus: `http://prometheus.localhost`
+- Grafana: `http://grafana.localhost`
+- Alertmanager: `http://alertmanager.localhost`
+- PgAdmin: `http://pgadmin.localhost`
+
+При локальном запуске API без Traefik:
+- API docs: `http://localhost:8000/api/docs`
+
+## 7) Команды для разработки
+
+Линтеры/статический анализ:
 
 ```bash
-# EDA по всем fold train_*.txt/test_*.txt (по умолчанию 13 классов без Normal)
+make
+```
+
+Тесты:
+
+```bash
+uv run pytest
+```
+
+Pre-commit hooks:
+
+```bash
+uv run pre-commit install
+uv run pre-commit install --hook-type pre-push
+
+uv run pre-commit run --all-files
+uv run pre-commit run --hook-stage pre-push --all-files
+```
+
+## 8) EDA и обучение VideoMAE
+
+```bash
+# EDA по action splits (13 классов, без Normal)
 uv run python sandbox/src/eda_action_splits.py
 
-# Если нужно EDA с Normal классом (14 классов)
+# EDA c классом Normal (14 классов)
 uv run python sandbox/src/eda_action_splits.py --include-normal
 
-# Обучение VideoMAE по всем fold (k-fold цикл) + логирование в MLflow
+# Обучение VideoMAE + логирование в MLflow
 uv run python sandbox/src/train.py
 ```
 
-MLflow tracking URI берется из переменной окружения `MLFLOW_TRACKING_URI`.
-Если переменная не задана, используется локальная SQLite база `mlflow/mlflow.db`.
-Для обучения с `Normal` классом установите `INCLUDE_NORMAL_CLASS=1` перед запуском train.
+## 9) Остановка сервисов
 
-### API
+```bash
+docker compose -f docker-compose.yml down # или stop
+docker compose -f docker-compose.infra.yml down # или stop, что удобнее
+```
 
-**<http://0.0.0.0:8008/api/docs>**
+## Документация
 
-### Web Site
-
-**<http://0.0.0.0:8080>**
-
-### Alertmanager
-
-**<http://alertmanager.localhost>**
-
-### Что делать дальше?
-
-Тест процессора. Изменить формат чтения видео. Оценивать каждый чанк и выводить результат по нему. Вывод всех классов что нашёл со всех чанков. Всё вместе положить в json.
-get в каком формате отправить данные - json(time: tuple(start: float, end: float), answer: str, confident: float), objects, bounding box, timesteps всё с yolo.
-get_filltered фильтровать по запросу answer в бд.
-
-1. Bounding box от yolo хранить и выводить xyxyn
-
-#### ML System Design Doc +-
-
-#### Оформленный репозиторий сервиса
-
-- Github/Gitlab репозиторий с историей коммитов +-
-- Код в Clean Architecture +
-- Покрытие юнит-тестами > 70% -
-- Есть понятный Readme -
-
-#### Оформленный сервис
-
-- Код имеет pin зависимостей через uv +
-- Есть dockerfile +-
-- Настроен CI/CD деплоя на удаленный сервер с push моделью передачи -
-- Образы залиты в хранилище образов -
-- При сборке в пайплайне успешно проходят линтеры: flake8, isort, pylint, mypy, black. Отключение линтеров в коде не допускается +
-- Секреты прокинуты через .env и хранилища секретов +
-
-#### Батчевый сервис
-
-- Есть рабочий Airflow DAG, основанный на коде проекта
-- (Нужен отдельный docker образ для чего то вроде triton)
-- (DAG по дате исопользовать)
-- Использован DockerOperator -
-- Обеспечена идемпотентность -
-- Продемонстрирован бэкфилл -
-
-#### REST-сервис?
-
-- Имеется не менее трех эндпоинтов +
-- Есть healthcheck +
-- Есть OpenAPI документация в Swagger +
-
-#### Мониторинг ?
-
-- Логи приложения пишутся в Prometheus +
-- Логи отрисовываются в Grafana +
-- Настроен алертинг на почту/в телеграм -   (grafana | github actions)
-- Логируются ML-метрики качества, а также PSI и CSI, где возможно +-
-
-#### Архитектура решений ?
-
-- Есть ADR на батчевый и онлайн-сервисы -
-- Имеется схема в нотации C4 -
-
-#### Общие требования
-
-- Использование отчужденного postgres как базы +
-- Использование S3 для хранения артефактов, ничего локального -
-- Можно использовать внешние модели, но требования к мониторингу их качества обязательны (техническое качество, ML-качество) +-
-- Минус балл за любые креды (пароли/ключи) в гите, дефолтные креды на сервисах +
+- ML system design: `docs/ML_System_Design_Doc.md`
