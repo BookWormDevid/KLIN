@@ -3,10 +3,9 @@ import logging
 import math
 import os
 import pathlib
-import re
+import random
 import sys
 from collections import Counter
-from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -29,22 +28,39 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 DATA_ROOT_CANDIDATES = [
-    PROJECT_ROOT / "data" / "raw" / "klin",
     PROJECT_ROOT / "data" / "raw" / "KLIN",
+    PROJECT_ROOT / "data" / "raw" / "klin",
 ]
 DATASET_DIR_NAME = "Anomaly-detection-dataset"
-SPLITS_DIR_REL = pathlib.Path(
+SPLITS_REL = pathlib.Path(
     DATASET_DIR_NAME,
     "UCF_Crimes-Train-Test-Split",
     "Action_Regnition_splits",
 )
 CLASS_IDS_FILE = "ClassIDs.txt"
 
-LOCAL_MODEL_CKPT = PROJECT_ROOT / "models" / "videomae-large"
-MODEL_CKPT = (
-    str(LOCAL_MODEL_CKPT) if LOCAL_MODEL_CKPT.exists() else "MCG-NJU/videomae-large"
+LOCAL_MODEL_LARGE_CKPT = PROJECT_ROOT / "models" / "videomae-large"
+LOCAL_MODEL_BASE_CKPT = PROJECT_ROOT / "models" / "videomae-base"
+MODEL_CKPT_EXPLICIT = os.getenv("MODEL_CKPT") is not None
+DEFAULT_MODEL_CKPT = os.getenv(
+    "MODEL_CKPT",
+    (
+        str(LOCAL_MODEL_LARGE_CKPT)
+        if LOCAL_MODEL_LARGE_CKPT.exists()
+        else "MCG-NJU/videomae-large"
+    ),
 )
-OUTPUT_DIR = PROJECT_ROOT / "videomae_results" / "videomae-UCF-crime"
+SAFE_MODEL_CKPT = os.getenv(
+    "SAFE_MODEL_CKPT",
+    (
+        str(LOCAL_MODEL_BASE_CKPT)
+        if LOCAL_MODEL_BASE_CKPT.exists()
+        else "MCG-NJU/videomae-base"
+    ),
+)
+
+TRAIN_SPLIT_FILE = os.getenv("TRAIN_SPLIT_FILE", "train_001.txt")
+TEST_SPLIT_FILE = os.getenv("TEST_SPLIT_FILE", "test_001.txt")
 
 NUM_EPOCHS = int(os.getenv("NUM_EPOCHS", "30"))
 LEARNING_RATE = float(os.getenv("LEARNING_RATE", "5e-5"))
@@ -52,25 +68,109 @@ WARMUP_RATIO = float(os.getenv("WARMUP_RATIO", "0.1"))
 VAL_RATIO = float(os.getenv("VAL_RATIO", "0.1"))
 SEED = int(os.getenv("SEED", "42"))
 
-SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "4"))
 FPS = float(os.getenv("FPS", "30"))
-TEMPORAL_MODE = os.getenv("TEMPORAL_MODE", "hybrid").strip().lower()
-GLOBAL_SAMPLE_RATE = int(os.getenv("GLOBAL_SAMPLE_RATE", "64"))
-EVAL_CLIPS_PER_VIDEO = max(1, int(os.getenv("EVAL_CLIPS_PER_VIDEO", "2")))
+SAMPLE_RATE = int(os.getenv("SAMPLE_RATE", "800"))
 
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"}
-NORMAL_CLASS_NAME = "Normal_Videos_event"
-INCLUDE_NORMAL_CLASS = os.getenv("INCLUDE_NORMAL_CLASS", "1").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-}
-NORMAL_VIDEO_DIR_CANDIDATES: list[str | pathlib.Path] = [
-    "Normal_Videos_for_Event_Recognition",
-    "Training-Normal-Videos-Part-1",
-    "Training-Normal-Videos-Part-2",
-    pathlib.Path("Testing_Normal_Videos", "Testing_Normal_Videos_Anomaly"),
-]
+CUDA_AVAILABLE = torch.cuda.is_available()
+DEVICE_VRAM_GB = (
+    torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    if CUDA_AVAILABLE
+    else None
+)
+MEMORY_SAFE_MODE = os.getenv("MEMORY_SAFE_MODE", "auto").strip().lower()
+AUTO_SAFE_MODE = DEVICE_VRAM_GB is not None and DEVICE_VRAM_GB <= 16.5
+RUNTIME_SAFE_MODE = MEMORY_SAFE_MODE == "on" or (
+    MEMORY_SAFE_MODE == "auto" and AUTO_SAFE_MODE
+)
+MODEL_CKPT = (
+    DEFAULT_MODEL_CKPT
+    if MODEL_CKPT_EXPLICIT or not RUNTIME_SAFE_MODE
+    else SAFE_MODEL_CKPT
+)
+
+DEFAULT_TRAIN_BATCH_SIZE = 1 if RUNTIME_SAFE_MODE else 2
+DEFAULT_EVAL_BATCH_SIZE = 1 if RUNTIME_SAFE_MODE else DEFAULT_TRAIN_BATCH_SIZE
+DEFAULT_GRAD_ACC_STEPS = 32 if RUNTIME_SAFE_MODE else 4
+
+TRAIN_BATCH_SIZE = max(
+    1,
+    int(os.getenv("TRAIN_BATCH_SIZE", str(DEFAULT_TRAIN_BATCH_SIZE))),
+)
+EVAL_BATCH_SIZE = max(
+    1,
+    int(os.getenv("EVAL_BATCH_SIZE", str(DEFAULT_EVAL_BATCH_SIZE))),
+)
+GRAD_ACC_STEPS = max(
+    1,
+    int(os.getenv("GRAD_ACC_STEPS", str(DEFAULT_GRAD_ACC_STEPS))),
+)
+DATALOADER_NUM_WORKERS = max(
+    0,
+    int(os.getenv("DATALOADER_NUM_WORKERS", "0")),
+)
+USE_FP16 = os.getenv("USE_FP16", "1").strip().lower() in {"1", "true", "yes"}
+USE_BF16 = os.getenv(
+    "USE_BF16",
+    "1" if CUDA_AVAILABLE and torch.cuda.is_bf16_supported() else "0",
+).strip().lower() in {"1", "true", "yes"}
+USE_BF16 = USE_BF16 and CUDA_AVAILABLE and torch.cuda.is_bf16_supported()
+if USE_BF16:
+    USE_FP16 = False
+GRADIENT_CHECKPOINTING = os.getenv(
+    "GRADIENT_CHECKPOINTING",
+    "1" if RUNTIME_SAFE_MODE else "0",
+).strip().lower() in {"1", "true", "yes"}
+FREEZE_BACKBONE = os.getenv(
+    "FREEZE_BACKBONE",
+    "1" if RUNTIME_SAFE_MODE else "0",
+).strip().lower() in {"1", "true", "yes"}
+OPTIMIZER = os.getenv(
+    "OPTIMIZER",
+    "adafactor",
+)
+EVAL_ACCUMULATION_STEPS = max(
+    1,
+    int(os.getenv("EVAL_ACCUMULATION_STEPS", "1")),
+)
+DEFAULT_EVAL_STRATEGY = "epoch"
+DEFAULT_SAVE_STRATEGY = "no" if RUNTIME_SAFE_MODE else "epoch"
+EVAL_STRATEGY = os.getenv("EVAL_STRATEGY", DEFAULT_EVAL_STRATEGY)
+SAVE_STRATEGY = os.getenv("SAVE_STRATEGY", DEFAULT_SAVE_STRATEGY)
+LOAD_BEST_MODEL_AT_END = (
+    EVAL_STRATEGY != "no"
+    and SAVE_STRATEGY != "no"
+    and EVAL_STRATEGY == SAVE_STRATEGY
+    and os.getenv("LOAD_BEST_MODEL_AT_END", "1").strip().lower() in {"1", "true", "yes"}
+)
+if RUNTIME_SAFE_MODE:
+    TRAIN_BATCH_SIZE = 1
+    EVAL_BATCH_SIZE = 1
+    GRAD_ACC_STEPS = max(GRAD_ACC_STEPS, 32)
+    GRADIENT_CHECKPOINTING = True
+    FREEZE_BACKBONE = True
+    OPTIMIZER = "adafactor"
+    if "SAMPLE_RATE" not in os.environ:
+        SAMPLE_RATE = 8
+
+MAX_CLIP_DURATION_SECONDS = float(
+    os.getenv(
+        "MAX_CLIP_DURATION_SECONDS",
+        "12" if RUNTIME_SAFE_MODE else "120",
+    )
+)
+SAFE_CUDA_MEMORY_FRACTION = float(os.getenv("SAFE_CUDA_MEMORY_FRACTION", "0.9"))
+if CUDA_AVAILABLE and RUNTIME_SAFE_MODE:
+    try:
+        torch.cuda.set_per_process_memory_fraction(SAFE_CUDA_MEMORY_FRACTION, 0)
+    except (RuntimeError, ValueError):
+        pass
+
+OUTPUT_DIR = pathlib.Path(
+    os.getenv(
+        "OUTPUT_DIR",
+        str(PROJECT_ROOT / "videomae_results" / "videomae"),
+    )
+)
 
 MLFLOW_DB_PATH = PROJECT_ROOT / "mlflow" / "mlflow.db"
 MLFLOW_TRACKING_URI = os.getenv(
@@ -79,195 +179,49 @@ MLFLOW_TRACKING_URI = os.getenv(
 )
 MLFLOW_EXPERIMENT_NAME = os.getenv(
     "MLFLOW_EXPERIMENT_NAME",
-    "VideoMAE-UCF-Crime-All-Action-Splits",
+    "VideoMAE-UCF-Crime",
 )
-MLFLOW_RUN_NAME = os.getenv(
-    "MLFLOW_RUN_NAME",
-    "videomae-large-action-recognition-all-splits",
-)
+MLFLOW_RUN_NAME = os.getenv("MLFLOW_RUN_NAME", "videomae-large")
 
-FOLD_RE = re.compile(r"^(train|test)_(\d+)\.txt$")
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv"}
+NORMAL_CLASS_NAME = "Normal_Videos_event"
+NORMAL_VIDEO_DIR_CANDIDATES: list[str | pathlib.Path] = [
+    "Normal_Videos_for_Event_Recognition",
+    "Training-Normal-Videos-Part-1",
+    "Training-Normal-Videos-Part-2",
+    pathlib.Path("Testing_Normal_Videos", "Testing_Normal_Videos_Anomaly"),
+]
 
-VideoLabelItem = tuple[str, dict[Any, Any] | None]
-VideoLabelPairs = list[VideoLabelItem]
+VideoLabelPair = tuple[str, dict[str, int]]
+VideoLabelPairs = list[VideoLabelPair]
 VideoIndex = dict[tuple[str, str], pathlib.Path]
 
 
-@dataclass(frozen=True)
-class RuntimeConfig:
-    train_batch_size: int
-    eval_batch_size: int
-    grad_accum_steps: int
-    eval_accumulation_steps: int
-    dataloader_num_workers: int
-    gradient_checkpointing: bool
-    fp16: bool
-    bf16: bool
-    optimizer: str
-    device_name: str
-    total_vram_gb: float | None
-
-
-@dataclass(frozen=True)
-class TrainingContext:
-    class_mapping: dict[str, int]
-    id2label: dict[int, str]
-    video_index: VideoIndex
-    image_processor: VideoMAEImageProcessor
-    runtime_config: RuntimeConfig
-
-
-def env_flag(name: str, default: bool) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def resolve_runtime_config() -> RuntimeConfig:
-    cpu_count = os.cpu_count() or 2
-    default_workers = min(4, max(1, cpu_count // 2))
-
-    if torch.cuda.is_available():
-        props = torch.cuda.get_device_properties(0)
-        total_vram_gb = props.total_memory / (1024**3)
-        device_name = props.name
-
-        if total_vram_gb <= 8.5:
-            train_batch_default = 1
-            eval_batch_default = 1
-            grad_acc_default = 8
-            eval_acc_steps_default = 8
-        elif total_vram_gb <= 12.5:
-            train_batch_default = 1
-            eval_batch_default = 1
-            grad_acc_default = 4
-            eval_acc_steps_default = 4
-        else:
-            train_batch_default = 2
-            eval_batch_default = 2
-            grad_acc_default = 2
-            eval_acc_steps_default = 2
-
-        bf16_enabled = torch.cuda.is_bf16_supported() and env_flag("USE_BF16", True)
-        fp16_enabled = (not bf16_enabled) and env_flag("USE_FP16", True)
-        optimizer_default = "adamw_torch_fused"
-        gradient_checkpointing_default = True
-    else:
-        total_vram_gb = None
-        device_name = "cpu"
-        train_batch_default = 1
-        eval_batch_default = 1
-        grad_acc_default = 1
-        eval_acc_steps_default = 1
-        bf16_enabled = False
-        fp16_enabled = False
-        optimizer_default = "adamw_torch"
-        gradient_checkpointing_default = False
-
-    train_batch_size = max(
-        1,
-        int(os.getenv("TRAIN_BATCH_SIZE", str(train_batch_default))),
-    )
-    eval_batch_size = max(
-        1,
-        int(os.getenv("EVAL_BATCH_SIZE", str(eval_batch_default))),
-    )
-    grad_accum_steps = max(
-        1,
-        int(os.getenv("GRAD_ACC_STEPS", str(grad_acc_default))),
-    )
-    eval_accumulation_steps = max(
-        1,
-        int(os.getenv("EVAL_ACCUMULATION_STEPS", str(eval_acc_steps_default))),
-    )
-    dataloader_num_workers = max(
-        0,
-        int(os.getenv("DATALOADER_NUM_WORKERS", str(default_workers))),
-    )
-
-    return RuntimeConfig(
-        train_batch_size=train_batch_size,
-        eval_batch_size=eval_batch_size,
-        grad_accum_steps=grad_accum_steps,
-        eval_accumulation_steps=eval_accumulation_steps,
-        dataloader_num_workers=dataloader_num_workers,
-        gradient_checkpointing=env_flag(
-            "GRADIENT_CHECKPOINTING",
-            gradient_checkpointing_default,
-        ),
-        fp16=fp16_enabled,
-        bf16=bf16_enabled,
-        optimizer=os.getenv("TRAIN_OPTIMIZER", optimizer_default),
-        device_name=device_name,
-        total_vram_gb=total_vram_gb,
-    )
-
-
-def configure_torch_backend() -> None:
-    if torch.cuda.is_available() and env_flag("ENABLE_TF32", True):
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
-        torch.set_float32_matmul_precision("high")
-
-
-def get_torchvision_transforms() -> Any:
-    return importlib.import_module("torchvision.transforms")
-
-
-def sklearn_train_test_split(
-    data: VideoLabelPairs,
-    test_size: float,
-    random_state: int,
-    stratify: list[int] | None,
-) -> tuple[VideoLabelPairs, VideoLabelPairs]:
-    model_selection = importlib.import_module("sklearn.model_selection")
-    train_pairs, val_pairs = model_selection.train_test_split(
-        data,
-        test_size=test_size,
-        random_state=random_state,
-        shuffle=True,
-        stratify=stratify,
-    )
-    return list(train_pairs), list(val_pairs)
-
-
-def sklearn_accuracy(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    metrics_module = importlib.import_module("sklearn.metrics")
-    return float(metrics_module.accuracy_score(y_true, y_pred))
-
-
-def resolve_klin_root() -> pathlib.Path:
+def resolve_dataset_root() -> pathlib.Path:
     for candidate in DATA_ROOT_CANDIDATES:
         if candidate.exists():
-            return candidate
+            return candidate / DATASET_DIR_NAME
     expected = " or ".join(str(path) for path in DATA_ROOT_CANDIDATES)
-    raise FileNotFoundError(f"Could not find dataset root. Expected: {expected}")
+    raise FileNotFoundError(f"Dataset root not found. Expected under: {expected}")
 
 
-def parse_class_mapping(
-    class_file: pathlib.Path,
-    include_normal_class: bool,
-) -> dict[str, int]:
-    raw_mapping: dict[str, int] = {}
+def resolve_split_file(splits_dir: pathlib.Path, split_file: str) -> pathlib.Path:
+    candidate = pathlib.Path(split_file)
+    if candidate.is_absolute():
+        return candidate
+    return splits_dir / candidate
+
+
+def parse_class_mapping(class_file: pathlib.Path) -> dict[str, int]:
+    mapping: dict[str, int] = {}
     for line in class_file.read_text(encoding="utf-8").splitlines():
         parts = line.split()
         if len(parts) < 2:
             continue
-        raw_mapping[parts[0]] = int(parts[1]) - 1
-
-    if not raw_mapping:
-        raise ValueError(f"No class ids parsed from {class_file}")
-
-    filtered = sorted(raw_mapping.items(), key=lambda item: item[1])
-    if not include_normal_class:
-        filtered = [item for item in filtered if item[0] != NORMAL_CLASS_NAME]
-
-    remapped = {class_name: idx for idx, (class_name, _old_id) in enumerate(filtered)}
-
-    if not remapped:
-        raise ValueError("Class mapping is empty after filtering")
-    return remapped
+        mapping[parts[0]] = int(parts[1]) - 1
+    if not mapping:
+        raise ValueError(f"No classes parsed from {class_file}")
+    return mapping
 
 
 def iter_video_files(root_dir: pathlib.Path) -> list[pathlib.Path]:
@@ -280,27 +234,23 @@ def iter_video_files(root_dir: pathlib.Path) -> list[pathlib.Path]:
     )
 
 
-def build_video_index(dataset_root: pathlib.Path) -> VideoIndex:
+def build_anomaly_video_index(dataset_root: pathlib.Path) -> VideoIndex:
     index: VideoIndex = {}
-
-    anomaly_roots = sorted(dataset_root.glob("Anomaly-Videos-Part-*"))
-    for anomaly_root in anomaly_roots:
-        for class_dir in sorted(anomaly_root.iterdir()):
+    for part_dir in sorted(dataset_root.glob("Anomaly-Videos-Part-*")):
+        for class_dir in sorted(part_dir.iterdir()):
             if not class_dir.is_dir():
                 continue
             for video_path in iter_video_files(class_dir):
-                key = (class_dir.name, video_path.name)
-                index.setdefault(key, video_path)
+                index[(class_dir.name, video_path.name)] = video_path
 
     for normal_rel_dir in NORMAL_VIDEO_DIR_CANDIDATES:
         normal_dir = dataset_root / str(normal_rel_dir)
         for video_path in iter_video_files(normal_dir):
-            key = (NORMAL_CLASS_NAME, video_path.name)
-            index.setdefault(key, video_path)
+            index[(NORMAL_CLASS_NAME, video_path.name)] = video_path
 
     if not index:
         raise FileNotFoundError(
-            f"No videos found under expected dataset root: {dataset_root}"
+            f"No anomaly videos found in expected dirs under: {dataset_root}"
         )
     return index
 
@@ -373,31 +323,12 @@ def split_train_val(
     if len(pairs) < 2:
         raise ValueError("Need at least 2 samples to split train/val")
 
-    labels: list[int] = []
-    for _video_path, payload in pairs:
-        if not payload or "label" not in payload:
-            raise ValueError("Each sample must include an integer 'label'")
-        labels.append(int(payload["label"]))
-
-    class_counts = Counter(labels)
-    use_stratify = len(class_counts) > 1 and min(class_counts.values()) >= 2
-    stratify = labels if use_stratify else None
-
-    try:
-        train_pairs, val_pairs = sklearn_train_test_split(
-            data=pairs,
-            test_size=val_ratio,
-            random_state=seed,
-            stratify=stratify,
-        )
-    except ValueError:
-        train_pairs, val_pairs = sklearn_train_test_split(
-            data=pairs,
-            test_size=val_ratio,
-            random_state=seed,
-            stratify=None,
-        )
-
+    shuffled = list(pairs)
+    random.Random(seed).shuffle(shuffled)
+    val_size = int(len(shuffled) * val_ratio)
+    val_size = min(max(1, val_size), len(shuffled) - 1)
+    val_pairs = shuffled[:val_size]
+    train_pairs = shuffled[val_size:]
     return train_pairs, val_pairs
 
 
@@ -408,11 +339,7 @@ def import_pytorchvideo_components() -> tuple[Any, Any, Any, Any, Any, Any]:
     except ModuleNotFoundError as exc:
         missing_module = getattr(exc, "name", "") or ""
         if missing_module != "torchvision.transforms.functional_tensor":
-            raise ModuleNotFoundError(
-                "pytorchvideo is required for this training pipeline. "
-                "Install it with `uv add pytorchvideo` or `pip install pytorchvideo`."
-            ) from exc
-
+            raise
         functional_tensor = importlib.import_module(
             "torchvision.transforms._functional_tensor"
         )
@@ -430,63 +357,6 @@ def import_pytorchvideo_components() -> tuple[Any, Any, Any, Any, Any, Any]:
     )
 
 
-def discover_fold_split_files(
-    splits_dir: pathlib.Path,
-) -> list[tuple[str, pathlib.Path, pathlib.Path]]:
-    train_files: dict[str, pathlib.Path] = {}
-    test_files: dict[str, pathlib.Path] = {}
-
-    for file_path in sorted(splits_dir.glob("*.txt")):
-        match = FOLD_RE.match(file_path.name)
-        if not match:
-            continue
-        split_type, fold_id = match.group(1), match.group(2)
-        if split_type == "train":
-            train_files[fold_id] = file_path
-        else:
-            test_files[fold_id] = file_path
-
-    fold_ids = sorted(set(train_files) & set(test_files))
-    if not fold_ids:
-        raise FileNotFoundError(
-            f"No complete train/test fold pairs found in {splits_dir}"
-        )
-
-    return [
-        (fold_id, train_files[fold_id], test_files[fold_id]) for fold_id in fold_ids
-    ]
-
-
-def resolve_temporal_sample_rates() -> tuple[int, int]:
-    train_sample_rate = max(1, SAMPLE_RATE)
-    global_sample_rate = max(1, GLOBAL_SAMPLE_RATE)
-
-    if TEMPORAL_MODE == "local":
-        return train_sample_rate, train_sample_rate
-    if TEMPORAL_MODE == "global":
-        return global_sample_rate, global_sample_rate
-    if TEMPORAL_MODE == "hybrid":
-        return train_sample_rate, max(train_sample_rate, global_sample_rate)
-
-    raise ValueError(
-        f"Unsupported TEMPORAL_MODE={TEMPORAL_MODE}. Use local, global, or hybrid."
-    )
-
-
-def build_eval_clip_sampler(
-    make_clip_sampler: Any,
-    eval_clip_duration: float,
-) -> Any:
-    try:
-        return make_clip_sampler(
-            "constant_clips_per_video",
-            eval_clip_duration,
-            EVAL_CLIPS_PER_VIDEO,
-        )
-    except Exception:
-        return make_clip_sampler("uniform", eval_clip_duration)
-
-
 def build_datasets(
     train_pairs: VideoLabelPairs,
     val_pairs: VideoLabelPairs,
@@ -494,7 +364,7 @@ def build_datasets(
     image_processor: VideoMAEImageProcessor,
     model: VideoMAEForVideoClassification,
 ) -> tuple[Any, Any, Any]:
-    tv_transforms = get_torchvision_transforms()
+    tv_transforms = importlib.import_module("torchvision.transforms")
     (
         LabeledVideoDataset,
         make_clip_sampler,
@@ -517,114 +387,144 @@ def build_datasets(
         )
 
     num_frames = int(model.config.num_frames)
-    train_sample_rate, eval_sample_rate = resolve_temporal_sample_rates()
-    train_clip_duration = num_frames * train_sample_rate / FPS
-    eval_clip_duration = num_frames * eval_sample_rate / FPS
+    raw_clip_duration = num_frames * SAMPLE_RATE / FPS
+    clip_duration = min(raw_clip_duration, MAX_CLIP_DURATION_SECONDS)
 
-    def make_transform(is_train: bool) -> Any:
-        ops: list[Any] = [
-            UniformTemporalSubsample(num_frames),
-            tv_transforms.Lambda(lambda x: x / 255.0),
-            Normalize(mean, std),
+    train_short_side_min = 224 if RUNTIME_SAFE_MODE else 256
+    train_short_side_max = 256 if RUNTIME_SAFE_MODE else 320
+
+    train_transform = tv_transforms.Compose(
+        [
+            ApplyTransformToKey(
+                key="video",
+                transform=tv_transforms.Compose(
+                    [
+                        UniformTemporalSubsample(num_frames),
+                        tv_transforms.Lambda(lambda x: x / 255.0),
+                        Normalize(mean, std),
+                        RandomShortSideScale(
+                            min_size=train_short_side_min,
+                            max_size=train_short_side_max,
+                        ),
+                        tv_transforms.Resize(resize_to),
+                        tv_transforms.RandomHorizontalFlip(p=0.5),
+                    ]
+                ),
+            ),
         ]
-        if is_train:
-            ops.extend(
-                [
-                    RandomShortSideScale(min_size=256, max_size=320),
-                    tv_transforms.Resize(resize_to),
-                    tv_transforms.RandomHorizontalFlip(p=0.5),
-                ]
-            )
-        else:
-            ops.append(tv_transforms.Resize(resize_to))
+    )
 
-        return tv_transforms.Compose(
-            [
-                ApplyTransformToKey(
-                    key="video",
-                    transform=tv_transforms.Compose(ops),
-                )
-            ]
-        )
-
-    train_transform = make_transform(is_train=True)
-    eval_transform = make_transform(is_train=False)
+    eval_transform = tv_transforms.Compose(
+        [
+            ApplyTransformToKey(
+                key="video",
+                transform=tv_transforms.Compose(
+                    [
+                        UniformTemporalSubsample(num_frames),
+                        tv_transforms.Lambda(lambda x: x / 255.0),
+                        Normalize(mean, std),
+                        tv_transforms.Resize(resize_to),
+                    ]
+                ),
+            ),
+        ]
+    )
 
     train_dataset = LabeledVideoDataset(
         labeled_video_paths=train_pairs,
-        clip_sampler=make_clip_sampler("random", train_clip_duration),
+        clip_sampler=make_clip_sampler("random", clip_duration),
         transform=train_transform,
         decode_audio=False,
     )
-    eval_sampler = build_eval_clip_sampler(make_clip_sampler, eval_clip_duration)
     val_dataset = LabeledVideoDataset(
         labeled_video_paths=val_pairs,
-        clip_sampler=eval_sampler,
+        clip_sampler=make_clip_sampler("uniform", clip_duration),
         transform=eval_transform,
         decode_audio=False,
     )
     test_dataset = LabeledVideoDataset(
         labeled_video_paths=test_pairs,
-        clip_sampler=build_eval_clip_sampler(make_clip_sampler, eval_clip_duration),
+        clip_sampler=make_clip_sampler("uniform", clip_duration),
         transform=eval_transform,
         decode_audio=False,
     )
+    logger.info(
+        "Temporal sampling requested_rate=%d effective_clip_duration_s=%.2f",
+        SAMPLE_RATE,
+        clip_duration,
+    )
+
     return train_dataset, val_dataset, test_dataset
 
 
 def compute_metrics(eval_pred: EvalPrediction) -> dict[str, float]:
     predictions = np.argmax(eval_pred.predictions, axis=1)
     labels = np.asarray(eval_pred.label_ids)
-    accuracy = sklearn_accuracy(labels, predictions)
-    return {"accuracy": float(accuracy)}
+    accuracy = float(
+        importlib.import_module("sklearn.metrics").accuracy_score(labels, predictions)
+    )
+    return {"accuracy": accuracy}
 
 
 def collate_fn(examples: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
     pixel_values = torch.stack(
         [example["video"].permute(1, 0, 2, 3) for example in examples]
     )
+    if CUDA_AVAILABLE and (USE_FP16 or USE_BF16):
+        pixel_values = pixel_values.to(torch.bfloat16 if USE_BF16 else torch.float16)
     labels = torch.as_tensor(
         [example["label"] for example in examples], dtype=torch.long
     )
     return {"pixel_values": pixel_values, "labels": labels}
 
 
-def build_training_args(
-    fold_output_dir: pathlib.Path,
-    runtime_config: RuntimeConfig,
-    train_size: int,
-) -> TrainingArguments:
-    effective_batch = runtime_config.train_batch_size * runtime_config.grad_accum_steps
-    steps_per_epoch = max(1, math.ceil(train_size / effective_batch))
-    max_steps = steps_per_epoch * NUM_EPOCHS
-    warmup_steps = int(max_steps * WARMUP_RATIO)
+def resolve_max_steps(
+    train_dataset: Any, train_pairs_count: int, num_epochs: int
+) -> int:
+    num_videos = getattr(train_dataset, "num_videos", None)
+    if not isinstance(num_videos, int) or num_videos <= 0:
+        num_videos = train_pairs_count
+    steps_per_epoch = max(1, math.ceil(num_videos / TRAIN_BATCH_SIZE))
+    optimizer_steps_per_epoch = max(1, math.ceil(steps_per_epoch / GRAD_ACC_STEPS))
+    return max(1, optimizer_steps_per_epoch * num_epochs)
 
+
+def resolve_model_loading_dtype() -> torch.dtype:
+    if CUDA_AVAILABLE and USE_BF16:
+        return torch.bfloat16
+    return torch.float32
+
+
+def build_training_args(output_dir: pathlib.Path, max_steps: int) -> TrainingArguments:
     return TrainingArguments(
-        output_dir=str(fold_output_dir),
-        gradient_accumulation_steps=runtime_config.grad_accum_steps,
+        output_dir=str(output_dir),
+        gradient_accumulation_steps=GRAD_ACC_STEPS,
         remove_unused_columns=False,
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        eval_strategy=EVAL_STRATEGY,
+        save_strategy=SAVE_STRATEGY,
         learning_rate=LEARNING_RATE,
-        warmup_steps=warmup_steps,
-        weight_decay=0.05,
-        lr_scheduler_type="cosine",
+        warmup_ratio=WARMUP_RATIO,
+        lr_scheduler_type="linear",
         logging_steps=10,
-        load_best_model_at_end=True,
+        load_best_model_at_end=LOAD_BEST_MODEL_AT_END,
         metric_for_best_model="accuracy",
         greater_is_better=True,
         push_to_hub=False,
         num_train_epochs=NUM_EPOCHS,
-        per_device_train_batch_size=runtime_config.train_batch_size,
-        per_device_eval_batch_size=runtime_config.eval_batch_size,
-        fp16=runtime_config.fp16,
-        bf16=runtime_config.bf16,
-        gradient_checkpointing=runtime_config.gradient_checkpointing,
-        optim=runtime_config.optimizer,
-        dataloader_num_workers=runtime_config.dataloader_num_workers,
-        dataloader_pin_memory=torch.cuda.is_available(),
-        dataloader_persistent_workers=runtime_config.dataloader_num_workers > 0,
-        eval_accumulation_steps=runtime_config.eval_accumulation_steps,
+        per_device_train_batch_size=TRAIN_BATCH_SIZE,
+        per_device_eval_batch_size=EVAL_BATCH_SIZE,
+        fp16=USE_FP16 and CUDA_AVAILABLE,
+        bf16=USE_BF16 and CUDA_AVAILABLE,
+        fp16_full_eval=USE_FP16 and CUDA_AVAILABLE,
+        bf16_full_eval=USE_BF16 and CUDA_AVAILABLE,
+        gradient_checkpointing=GRADIENT_CHECKPOINTING,
+        optim=OPTIMIZER,
+        dataloader_num_workers=DATALOADER_NUM_WORKERS,
+        dataloader_pin_memory=CUDA_AVAILABLE and not RUNTIME_SAFE_MODE,
+        dataloader_persistent_workers=(
+            DATALOADER_NUM_WORKERS > 0 and not RUNTIME_SAFE_MODE
+        ),
+        eval_accumulation_steps=EVAL_ACCUMULATION_STEPS,
         max_steps=max_steps,
         seed=SEED,
         report_to=["mlflow"],
@@ -632,254 +532,213 @@ def build_training_args(
     )
 
 
-def build_model(context: TrainingContext) -> VideoMAEForVideoClassification:
-    model = VideoMAEForVideoClassification.from_pretrained(
-        MODEL_CKPT,
-        label2id=context.class_mapping,
-        id2label=context.id2label,
-        ignore_mismatched_sizes=True,
+def summarize_class_counts(
+    pairs: VideoLabelPairs, id2label: dict[int, str]
+) -> dict[str, int]:
+    counts = Counter(payload["label"] for _path, payload in pairs)
+    return {
+        id2label.get(label_id, str(label_id)): int(count)
+        for label_id, count in sorted(counts.items())
+    }
+
+
+def main() -> None:
+    set_seed(SEED)
+
+    dataset_root = resolve_dataset_root()
+    splits_dir = (
+        dataset_root / "UCF_Crimes-Train-Test-Split" / "Action_Regnition_splits"
     )
-    if context.runtime_config.gradient_checkpointing:
-        model.gradient_checkpointing_enable()
-    if hasattr(model.config, "use_cache"):
-        model.config.use_cache = False
-    return model
+    class_file = splits_dir / CLASS_IDS_FILE
 
+    train_file = resolve_split_file(splits_dir, TRAIN_SPLIT_FILE)
+    test_file = resolve_split_file(splits_dir, TEST_SPLIT_FILE)
 
-def extract_numeric_metrics(metrics: dict[str, Any], prefix: str) -> dict[str, float]:
-    numeric: dict[str, float] = {}
-    for key, value in metrics.items():
-        if isinstance(value, (int, float, np.floating)):
-            numeric[f"{prefix}_{key}"] = float(value)
-    return numeric
+    if not class_file.exists():
+        raise FileNotFoundError(f"Missing class mapping file: {class_file}")
+    if not train_file.exists():
+        raise FileNotFoundError(f"Missing train split file: {train_file}")
+    if not test_file.exists():
+        raise FileNotFoundError(f"Missing test split file: {test_file}")
 
+    class_mapping = parse_class_mapping(class_file)
+    id2label = {idx: label for label, idx in class_mapping.items()}
 
-def train_one_fold(
-    fold_id: str,
-    train_file: pathlib.Path,
-    test_file: pathlib.Path,
-    context: TrainingContext,
-) -> dict[str, float]:
-    train_pairs = load_video_label_pairs(
-        train_file,
-        context.class_mapping,
-        context.video_index,
-    )
-    test_pairs = load_video_label_pairs(
-        test_file,
-        context.class_mapping,
-        context.video_index,
-    )
-    train_pairs, val_pairs = split_train_val(train_pairs, VAL_RATIO, SEED)
+    video_index = build_anomaly_video_index(dataset_root)
+    train_pairs_full = load_video_label_pairs(train_file, class_mapping, video_index)
+    test_pairs = load_video_label_pairs(test_file, class_mapping, video_index)
+    train_pairs, val_pairs = split_train_val(train_pairs_full, VAL_RATIO, SEED)
 
     logger.info(
-        "Fold %s sizes -> train=%d val=%d test=%d",
-        fold_id,
+        "Sizes -> train=%d val=%d test=%d",
         len(train_pairs),
         len(val_pairs),
         len(test_pairs),
     )
+    model_dtype = resolve_model_loading_dtype()
+    logger.info(
+        (
+            "Runtime safe_mode=%s vram_gb=%s train_bs=%d eval_bs=%d grad_acc=%d "
+            "fp16=%s bf16=%s model_dtype=%s grad_ckpt=%s freeze_backbone=%s "
+            "optimizer=%s"
+        ),
+        RUNTIME_SAFE_MODE,
+        f"{DEVICE_VRAM_GB:.2f}" if DEVICE_VRAM_GB is not None else "n/a",
+        TRAIN_BATCH_SIZE,
+        EVAL_BATCH_SIZE,
+        GRAD_ACC_STEPS,
+        USE_FP16 and CUDA_AVAILABLE,
+        USE_BF16 and CUDA_AVAILABLE,
+        str(model_dtype).replace("torch.", ""),
+        GRADIENT_CHECKPOINTING,
+        FREEZE_BACKBONE,
+        OPTIMIZER,
+    )
 
-    model = build_model(context)
+    image_processor = VideoMAEImageProcessor.from_pretrained(MODEL_CKPT)
+    model = VideoMAEForVideoClassification.from_pretrained(
+        MODEL_CKPT,
+        label2id=class_mapping,
+        id2label=id2label,
+        ignore_mismatched_sizes=True,
+        torch_dtype=model_dtype,
+        low_cpu_mem_usage=True,
+    )
+    if FREEZE_BACKBONE:
+        for parameter in model.videomae.parameters():
+            parameter.requires_grad = False
+    if GRADIENT_CHECKPOINTING:
+        model.gradient_checkpointing_enable()
+    if hasattr(model.config, "use_cache"):
+        model.config.use_cache = False
 
     train_dataset, val_dataset, test_dataset = build_datasets(
         train_pairs,
         val_pairs,
         test_pairs,
-        context.image_processor,
+        image_processor,
         model,
     )
 
-    fold_output_dir = OUTPUT_DIR / f"fold_{fold_id}"
+    max_steps = resolve_max_steps(train_dataset, len(train_pairs), NUM_EPOCHS)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     trainer = Trainer(
         model=model,
-        args=build_training_args(
-            fold_output_dir,
-            context.runtime_config,
-            train_size=len(train_pairs),
-        ),
+        args=build_training_args(OUTPUT_DIR, max_steps),
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        processing_class=context.image_processor,
+        processing_class=image_processor,
         compute_metrics=compute_metrics,
         data_collator=collate_fn,
     )
 
-    with mlflow.start_run(run_name=f"fold_{fold_id}", nested=True):
-        mlflow.set_tag("fold_id", fold_id)
-        mlflow.log_params(
-            {
-                "fold_id": fold_id,
-                "train_split_file": train_file.name,
-                "test_split_file": test_file.name,
-                "num_classes": len(context.class_mapping),
-                "train_size": len(train_pairs),
-                "val_size": len(val_pairs),
-                "test_size": len(test_pairs),
-            }
-        )
-
-        logger.info("Starting training for fold %s...", fold_id)
-        train_result = trainer.train()
-        mlflow.log_metrics(extract_numeric_metrics(train_result.metrics, "train"))
-
-        val_metrics = trainer.evaluate(eval_dataset=val_dataset)
-        test_metrics = trainer.evaluate(
-            eval_dataset=test_dataset,
-            metric_key_prefix="test",
-        )
-        mlflow.log_metrics(extract_numeric_metrics(val_metrics, "val"))
-        mlflow.log_metrics(extract_numeric_metrics(test_metrics, "test"))
-
-        fold_output_dir.mkdir(parents=True, exist_ok=True)
-        trainer.save_model(str(fold_output_dir))
-        context.image_processor.save_pretrained(str(fold_output_dir))
-        mlflow.log_artifacts(
-            str(fold_output_dir),
-            artifact_path=f"models/fold_{fold_id}",
-        )
-
-    logger.info("Fold %s val metrics: %s", fold_id, val_metrics)
-    logger.info("Fold %s test metrics: %s", fold_id, test_metrics)
-
-    return {
-        "fold_val_accuracy": float(val_metrics.get("eval_accuracy", 0.0)),
-        "fold_test_accuracy": float(test_metrics.get("test_accuracy", 0.0)),
-    }
-
-
-def main() -> None:
-    configure_torch_backend()
-    set_seed(SEED)
-
-    klin_root = resolve_klin_root()
-    dataset_root = klin_root / DATASET_DIR_NAME
-    splits_dir = klin_root / SPLITS_DIR_REL
-
-    class_file = splits_dir / CLASS_IDS_FILE
-    if not class_file.exists():
-        raise FileNotFoundError(f"Missing class mapping file: {class_file}")
-
-    fold_split_files = discover_fold_split_files(splits_dir)
-    class_mapping = parse_class_mapping(
-        class_file,
-        include_normal_class=INCLUDE_NORMAL_CLASS,
-    )
-    id2label = {idx: label for label, idx in class_mapping.items()}
-    video_index = build_video_index(dataset_root)
-    image_processor = VideoMAEImageProcessor.from_pretrained(MODEL_CKPT)
-    runtime_config = resolve_runtime_config()
-    train_sample_rate, eval_sample_rate = resolve_temporal_sample_rates()
-    precision_mode = (
-        "bf16" if runtime_config.bf16 else "fp16" if runtime_config.fp16 else "fp32"
-    )
-    context = TrainingContext(
-        class_mapping=class_mapping,
-        id2label=id2label,
-        video_index=video_index,
-        image_processor=image_processor,
-        runtime_config=runtime_config,
-    )
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
-    logger.info("MLflow tracking URI: %s", mlflow.get_tracking_uri())
-    logger.info(
-        "Found %d folds: %s",
-        len(fold_split_files),
-        ", ".join(fold_id for fold_id, _train, _test in fold_split_files),
-    )
-    logger.info(
-        "Runtime device=%s vram_gb=%s train_bs=%d eval_bs=%d grad_acc=%d precision=%s",
-        runtime_config.device_name,
-        f"{runtime_config.total_vram_gb:.2f}"
-        if runtime_config.total_vram_gb is not None
-        else "n/a",
-        runtime_config.train_batch_size,
-        runtime_config.eval_batch_size,
-        runtime_config.grad_accum_steps,
-        precision_mode,
-    )
-    logger.info(
-        (
-            "Temporal mode=%s train_sample_rate=%d eval_sample_rate=%d "
-            "eval_clips_per_video=%d"
-        ),
-        TEMPORAL_MODE,
-        train_sample_rate,
-        eval_sample_rate,
-        EVAL_CLIPS_PER_VIDEO,
-    )
-
-    fold_results: list[dict[str, float]] = []
     with mlflow.start_run(run_name=MLFLOW_RUN_NAME):
         mlflow.set_tag("dataset", "UCF-Crime")
         mlflow.set_tag("task", "video-classification")
-        mlflow.set_tag(
-            "splits_mode",
-            "all_action_recognition_splits",
-        )
+        mlflow.set_tag("pipeline", "notebook_style")
+
         mlflow.log_params(
             {
                 "model_ckpt": MODEL_CKPT,
-                "include_normal_class": INCLUDE_NORMAL_CLASS,
+                "train_split_file": train_file.name,
+                "test_split_file": test_file.name,
                 "num_classes": len(class_mapping),
-                "num_folds": len(fold_split_files),
-                "train_batch_size": runtime_config.train_batch_size,
-                "eval_batch_size": runtime_config.eval_batch_size,
                 "num_epochs": NUM_EPOCHS,
-                "grad_accum_steps": runtime_config.grad_accum_steps,
                 "learning_rate": LEARNING_RATE,
                 "warmup_ratio": WARMUP_RATIO,
                 "val_ratio": VAL_RATIO,
                 "seed": SEED,
                 "sample_rate": SAMPLE_RATE,
-                "temporal_mode": TEMPORAL_MODE,
-                "train_sample_rate": train_sample_rate,
-                "eval_sample_rate": eval_sample_rate,
-                "global_sample_rate": GLOBAL_SAMPLE_RATE,
-                "eval_clips_per_video": EVAL_CLIPS_PER_VIDEO,
+                "max_clip_duration_seconds": MAX_CLIP_DURATION_SECONDS,
                 "fps": FPS,
-                "gradient_checkpointing": runtime_config.gradient_checkpointing,
-                "precision_mode": precision_mode,
-                "optimizer": runtime_config.optimizer,
-                "dataloader_num_workers": runtime_config.dataloader_num_workers,
-                "eval_accumulation_steps": runtime_config.eval_accumulation_steps,
-                "device_name": runtime_config.device_name,
-                "total_vram_gb": runtime_config.total_vram_gb,
+                "train_batch_size": TRAIN_BATCH_SIZE,
+                "eval_batch_size": EVAL_BATCH_SIZE,
+                "grad_accum_steps": GRAD_ACC_STEPS,
+                "eval_accumulation_steps": EVAL_ACCUMULATION_STEPS,
+                "eval_strategy": EVAL_STRATEGY,
+                "save_strategy": SAVE_STRATEGY,
+                "load_best_model_at_end": LOAD_BEST_MODEL_AT_END,
+                "max_steps": max_steps,
+                "fp16": USE_FP16 and CUDA_AVAILABLE,
+                "bf16": USE_BF16 and CUDA_AVAILABLE,
+                "model_loading_dtype": str(model_dtype).replace("torch.", ""),
+                "gradient_checkpointing": GRADIENT_CHECKPOINTING,
+                "freeze_backbone": FREEZE_BACKBONE,
+                "optimizer": OPTIMIZER,
+                "memory_safe_mode": MEMORY_SAFE_MODE,
+                "runtime_safe_mode": RUNTIME_SAFE_MODE,
+                "safe_cuda_memory_fraction": SAFE_CUDA_MEMORY_FRACTION,
+                "device_vram_gb": (
+                    float(DEVICE_VRAM_GB) if DEVICE_VRAM_GB is not None else -1.0
+                ),
                 "output_dir": str(OUTPUT_DIR),
             }
         )
 
-        for fold_id, train_file, test_file in fold_split_files:
-            fold_metrics = train_one_fold(
-                fold_id=fold_id,
-                train_file=train_file,
-                test_file=test_file,
-                context=context,
-            )
-            fold_results.append(fold_metrics)
-            mlflow.log_metrics(
-                {
-                    f"fold_{fold_id}_val_accuracy": fold_metrics["fold_val_accuracy"],
-                    f"fold_{fold_id}_test_accuracy": fold_metrics["fold_test_accuracy"],
-                }
-            )
+        mlflow.log_metrics(
+            {
+                "train_pairs_total": float(len(train_pairs)),
+                "val_pairs_total": float(len(val_pairs)),
+                "test_pairs_total": float(len(test_pairs)),
+            }
+        )
 
-        val_scores = [item["fold_val_accuracy"] for item in fold_results]
-        test_scores = [item["fold_test_accuracy"] for item in fold_results]
+        train_summary = summarize_class_counts(train_pairs, id2label)
+        val_summary = summarize_class_counts(val_pairs, id2label)
+        test_summary = summarize_class_counts(test_pairs, id2label)
+        for class_name, count in train_summary.items():
+            mlflow.log_metric(f"train_class_{class_name}", float(count))
+        for class_name, count in val_summary.items():
+            mlflow.log_metric(f"val_class_{class_name}", float(count))
+        for class_name, count in test_summary.items():
+            mlflow.log_metric(f"test_class_{class_name}", float(count))
 
-        if val_scores:
-            mlflow.log_metric("cv_val_accuracy_mean", float(np.mean(val_scores)))
-            mlflow.log_metric("cv_val_accuracy_std", float(np.std(val_scores)))
-        if test_scores:
-            mlflow.log_metric("cv_test_accuracy_mean", float(np.mean(test_scores)))
-            mlflow.log_metric("cv_test_accuracy_std", float(np.std(test_scores)))
+        logger.info("Starting training...")
+        if CUDA_AVAILABLE:
+            torch.cuda.empty_cache()
+        train_result = trainer.train()
+        train_metrics = {
+            key: float(value)
+            for key, value in train_result.metrics.items()
+            if isinstance(value, (int, float, np.floating))
+        }
+        mlflow.log_metrics({f"train_{k}": v for k, v in train_metrics.items()})
 
-    logger.info("Completed training across %d folds", len(fold_split_files))
+        val_metrics = trainer.evaluate(
+            eval_dataset=val_dataset, metric_key_prefix="val"
+        )
+        test_metrics = trainer.evaluate(
+            eval_dataset=test_dataset,
+            metric_key_prefix="test",
+        )
+
+        mlflow.log_metrics(
+            {
+                key: float(value)
+                for key, value in val_metrics.items()
+                if isinstance(value, (int, float, np.floating))
+            }
+        )
+        mlflow.log_metrics(
+            {
+                key: float(value)
+                for key, value in test_metrics.items()
+                if isinstance(value, (int, float, np.floating))
+            }
+        )
+
+        trainer.save_model(str(OUTPUT_DIR))
+        image_processor.save_pretrained(str(OUTPUT_DIR))
+        mlflow.log_artifacts(str(OUTPUT_DIR), artifact_path="model")
+        mlflow.log_artifact(str(class_file), artifact_path="metadata")
+        mlflow.log_artifact(str(train_file), artifact_path="metadata")
+        mlflow.log_artifact(str(test_file), artifact_path="metadata")
+
+    logger.info("Training completed. Output: %s", OUTPUT_DIR)
 
 
 if __name__ == "__main__":
