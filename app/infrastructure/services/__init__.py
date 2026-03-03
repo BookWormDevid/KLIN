@@ -2,7 +2,13 @@
 Бочка для передачи методов
 """
 
-from .target import InferenceProcessor, KlinCallbackSender, VideoMAEConfig, YoloConfig, ProcessorConfig
+from .target import (
+    InferenceProcessor,
+    KlinCallbackSender,
+    ProcessorConfig,
+    VideoMAEConfig,
+    YoloConfig,
+)
 
 
 __all__ = [

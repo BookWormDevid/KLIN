@@ -170,52 +170,33 @@ class InferenceProcessor(IKlinInference):
 
         timesteps = frame_idx / fps if fps > 0 else 0.0
         use_half = self.processing.device.type != "cpu"
+        with torch.no_grad():
+            preds = self.yolo.yolo(
+                frame,
+                conf=self.processing.yolo_conf,
+                iou=self.processing.yolo_iou,
+                classes=self.processing.yolo_classes,
+                half=use_half,
+                max_det=100,
+                show=False,
+                save=False,
+            )
 
-        preds = self.yolo.yolo(
-            frame,
-            conf=self.processing.yolo_conf,
-            iou=self.processing.yolo_iou,
-            classes=self.processing.yolo_classes,
-            half=use_half,
-            show=False,
-            save=False,
-        )
+            detections: list[dict[str, Any]] = []
+            for result in preds:
+                if result.boxes is None:
+                    continue
 
-        detections: list[dict[str, Any]] = []
-        for result in preds:
-            if result.boxes is None:
-                continue
+                for box in result.boxes:
+                    detections.append(
+                        {
+                            "class_id": int(box.cls.item()),
+                            "timesteps": float(timesteps),
+                            "bbox": box.xyxyn[0].tolist(),
+                        }
+                    )
 
-            for box in result.boxes:
-                detections.append(
-                    {
-                        "class_id": int(box.cls.item()),
-                        "timesteps": float(timesteps),
-                        "bbox": box.xyxyn[0].tolist(),
-                    }
-                )
-
-        return detections
-
-    async def run_yolo(self, frames: np.ndarray, fps: float) -> list[dict[str, Any]]:
-        """
-        Запуск yolo
-        Возвращает список с
-        class_id - что нашёл
-        timestaps - нашёл на какой временном промежутке
-        bbox - boundingbox(квадрат, где обнаружил объект)
-        """
-        assert self.yolo.yolo is not None
-
-        results: list[dict[str, Any]] = []
-        step = self.processing.yolo_stride
-
-        for i in range(0, len(frames), step):
-            frame = frames[i]
-            detections = self._run_yolo_on_frame(frame, i, fps)
-            results.extend(detections)
-
-        return results
+            return detections
 
     def _predict_mae_chunk(
         self,
@@ -348,41 +329,6 @@ class InferenceProcessor(IKlinInference):
         }
         return mae_results, dict(bbox_by_time), objects, video_info
 
-    async def _read_video_frames(
-        self, video_path: str
-    ) -> tuple[np.ndarray, dict[str, Any]]:
-        """Чтение видео и возврат кадров + информация о видео"""
-        cap = cv2.VideoCapture(video_path)
-        if not cap.isOpened():
-            raise ValueError(f"Невозможно открыть видео: {video_path}")
-
-        frames: list[np.ndarray] = []
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = float(cap.get(cv2.CAP_PROP_FPS))
-        duration = (total_frames / fps) if fps > 0 else 0.0
-
-        for _ in range(total_frames):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
-            frames.append(frame_resized)
-
-        cap.release()
-
-        if not frames:
-            raise ValueError(f"Кадры не прочитаны: {video_path}")
-
-        video_info = {
-            "total_frames": total_frames,
-            "fps": fps,
-            "duration": duration,
-            "frames_read": len(frames),
-        }
-
-        return np.array(frames, dtype=np.uint8), video_info
-
     async def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""
         t = len(frames)
@@ -406,70 +352,6 @@ class InferenceProcessor(IKlinInference):
         return frames.reshape(
             num_chunks, self.processing.chunk_size, frame_h, frame_w, 3
         )
-
-    async def _process_mae(
-        self, *, chunks: np.ndarray, fps: float, actual_frames: int
-    ) -> list[dict[str, Any]]:
-        """
-        Классификация чанков через VideoMAE.
-        """
-        assert self.mae.model is not None
-        assert self.mae.processor is not None
-
-        results: list[dict[str, Any]] = []
-        id2label: dict[int, str] = self.mae.model.config.id2label or {}
-
-        with torch.no_grad():
-            for i, chunk in enumerate(chunks):
-                start_frame = i * self.processing.chunk_size
-                if start_frame >= actual_frames:
-                    break
-
-                end_frame = min((i + 1) * self.processing.chunk_size, actual_frames) - 1
-                start_time = start_frame / fps if fps > 0 else 0.0
-                end_time = (end_frame + 1) / fps if fps > 0 else 0.0
-
-                inputs = self.mae.processor(list(chunk), return_tensors="pt").to(
-                    self.processing.device
-                )
-                outputs = self.mae.model(**inputs)
-                logits = outputs.logits[0]
-                probs = torch.nn.functional.softmax(logits, dim=0)
-
-                pred_idx = int(logits.argmax().item())
-                conf = float(probs[pred_idx].item())
-                answer = id2label.get(pred_idx, str(pred_idx))
-
-                results.append(
-                    {
-                        "time": [start_time, end_time],
-                        "answer": answer,
-                        "confident": conf,
-                    }
-                )
-
-        return results
-
-    async def _process_yolo(
-        self, *, frames: np.ndarray, fps: float
-    ) -> tuple[dict[float, list[list[float]]], list[str]]:
-        """
-        Детекция объектов через YOLO + агрегация bbox по таймстемпам.
-        """
-        yolo_results = await self.run_yolo(frames, fps)
-
-        bbox_by_time: dict[float, list[list[float]]] = defaultdict(list)
-        detected_class_ids: set[int] = set()
-
-        for detection in yolo_results:
-            timesteps = float(detection["timesteps"])
-            bbox_by_time[timesteps].append(detection["bbox"])
-            detected_class_ids.add(int(detection["class_id"]))
-
-        assert self.yolo.yolo is not None
-        names = self.yolo.yolo.names
-        objects = [names[class_id] for class_id in detected_class_ids]
-        return dict(bbox_by_time), objects
 
     def _log_processing(
         self, video_name: str, video_info: dict[str, Any], processing_time: float
