@@ -13,4 +13,4 @@ container = make_async_container(
     InfrastructureProvider(), ApplicationProvider(), VideoProvider()
 )
 
-app = create_litestar_app()
+app = create_litestar_app(container)

@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
+import aiofiles  # type: ignore[import-untyped]
 from dishka import FromDishka
 from dishka.integrations.litestar import inject
 from litestar import Controller, MediaType, Response, get, post
@@ -15,9 +16,10 @@ from litestar.datastructures import UploadFile
 from litestar.enums import RequestEncodingType
 from litestar.exceptions import HTTPException
 from litestar.params import Body
-from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_404_NOT_FOUND
 
 from app.application.dto import KlinReadDto, KlinUploadDto
+from app.application.exceptions import KlinEnqueueError, KlinNotFoundError
 from app.application.services import KlinService
 
 
@@ -34,8 +36,10 @@ class KlinController(Controller):
     async def file_upload(
         self,
         data: Annotated[UploadFile, Body(media_type=RequestEncodingType.MULTI_PART)],
-        response_url: Annotated[str, Body(media_type=RequestEncodingType.MULTI_PART)],
         klin_service: FromDishka[KlinService],
+        response_url: Annotated[
+            str | None, Body(media_type=RequestEncodingType.MULTI_PART)
+        ] = None,
     ) -> KlinReadDto:
         """
         Скачивает видео, преобразует его в формат mp4 и сохраняет в папку tmp.
@@ -49,20 +53,27 @@ class KlinController(Controller):
 
         size = 0
 
-        with open(tmp_path, "wb") as f:
-            while chunk := await data.read(1024 * 1024):
-                size += len(chunk)
-
-                if size > max_size:
-                    f.close()
-                    os.remove(tmp_path)
-                    raise HTTPException(status_code=413, detail="File too large")
-
-                f.write(chunk)
+        try:
+            async with aiofiles.open(tmp_path, "wb") as file_handle:
+                while chunk := await data.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > max_size:
+                        raise HTTPException(status_code=413, detail="File too large")
+                    await file_handle.write(chunk)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            raise
 
         upload_dto = KlinUploadDto(response_url=response_url, video_path=tmp_path)
 
-        klin_model = await klin_service.klin_image(upload_dto)
+        try:
+            klin_model = await klin_service.klin_image(upload_dto)
+        except KlinEnqueueError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=str(exc),
+            ) from exc
 
         return KlinReadDto.from_model(klin_model)
 
@@ -76,7 +87,13 @@ class KlinController(Controller):
         """
         Получает всю информацию об конкретном id
         """
-        inference = await klin_service.get_inference_status(klin_id)
+        try:
+            inference = await klin_service.get_inference_status(klin_id)
+        except KlinNotFoundError as exc:
+            raise HTTPException(
+                status_code=HTTP_404_NOT_FOUND,
+                detail=str(exc),
+            ) from exc
         return Response(inference)
 
     @get(path="/health/live", media_type=MediaType.TEXT)
@@ -97,8 +114,6 @@ class KlinController(Controller):
         try:
             await klin_service.get_n_imferences(1)
             return Response({"status": "ready"})
-        except ValueError:
-            return Response({"status": "ready"})
         except Exception as e:  # pylint: disable=broad-except
             raise HTTPException(
                 status_code=503, detail=f"Service unavailable: {str(e)}"
@@ -113,8 +128,4 @@ class KlinController(Controller):
         Получает вывод последних 100 записей в базе данных
         """
         imfer_list = await klin_service.get_n_imferences(100)
-        dto_ready_list = []
-        for imference in imfer_list:
-            dto_ready_list.append(KlinReadDto.from_model(imference))
-
-        return Response(dto_ready_list)
+        return Response([KlinReadDto.from_model(imference) for imference in imfer_list])

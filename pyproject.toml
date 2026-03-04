@@ -91,7 +91,7 @@ exclude = ["data", "videomae_results", "mlflow", "mlruns", "sandbox"]
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["ultralytics", "yt_dlp"]
+module = ["ultralytics", "yt_dlp", "aiofiles"]
 ignore_missing_imports = true
 
 

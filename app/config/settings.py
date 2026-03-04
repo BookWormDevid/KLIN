@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     db_idle_in_transaction_session_timeout: int = 30000
 
     default_videomae_path = "models/videomae-UCF-crime"
+    default_cors_allowed_origins = (
+        "http://localhost,http://127.0.0.1,http://localhost:3000,http://127.0.0.1:3000"
+    )
 
     Klin_queue = "Klin-queue"
 
@@ -50,11 +53,14 @@ class Settings(BaseSettings):
         return self.resolve_env_property("DATABASE_URL", str)
 
     @property
-    def db_pool_size(self) -> bool:
+    def db_pool_size(self) -> int:
         """
         Размер пула соединений
         """
-        return bool(self.resolve_env_property("DB_POOL_SIZE", int, default_value=5))
+        pool_size = self.resolve_env_property("DB_POOL_SIZE", int, default_value=5)
+        if pool_size < 1:
+            raise ValueError("DB_POOL_SIZE must be >= 1")
+        return pool_size
 
     @property
     def broker_max_consumers(self) -> int | None:
@@ -78,6 +84,23 @@ class Settings(BaseSettings):
         Режим отладки
         """
         return bool(self.resolve_env_property("DEBUG", int, default_value=0))
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        """
+        Разрешенные источники CORS.
+        """
+        raw_origins = self.resolve_env_property(
+            "CORS_ALLOWED_ORIGINS",
+            str,
+            default_value=self.default_cors_allowed_origins,
+        )
+        origins = [
+            origin.strip() for origin in raw_origins.split(",") if origin.strip()
+        ]
+        if not origins:
+            raise ValueError("CORS_ALLOWED_ORIGINS must contain at least one origin")
+        return origins
 
     @property
     def klin_secret(self) -> str:

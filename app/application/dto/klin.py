@@ -16,8 +16,8 @@ class KlinUploadDto(msgspec.Struct, frozen=True):
     Содержит URL для ответа и путь к видеофайлу.
     """
 
-    response_url: str
     video_path: str
+    response_url: str | None = None
 
 
 class KlinResultDto(msgspec.Struct, frozen=True):

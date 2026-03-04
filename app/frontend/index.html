@@ -41,24 +41,19 @@
                         <div class="file-info-display" id="file-info"></div>
                     </div>
 
-                    <!-- Divider -->
-                    <div class="upload-divider">
-                        <span>ИЛИ</span>
-                    </div>
-
-                    <!-- URL Input -->
+                    <!-- Callback URL Input -->
                     <div class="upload-method">
-                        <h3>Указать ссылку на видео</h3>
+                        <h3>Callback URL (опционально)</h3>
                         <div class="url-input-group">
-                            <input type="url" id="video-url" placeholder="https://example.com/video.mp4">
-                            <button class="url-test-btn" onclick="testUrl()">Проверить ссылку</button>
-                            <button class="url-clear-btn" onclick="clearUrl()">Очистить</button>
+                            <input type="url" id="response-url" placeholder="https://example.com/callback">
+                            <button class="url-clear-btn" onclick="clearResponseUrl()">Очистить</button>
                         </div>
+                        <p class="file-info">Если URL заполнен, backend отправит callback после обработки.</p>
                     </div>
 
                     <!-- Analyze Button -->
                     <button class="analyze-btn" id="analyze-btn" onclick="analyzeVideo()">
-                        Начать анализ
+                        Загрузить и обработать
                     </button>
                 </div>
             </section>

@@ -2,12 +2,14 @@
 Бизнес логика сервиса
 """
 
+import asyncio
 import logging
 import os
 import uuid
 from dataclasses import dataclass
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
+from app.application.exceptions import KlinEnqueueError
 from app.application.interfaces import (
     IKlinCallbackSender,
     IKlinInference,
@@ -31,6 +33,49 @@ class KlinService:
     _klin_process_producer: IKlinProcessProducer
     _klin_callback_sender: IKlinCallbackSender
 
+    async def _publish_klin_task(self, klin_id: uuid.UUID) -> None:
+        """
+        Публикация задачи в очередь с повторными попытками.
+        """
+        max_attempts = 3
+        payload = KlinProcessDto(klin_id=klin_id)
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await self._klin_process_producer.send(payload)
+                return
+            except Exception as exc:  # pylint: disable=broad-except
+                if attempt == max_attempts:
+                    raise KlinEnqueueError(
+                        "Failed to enqueue "
+                        f"klin_id={klin_id} after {max_attempts} attempts"
+                    ) from exc
+                await asyncio.sleep(2 ** (attempt - 1))
+
+    async def _persist_enqueue_failure(self, klin: KlinModel, error: Exception) -> None:
+        """
+        Компенсирующее обновление статуса, если задача не попала в очередь.
+        """
+        klin.state = ProcessingState.ERROR
+        klin.mae = str(error)
+        try:
+            await self._klin_repository.update(klin)
+        except Exception as update_exc:  # pylint: disable=broad-except
+            logger.exception(
+                "Failed to persist enqueue error state. klin_id=%s error=%s",
+                klin.id,
+                update_exc,
+            )
+
+        try:
+            await self._klin_callback_sender.post_consumer(klin)
+        except Exception as callback_exc:  # pylint: disable=broad-except
+            logger.exception(
+                "Failed to send enqueue error callback. klin_id=%s error=%s",
+                klin.id,
+                callback_exc,
+            )
+
     async def klin_image(self, data: KlinUploadDto) -> KlinModel:
         """
         Принимает ссылку для отправки результатов, путь видео.
@@ -43,7 +88,12 @@ class KlinService:
         )
         klin = await self._klin_repository.create(klin)
 
-        await self._klin_process_producer.send(KlinProcessDto(klin_id=klin.id))
+        try:
+            await self._publish_klin_task(klin.id)
+        except KlinEnqueueError as exc:
+            await self._persist_enqueue_failure(klin, exc)
+            logger.exception("Failed to enqueue klin_id=%s", klin.id)
+            raise
 
         return klin
 
@@ -101,8 +151,6 @@ class KlinService:
         Получение вывода по id
         """
         klin = await self._klin_repository.get_by_id(klin_id)
-        if not klin:
-            raise ValueError(f"MAE {klin_id} not found")
         return KlinReadDto.from_model(klin)
 
     async def get_n_imferences(self, count: int) -> list[KlinModel]:

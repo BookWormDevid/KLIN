@@ -7,8 +7,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dishka import make_async_container
-from dishka.integrations.litestar import setup_dishka
+from dishka import AsyncContainer
+from dishka.integrations.litestar import setup_dishka as setup_litestar_dishka
 from faststream.rabbit import RabbitBroker
 from litestar import Litestar
 from litestar.config.cors import CORSConfig
@@ -19,7 +19,7 @@ from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import StaticFilesConfig
 
-from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
+from app.config import app_settings
 from app.presentation.litestar.controllers import api_router
 
 
@@ -37,7 +37,7 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
     Закрытие DI-контейнера
     """
     try:
-        container = app.state.dishka_container
+        container: AsyncContainer = app.state.dishka_container
         rabbit_broker = await container.get(RabbitBroker)
 
         await rabbit_broker.connect()
@@ -46,21 +46,19 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
         await app.state.dishka_container.close()
 
 
-def create_litestar_app(group_path: bool = False) -> Litestar:
+def create_litestar_app(
+    container: AsyncContainer, group_path: bool = False
+) -> Litestar:
     """
     Создаёт и настраивает экземпляр Litestar приложения.
     """
-    container = make_async_container(
-        InfrastructureProvider(), ApplicationProvider(), VideoProvider()
-    )
-
     prometheus_config = PrometheusConfig(group_path=group_path)
 
     app = Litestar(
         route_handlers=[api_router, PrometheusController],
         middleware=[prometheus_config.middleware],
         request_max_body_size=200 * 1024 * 1024,
-        cors_config=CORSConfig(allow_origins=["*"]),
+        cors_config=CORSConfig(allow_origins=app_settings.cors_allowed_origins),
         openapi_config=OpenAPIConfig(
             title="Klin Inference",
             version="1.0.0",
@@ -84,9 +82,8 @@ def create_litestar_app(group_path: bool = False) -> Litestar:
             )
         ],
         lifespan=[lifespan],
-        debug=True,
+        debug=app_settings.debug,
     )
 
-    setup_dishka(container, app)
-    app.state.dishka_container = container
+    setup_litestar_dishka(container, app)
     return app

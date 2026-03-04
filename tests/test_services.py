@@ -15,39 +15,43 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
+from app.application.exceptions import KlinEnqueueError, KlinNotFoundError
 from app.application.services.klin import KlinService
 from app.models import KlinModel, ProcessingState
 
 
 # Фикстуры — общие заготовки для всех тестов
 @pytest.fixture
-def mock_repository():
+def mock_repository() -> AsyncMock:
     """Мок репозитория — имитирует работу с базой данных."""
     return AsyncMock()
 
 
 @pytest.fixture
-def mock_inference_service():
+def mock_inference_service() -> AsyncMock:
     """Мок сервиса инференса — имитирует запуск YOLO + MAE."""
     return AsyncMock()
 
 
 @pytest.fixture
-def mock_process_producer():
+def mock_process_producer() -> AsyncMock:
     """Мок продюсера сообщений в очередь (например, RabbitMQ / Kafka)."""
     return AsyncMock()
 
 
 @pytest.fixture
-def mock_callback_sender():
+def mock_callback_sender() -> AsyncMock:
     """Мок отправителя колбэков на внешний URL."""
     return AsyncMock()
 
 
 @pytest.fixture
 def klin_service(
-    mock_repository, mock_inference_service, mock_process_producer, mock_callback_sender
-):
+    mock_repository: AsyncMock,
+    mock_inference_service: AsyncMock,
+    mock_process_producer: AsyncMock,
+    mock_callback_sender: AsyncMock,
+) -> KlinService:
     """
     Фикстура основного сервиса KlinService.
     Все зависимости заменены моками → изолированные тесты.
@@ -61,7 +65,7 @@ def klin_service(
 
 
 @pytest.fixture
-def sample_klin_model():
+def sample_klin_model() -> KlinModel:
     """
     Пример объекта KlinModel для повторного использования в тестах.
     Имитирует запись в БД в состоянии PENDING.
@@ -87,8 +91,11 @@ class TestKlinImage:
     """
 
     async def test_klin_image_success(
-        self, klin_service, mock_repository, mock_process_producer
-    ):
+        self,
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_process_producer: AsyncMock,
+    ) -> None:
         """
         Проверяет счастливый сценарий:
         - создаётся запись в БД
@@ -121,8 +128,11 @@ class TestKlinImage:
         )
 
     async def test_klin_image_repository_error(
-        self, klin_service, mock_repository, mock_process_producer
-    ):
+        self,
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_process_producer: AsyncMock,
+    ) -> None:
         """
         Проверяет обработку ошибки при создании записи в БД:
         - исключение пробрасывается наверх
@@ -140,6 +150,34 @@ class TestKlinImage:
 
         mock_process_producer.send.assert_not_called()
 
+    async def test_klin_image_queue_publish_error_marks_task_error(
+        self,
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_process_producer: AsyncMock,
+        mock_callback_sender: AsyncMock,
+    ):
+        """
+        Если публикация в очередь не удалась, задача не должна зависнуть в PENDING.
+        """
+        upload_dto = KlinUploadDto(video_path="/tmp/test_video.mp4")
+        created_klin = KlinModel(
+            id=uuid.uuid4(),
+            response_url=None,
+            video_path=upload_dto.video_path,
+            state=ProcessingState.PENDING,
+        )
+        mock_repository.create.return_value = created_klin
+        mock_process_producer.send.side_effect = RuntimeError("broker down")
+
+        with pytest.raises(KlinEnqueueError):
+            await klin_service.klin_image(upload_dto)
+
+        assert created_klin.state == ProcessingState.ERROR
+        assert "Failed to enqueue klin_id" in (created_klin.mae or "")
+        mock_repository.update.assert_called_once_with(created_klin)
+        mock_callback_sender.post_consumer.assert_called_once_with(created_klin)
+
 
 # Тесты метода perform_klin — основной этап обработки видео
 @pytest.mark.asyncio
@@ -150,12 +188,12 @@ class TestPerformKlin:
 
     async def test_perform_klin_success(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+    ) -> None:
         """
         Успешная обработка:
         - модель найдена
@@ -188,12 +226,12 @@ class TestPerformKlin:
 
     async def test_perform_klin_with_none_objects(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+    ) -> None:
         """
         Проверяет, что при None в objects/all_classes
         сервис преобразует их в пустые списки.
@@ -217,12 +255,12 @@ class TestPerformKlin:
 
     async def test_perform_klin_error(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+    ) -> None:
         """
         Проверяет обработку ошибки инференса:
         - статус → ERROR
@@ -242,13 +280,13 @@ class TestPerformKlin:
 
     async def test_perform_klin_file_deletion_success(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-        monkeypatch,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         """
         Проверяет удаление временного видео-файла после успешной обработки.
         """
@@ -268,14 +306,14 @@ class TestPerformKlin:
 
     async def test_perform_klin_file_deletion_error(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-        monkeypatch,
-        caplog,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """
         Проверяет, что при ошибке удаления файла:
         - обработка не падает
@@ -296,13 +334,13 @@ class TestPerformKlin:
 
     async def test_perform_klin_update_error(
         self,
-        klin_service,
-        mock_repository,
-        mock_inference_service,
-        mock_callback_sender,
-        sample_klin_model,
-        caplog,
-    ):
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_inference_service: AsyncMock,
+        mock_callback_sender: AsyncMock,
+        sample_klin_model: KlinModel,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         """
         Проверяет устойчивость к ошибке обновления БД:
         - колбэк всё равно отправляется
@@ -323,8 +361,8 @@ class TestGetInferenceStatus:
     """Тесты получения статуса обработки по ID."""
 
     async def test_get_inference_status_success(
-        self, klin_service, mock_repository, sample_klin_model
-    ):
+        self, klin_service: KlinService, mock_repository, sample_klin_model
+    ) -> None:
         """
         Успешное получение статуса готовой задачи.
         Проверяем, что все поля DTO заполнены корректно.
@@ -347,14 +385,16 @@ class TestGetInferenceStatus:
         assert result.objects == sample_klin_model.objects
         assert result.all_classes == sample_klin_model.all_classes
 
-    async def test_get_inference_status_not_found(self, klin_service, mock_repository):
+    async def test_get_inference_status_not_found(
+        self, klin_service: KlinService, mock_repository: AsyncMock
+    ) -> None:
         """
         Проверяет, что при отсутствии записи выбрасывается ValueError.
         """
         klin_id = uuid.uuid4()
-        mock_repository.get_by_id.return_value = None
+        mock_repository.get_by_id.side_effect = KlinNotFoundError(klin_id)
 
-        with pytest.raises(ValueError, match=f"MAE {klin_id} not found"):
+        with pytest.raises(KlinNotFoundError, match=f"Klin {klin_id} not found"):
             await klin_service.get_inference_status(klin_id)
 
 
@@ -363,7 +403,9 @@ class TestGetInferenceStatus:
 class TestGetNInferences:
     """Тесты получения списка последних N задач."""
 
-    async def test_get_n_inferences_success(self, klin_service, mock_repository):
+    async def test_get_n_inferences_success(
+        self, klin_service: KlinService, mock_repository: AsyncMock
+    ) -> None:
         """
         Успешное получение списка из N записей.
         """
@@ -380,7 +422,9 @@ class TestGetNInferences:
         assert len(result) == count
         mock_repository.get_first_n.assert_called_once_with(count)
 
-    async def test_get_n_inferences_empty(self, klin_service, mock_repository):
+    async def test_get_n_inferences_empty(
+        self, klin_service: KlinService, mock_repository: AsyncMock
+    ) -> None:
         """
         Проверяет возврат пустого списка, если записей нет.
         """
@@ -392,7 +436,9 @@ class TestGetNInferences:
         assert result == []
         assert len(result) == 0
 
-    async def test_get_n_inferences_zero(self, klin_service, mock_repository):
+    async def test_get_n_inferences_zero(
+        self, klin_service: KlinService, mock_repository: AsyncMock
+    ) -> None:
         """
         Пограничный случай: запрашиваем 0 записей → пустой список.
         """
@@ -405,8 +451,8 @@ class TestGetNInferences:
         mock_repository.get_first_n.assert_called_once_with(0)
 
     async def test_get_n_inferences_repository_error(
-        self, klin_service, mock_repository
-    ):
+        self, klin_service: KlinService, mock_repository: AsyncMock
+    ) -> None:
         """
         Проверяет проброс ошибки из репозитория.
         """

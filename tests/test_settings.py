@@ -96,17 +96,37 @@ class TestSettings(unittest.TestCase):
         with patch.dict(os.environ, {"DEBUG": "0"}, clear=True):
             self.assertFalse(settings.debug)
 
+    def test_cors_allowed_origins(self) -> None:
+        """
+        Тест списка CORS origin из env.
+        """
+        settings = Settings()
+        with patch.dict(
+            os.environ,
+            {"CORS_ALLOWED_ORIGINS": "https://a.example, https://b.example"},
+            clear=True,
+        ):
+            self.assertEqual(
+                settings.cors_allowed_origins,
+                ["https://a.example", "https://b.example"],
+            )
+
     def test_db_pool_size(self) -> None:
         """
         Тест пула подключения
         """
         settings_default = Settings()
         with patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(settings_default.db_pool_size)
+            self.assertEqual(settings_default.db_pool_size, 5)
 
-        settings_zero = Settings()
+        settings_custom = Settings()
+        with patch.dict(os.environ, {"DB_POOL_SIZE": "30"}, clear=True):
+            self.assertEqual(settings_custom.db_pool_size, 30)
+
+        settings_invalid = Settings()
         with patch.dict(os.environ, {"DB_POOL_SIZE": "0"}, clear=True):
-            self.assertFalse(settings_zero.db_pool_size)
+            with self.assertRaises(ValueError):
+                _ = settings_invalid.db_pool_size
 
     def test_klin_secret_missing(self) -> None:
         """

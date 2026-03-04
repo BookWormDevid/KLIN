@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.exceptions import KlinNotFoundError
 from app.application.interfaces import IKlinRepository
 from app.models.klin import KlinModel
 
@@ -29,7 +30,7 @@ class KlinRepository(IKlinRepository):
             query = select(KlinModel).where(KlinModel.id == klin_id).limit(1)
             klin = await session.scalar(query)
             if not klin:
-                raise ValueError
+                raise KlinNotFoundError(klin_id)
             return klin
 
     async def get_first_n(self, count: int) -> list[KlinModel]:
@@ -42,8 +43,6 @@ class KlinRepository(IKlinRepository):
             )
             imfers = await session.execute(mass_query)
             imfer_list: list[KlinModel] = list(imfers.scalars().all())
-            if not imfer_list:
-                raise ValueError
             return imfer_list
 
     async def create(self, model: KlinModel) -> KlinModel:

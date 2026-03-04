@@ -1,527 +1,443 @@
-document.addEventListener('DOMContentLoaded', function () {
-  // Initialize variables
+document.addEventListener("DOMContentLoaded", function () {
   let currentFile = null;
-  let currentUrl = null;
   let objectUrl = null;
-  let analysisHistory = []; // История анализов
+  let analysisHistory = [];
 
-  // DOM Elements
-  const fileInput = document.getElementById('file-input');
-  const dropZone = document.getElementById('drop-zone');
-  const videoUrlInput = document.getElementById('video-url');
-  const analyzeBtn = document.getElementById('analyze-btn');
-  const resultsSection = document.getElementById('results-section');
-  const fileInfoDisplay = document.getElementById('file-info');
-  const videoPlayer = document.getElementById('video-player');
-  const loadingOverlay = document.getElementById('loading-overlay');
+  const fileInput = document.getElementById("file-input");
+  const dropZone = document.getElementById("drop-zone");
+  const responseUrlInput = document.getElementById("response-url");
+  const analyzeBtn = document.getElementById("analyze-btn");
+  const resultsSection = document.getElementById("results-section");
+  const fileInfoDisplay = document.getElementById("file-info");
+  const videoPlayer = document.getElementById("video-player");
+  const loadingOverlay = document.getElementById("loading-overlay");
 
-  // Initialize event listeners
   initEventListeners();
 
   function initEventListeners() {
-    // File input change
     if (fileInput) {
-      fileInput.addEventListener('change', function (e) {
-        if (e.target.files && e.target.files[0]) {
-          handleFileSelect(e.target.files[0]);
+      fileInput.addEventListener("change", function (event) {
+        if (event.target.files && event.target.files[0]) {
+          handleFileSelect(event.target.files[0]);
         }
       });
     }
 
-    // Drag and drop
     if (dropZone) {
-      dropZone.addEventListener('dragover', function (e) {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
+      dropZone.addEventListener("dragover", function (event) {
+        event.preventDefault();
+        dropZone.classList.add("drag-over");
       });
 
-      dropZone.addEventListener('dragleave', function () {
-        dropZone.classList.remove('drag-over');
+      dropZone.addEventListener("dragleave", function () {
+        dropZone.classList.remove("drag-over");
       });
 
-      dropZone.addEventListener('drop', function (e) {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        if (e.dataTransfer.files.length > 0) {
-          handleFileSelect(e.dataTransfer.files[0]);
+      dropZone.addEventListener("drop", function (event) {
+        event.preventDefault();
+        dropZone.classList.remove("drag-over");
+
+        if (event.dataTransfer.files.length > 0) {
+          handleFileSelect(event.dataTransfer.files[0]);
         }
       });
     }
 
-    // URL input
-    if (videoUrlInput) {
-      videoUrlInput.addEventListener('input', function () {
-        currentUrl = this.value.trim();
-        updateAnalyzeButton();
-      });
-    }
-
-    // Update button state on load
     updateAnalyzeButton();
-
-    // Восстанавливаем историю из localStorage
     loadHistory();
   }
 
   function handleFileSelect(file) {
-    // Validate file type
-    if (!file.type.startsWith('video/')) {
-      alert('Пожалуйста, выберите видеофайл (MP4, AVI, MOV, MKV)');
+    if (!file.type.startsWith("video/")) {
+      alert("Пожалуйста, выберите видеофайл");
       return;
     }
 
-    // Check file size (max 500MB)
-    const maxSize = 500 * 1024 * 1024; // 500MB in bytes
+    const maxSize = 200 * 1024 * 1024;
     if (file.size > maxSize) {
-      alert('Файл слишком большой. Максимальный размер: 500MB');
+      alert("Файл слишком большой. Максимальный размер: 200MB");
       return;
     }
 
-    // Display file info with remove button
+    currentFile = file;
+
     if (fileInfoDisplay) {
       fileInfoDisplay.innerHTML = `
-                <div class="file-selected">
-                    <div class="file-header">
-                        <strong>Выбран файл:</strong> ${escapeHtml(file.name)}
-                        <button class="remove-file-btn" onclick="removeFile()">× Удалить</button>
-                    </div>
-                    <small>Размер: ${formatFileSize(file.size)}</small>
-                </div>
-            `;
+        <div class="file-selected">
+          <div class="file-header">
+            <strong>Выбран файл:</strong> ${escapeHtml(file.name)}
+            <button class="remove-file-btn" onclick="removeFile()">× Удалить</button>
+          </div>
+          <small>Размер: ${formatFileSize(file.size)}</small>
+        </div>
+      `;
     }
 
-    // Set current file and clear URL
-    currentFile = file;
-    currentUrl = null;
-
-    // Clear URL input
-    if (videoUrlInput) {
-      videoUrlInput.value = '';
-    }
-
-    // Create video preview
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
     }
+
     objectUrl = URL.createObjectURL(file);
     createVideoPreview(objectUrl);
-
-    // Show results section immediately
     showResultsSection();
-
-    // Update button
     updateAnalyzeButton();
   }
 
   function createVideoPreview(src) {
-    if (!videoPlayer) return;
+    if (!videoPlayer) {
+      return;
+    }
 
     videoPlayer.src = src;
     videoPlayer.load();
-
-    // Show results section
-    showResultsSection();
-
-    // Reset current analysis results (but keep history)
     resetCurrentAnalysis();
   }
 
-  function showResultsSection() {
-    if (resultsSection) {
-      resultsSection.style.display = 'block';
-    }
-  }
-
   function removeFile() {
-    // Clear current file
     currentFile = null;
 
-    // Clear file info display
     if (fileInfoDisplay) {
-      fileInfoDisplay.innerHTML = '';
+      fileInfoDisplay.innerHTML = "";
     }
 
-    // Clear file input
     if (fileInput) {
-      fileInput.value = '';
+      fileInput.value = "";
     }
 
-    // Clear video player
     if (videoPlayer) {
-      videoPlayer.src = '';
+      videoPlayer.src = "";
     }
 
-    // Release object URL
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
 
-    // Update button
-    updateAnalyzeButton();
-
-    // Don't hide results section - keep history visible
-    // Only hide if we have no URL either
-    if (!currentUrl && !currentFile) {
-      // But we might want to keep results section visible for history
-      // So we'll keep it visible
-    }
-  }
-
-  function clearUrl() {
-    // Clear current URL
-    currentUrl = null;
-
-    // Clear URL input
-    if (videoUrlInput) {
-      videoUrlInput.value = '';
-    }
-
-    // Clear video player
-    if (videoPlayer) {
-      videoPlayer.src = '';
-    }
-
-    // Update button
     updateAnalyzeButton();
   }
 
-  function testUrl() {
-    if (!videoUrlInput) return;
-
-    const url = videoUrlInput.value.trim();
-
-    if (!url) {
-      alert('Введите URL видео для проверки');
-      return;
+  function clearResponseUrl() {
+    if (responseUrlInput) {
+      responseUrlInput.value = "";
     }
-
-    // Validate URL format
-    if (!isValidUrl(url)) {
-      alert('Некорректный URL. URL должен начинаться с http:// или https://');
-      return;
-    }
-
-    // Check for video extensions
-    const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm'];
-    const hasVideoExtension = videoExtensions.some(ext => url.toLowerCase().includes(ext));
-
-    // Also check for YouTube
-    const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-
-    if (!hasVideoExtension && !isYouTube) {
-      alert('Внимание: URL не похож на прямую ссылку на видео файл.\nСистема попытается обработать ссылку, но могут возникнуть ошибки.');
-    } else {
-      alert('Ссылка корректна! Нажмите "Начать анализ" для обработки видео.');
-    }
-
-    // Set current URL and clear file
-    currentUrl = url;
-    currentFile = null;
-
-    // Clear file info
-    if (fileInfoDisplay) {
-      fileInfoDisplay.innerHTML = '';
-    }
-
-    // Clear file input
-    if (fileInput) {
-      fileInput.value = '';
-    }
-
-    // Clear video preview
-    if (videoPlayer) {
-      videoPlayer.src = '';
-    }
-
-    // Show results section for URL input
-    showResultsSection();
-    resetCurrentAnalysis();
-
-    // Update button
-    updateAnalyzeButton();
   }
 
-  function isValidUrl(string) {
-    try {
-      const url = new URL(string);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch (_) {
-      return false;
+  function showResultsSection() {
+    if (resultsSection) {
+      resultsSection.style.display = "block";
     }
   }
 
   async function analyzeVideo() {
-    // Check if we have something to analyze
-    if (!currentFile && (!currentUrl || currentUrl.trim() === '')) {
-      alert('Пожалуйста, выберите видеофайл или введите URL видео');
+    if (!currentFile) {
+      alert("Выберите видеофайл перед запуском анализа");
       return;
     }
 
-    // Show loading
+    showResultsSection();
     showLoading(true);
-    addLogEntry('Начало анализа видео...');
+    resetCurrentAnalysis();
+    addLogEntry(`Загрузка файла: ${currentFile.name}`);
 
     try {
-      let result;
+      const callbackUrl = responseUrlInput ? responseUrlInput.value.trim() : "";
+      const uploadResult = await uploadVideo(currentFile, callbackUrl);
 
-      if (currentFile) {
-        // Analyze file
-        addLogEntry(`Анализ файла: ${currentFile.name}`);
-        result = await analyzeFile(currentFile);
-      } else {
-        // Analyze URL
-        addLogEntry(`Анализ URL: ${currentUrl}`);
-        result = await analyzeUrl(currentUrl);
-      }
+      updateStatus("analysis-status", "В очереди", "info");
+      addLogEntry(`Создана задача: ${uploadResult.id}`);
 
-      // Handle response
-      if (result && result.success) {
-        addLogEntry('Анализ завершен успешно');
-        handleAnalysisResponse(result, currentFile ? currentFile.name : currentUrl, !!currentFile);
-
-        // Save to history
-        saveToHistory(result, currentFile ? currentFile.name : currentUrl, !!currentFile);
-      } else {
-        const errorMsg = result ? result.error : 'Неизвестная ошибка';
-        addLogEntry(`Ошибка анализа: ${errorMsg}`);
-        alert(`Ошибка анализа: ${errorMsg}`);
-      }
+      const finalStatus = await waitForFinalStatus(uploadResult.id);
+      handleAnalysisResponse(finalStatus, currentFile.name);
+      saveToHistory(finalStatus, currentFile.name, true);
     } catch (error) {
-      console.error('Analysis error:', error);
-      addLogEntry(`Ошибка сети: ${error.message}`);
-      alert(`Ошибка сети: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      updateStatus("analysis-status", "Ошибка", "danger");
+      addLogEntry(`Ошибка: ${message}`);
+      alert(`Ошибка обработки: ${message}`);
     } finally {
-      // Hide loading
       showLoading(false);
     }
   }
 
-  async function analyzeFile(file) {
+  async function uploadVideo(file, callbackUrl) {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append("data", file);
 
-    const response = await fetch('/api/analyze/file', {
-      method: 'POST',
-      body: formData
-    });
-
-    return await response.json();
-  }
-
-  async function analyzeUrl(url) {
-    const response = await fetch('/api/analyze/url', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: url })
-    });
-
-    return await response.json();
-  }
-
-  function handleAnalysisResponse(data, sourceName, isFile = true) {
-    // Update status
-    updateStatus('analysis-status', 'Завершено', 'success');
-
-    // Get prediction
-    const prediction = data.predicted_class || 'unknown';
-    let predictionText = 'НЕИЗВЕСТНО';
-    let predictionClass = 'normal';
-
-    if (prediction === 'violent' || prediction === 'АГРЕССИЯ') {
-      predictionText = 'АГРЕССИЯ';
-      predictionClass = 'danger';
-    } else if (prediction === 'non_violent' || prediction === 'nonviolent' || prediction === 'НОРМА') {
-      predictionText = 'НОРМА';
-      predictionClass = 'success';
+    if (callbackUrl) {
+      formData.append("response_url", callbackUrl);
     }
 
-    // Get confidence
-    const confidencePercent = data.confidence_percent || (data.confidence * 100) || 0;
+    const response = await fetch("/api/v1/Klin/upload", {
+      method: "POST",
+      body: formData,
+    });
 
-    // Update UI
-    updateStatus('prediction-result', predictionText, predictionClass);
-    updateStatus('confidence-level', `${confidencePercent.toFixed(1)}%`, 'info');
-
-    // Update video info
-    if (data.processing_info) {
-      const procTimeEl = document.getElementById('processing-time');
-      if (procTimeEl) {
-        procTimeEl.textContent = `${data.processing_info.processing_time_seconds || 0} сек`;
-      }
-
-      const durationEl = document.getElementById('video-duration');
-      if (durationEl && data.processing_info.video_duration) {
-        const seconds = data.processing_info.video_duration;
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        durationEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-      }
-
-      const totalFramesEl = document.getElementById('total-frames');
-      if (totalFramesEl) {
-        totalFramesEl.textContent = data.processing_info.total_frames || '--';
-      }
-
-      const fpsEl = document.getElementById('video-fps');
-      if (fpsEl) {
-        fpsEl.textContent = data.processing_info.video_fps ?
-          data.processing_info.video_fps.toFixed(2) : '--';
-      }
+    const payload = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new Error(payload.detail || `HTTP ${response.status}`);
     }
 
-    // Add to log
-    const sourceType = isFile ? 'Файл' : 'URL';
-    addLogEntry(`✓ ${sourceType}: ${sourceName}`);
-    addLogEntry(`✓ Результат: ${predictionText} (${confidencePercent.toFixed(1)}%)`);
-    addLogEntry('─'.repeat(50));
+    return payload;
+  }
+
+  async function waitForFinalStatus(klinId) {
+    const startTime = Date.now();
+    const timeoutMs = 10 * 60 * 1000;
+    const intervalMs = 2000;
+
+    while (Date.now() - startTime < timeoutMs) {
+      const response = await fetch(`/api/v1/Klin/${klinId}`);
+      const payload = await readJsonResponse(response);
+
+      if (!response.ok) {
+        throw new Error(payload.detail || `HTTP ${response.status}`);
+      }
+
+      if (payload.state === "FINISHED" || payload.state === "ERROR") {
+        return payload;
+      }
+
+      updateStatus("analysis-status", `Обработка (${payload.state})`, "info");
+      await sleep(intervalMs);
+    }
+
+    throw new Error("Таймаут ожидания результата анализа");
+  }
+
+  function handleAnalysisResponse(data, sourceName) {
+    const state = data.state || "UNKNOWN";
+
+    if (state === "ERROR") {
+      updateStatus("analysis-status", "Ошибка", "danger");
+      updateStatus("prediction-result", "ОШИБКА", "danger");
+      updateStatus("confidence-level", "0%", "info");
+      addLogEntry(`Обработка завершилась ошибкой: ${data.mae || "unknown error"}`);
+      return;
+    }
+
+    updateStatus("analysis-status", "Завершено", "success");
+
+    const maeResults = parseMaeResults(data.mae);
+    const bestResult = pickBestMaeResult(maeResults);
+
+    const prediction = bestResult ? String(bestResult.answer) : "НЕИЗВЕСТНО";
+    const confidence = bestResult
+      ? normalizeConfidence(bestResult.confident) * 100
+      : 0;
+
+    updateStatus("prediction-result", prediction.toUpperCase(), "success");
+    updateStatus("confidence-level", `${confidence.toFixed(1)}%`, "info");
+
+    const totalFramesEl = document.getElementById("total-frames");
+    if (totalFramesEl) {
+      totalFramesEl.textContent = String(maeResults.length);
+    }
+
+    const durationEl = document.getElementById("video-duration");
+    if (durationEl) {
+      durationEl.textContent = "--";
+    }
+
+    const fpsEl = document.getElementById("video-fps");
+    if (fpsEl) {
+      fpsEl.textContent = "--";
+    }
+
+    const processingTimeEl = document.getElementById("processing-time");
+    if (processingTimeEl) {
+      processingTimeEl.textContent = "--";
+    }
+
+    addLogEntry(`✓ Файл: ${sourceName}`);
+    addLogEntry(`✓ Класс: ${prediction}`);
+    addLogEntry(`✓ Уверенность: ${confidence.toFixed(1)}%`);
+    addLogEntry("--------------------------------------------------");
+  }
+
+  function parseMaeResults(rawMae) {
+    if (!rawMae) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(rawMae);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function pickBestMaeResult(results) {
+    if (!results.length) {
+      return null;
+    }
+
+    return results.reduce((best, current) => {
+      const currentConfidence = normalizeConfidence(current.confident);
+      const bestConfidence = normalizeConfidence(best.confident);
+      return currentConfidence > bestConfidence ? current : best;
+    });
+  }
+
+  function normalizeConfidence(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      return 0;
+    }
+    if (numeric > 1) {
+      return numeric / 100;
+    }
+    return numeric;
+  }
+
+  async function readJsonResponse(response) {
+    try {
+      return await response.json();
+    } catch (_error) {
+      return {};
+    }
   }
 
   function saveToHistory(data, sourceName, isFile = true) {
     const historyEntry = {
       id: Date.now(),
       timestamp: new Date().toISOString(),
-      sourceName: sourceName,
-      isFile: isFile,
-      data: data,
-      prediction: data.predicted_class,
-      confidence: data.confidence_percent || (data.confidence * 100) || 0
+      sourceName,
+      isFile,
+      data,
+      state: data.state,
     };
 
-    analysisHistory.unshift(historyEntry); // Add to beginning
-
-    // Keep only last 10 entries
+    analysisHistory.unshift(historyEntry);
     if (analysisHistory.length > 10) {
       analysisHistory = analysisHistory.slice(0, 10);
     }
 
-    // Save to localStorage
-    saveHistory();
-
-    // Update history display if needed
-    updateHistoryDisplay();
-  }
-
-  function saveHistory() {
     try {
-      localStorage.setItem('klin_analysis_history', JSON.stringify(analysisHistory));
-    } catch (e) {
-      console.error('Failed to save history:', e);
+      localStorage.setItem("klin_analysis_history", JSON.stringify(analysisHistory));
+    } catch (_error) {
+      // silently ignore localStorage errors
     }
   }
 
   function loadHistory() {
     try {
-      const saved = localStorage.getItem('klin_analysis_history');
+      const saved = localStorage.getItem("klin_analysis_history");
       if (saved) {
         analysisHistory = JSON.parse(saved);
-        updateHistoryDisplay();
       }
-    } catch (e) {
-      console.error('Failed to load history:', e);
+    } catch (_error) {
+      analysisHistory = [];
     }
   }
 
-  function updateHistoryDisplay() {
-    // Optional: Add a history panel if you want
-    // For now, we just keep it in localStorage
-  }
-
-  function updateStatus(elementId, text, type = 'normal') {
+  function updateStatus(elementId, text, type = "normal") {
     const element = document.getElementById(elementId);
-    if (!element) return;
+    if (!element) {
+      return;
+    }
 
     element.textContent = text;
-    element.className = 'status-value';
+    element.className = "status-value";
 
-    if (type === 'success') {
-      element.classList.add('success');
-    } else if (type === 'danger') {
-      element.classList.add('danger');
-    } else if (type === 'info') {
-      element.classList.add('info');
+    if (type === "success") {
+      element.classList.add("success");
+    } else if (type === "danger") {
+      element.classList.add("danger");
+    } else if (type === "info") {
+      element.classList.add("info");
     }
   }
 
   function addLogEntry(message) {
-    const logContainer = document.getElementById('event-log');
-    if (!logContainer) return;
+    const logContainer = document.getElementById("event-log");
+    if (!logContainer) {
+      return;
+    }
 
     const time = new Date().toLocaleTimeString();
-    const entry = document.createElement('div');
-    entry.className = 'log-entry';
+    const entry = document.createElement("div");
+    entry.className = "log-entry";
     entry.innerHTML = `<span class="log-time">${time}</span><span class="log-message">${escapeHtml(message)}</span>`;
     logContainer.appendChild(entry);
     logContainer.scrollTop = logContainer.scrollHeight;
   }
 
   function showLoading(show) {
-    if (!loadingOverlay) return;
-    loadingOverlay.style.display = show ? 'flex' : 'none';
+    if (!loadingOverlay) {
+      return;
+    }
+
+    loadingOverlay.style.display = show ? "flex" : "none";
   }
 
   function updateAnalyzeButton() {
-    if (!analyzeBtn) return;
-
-    // Enable button if we have a file OR a valid URL
-    const hasFile = currentFile !== null;
-    const hasUrl = currentUrl && currentUrl.trim() !== '';
-
-    analyzeBtn.disabled = !(hasFile || hasUrl);
-
-    // Update button text
-    if (hasFile) {
-      analyzeBtn.textContent = 'Начать анализ файла';
-    } else if (hasUrl) {
-      analyzeBtn.textContent = 'Начать анализ по ссылке';
-    } else {
-      analyzeBtn.textContent = 'Начать анализ';
+    if (!analyzeBtn) {
+      return;
     }
+
+    analyzeBtn.disabled = !currentFile;
+    analyzeBtn.textContent = currentFile
+      ? "Загрузить и обработать"
+      : "Загрузить и обработать";
   }
 
   function resetCurrentAnalysis() {
-    const fields = [
-      'analysis-status', 'prediction-result', 'confidence-level',
-      'processing-time', 'video-duration', 'total-frames', 'video-fps'
-    ];
+    updateStatus("analysis-status", "Ожидание данных");
+    updateStatus("prediction-result", "--");
+    updateStatus("confidence-level", "--");
 
-    fields.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.textContent = '--';
-        el.className = 'status-value';
-      }
-    });
-  }
+    const processingTimeEl = document.getElementById("processing-time");
+    const durationEl = document.getElementById("video-duration");
+    const totalFramesEl = document.getElementById("total-frames");
+    const fpsEl = document.getElementById("video-fps");
 
-  function clearLog() {
-    const logContainer = document.getElementById('event-log');
-    if (logContainer) {
-      logContainer.innerHTML = '';
+    if (processingTimeEl) {
+      processingTimeEl.textContent = "--";
+    }
+    if (durationEl) {
+      durationEl.textContent = "--";
+    }
+    if (totalFramesEl) {
+      totalFramesEl.textContent = "--";
+    }
+    if (fpsEl) {
+      fpsEl.textContent = "--";
     }
   }
 
-  // Utility functions
+  function clearLog() {
+    const logContainer = document.getElementById("event-log");
+    if (logContainer) {
+      logContainer.innerHTML = "";
+    }
+  }
+
   function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Байт';
+    if (bytes === 0) {
+      return "0 Байт";
+    }
+
     const k = 1024;
-    const sizes = ['Байт', 'КБ', 'МБ', 'ГБ'];
+    const sizes = ["Байт", "КБ", "МБ", "ГБ"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
   }
 
   function escapeHtml(text) {
-    const div = document.createElement('div');
+    const div = document.createElement("div");
     div.textContent = text;
     return div.innerHTML;
   }
 
-  // Make functions available globally
-  window.testUrl = testUrl;
+  function sleep(ms) {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  }
+
   window.analyzeVideo = analyzeVideo;
   window.removeFile = removeFile;
-  window.clearUrl = clearUrl;
+  window.clearResponseUrl = clearResponseUrl;
   window.clearLog = clearLog;
 });

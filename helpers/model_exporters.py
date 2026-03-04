@@ -72,6 +72,7 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
 
     This helps align Triton `config.pbtxt` names with exported graph names.
     """
+    ort_exc: Exception | None = None
     try:
         ort_module = importlib.import_module("onnxruntime")
         inference_session = cast(Any, ort_module.InferenceSession)
@@ -81,8 +82,8 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
         print(f"[ONNX] Inputs: {input_names}")
         print(f"[ONNX] Outputs: {output_names}")
         return
-    except Exception:
-        pass
+    except Exception as exc:  # pylint: disable=broad-except
+        ort_exc = exc
 
     try:
         onnx_module = importlib.import_module("onnx")
@@ -92,11 +93,65 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
         output_names = [item.name for item in model.graph.output]
         print(f"[ONNX] Inputs: {input_names}")
         print(f"[ONNX] Outputs: {output_names}")
-    except Exception:
+    except Exception as exc:  # pylint: disable=broad-except
+        if ort_exc is not None:
+            print(f"[ONNX] onnxruntime inspection failed: {ort_exc}")
+        print(f"[ONNX] onnx inspection failed: {exc}")
         print(
             "[ONNX] Unable to inspect graph names. "
             "Install `onnxruntime` or `onnx` for I/O inspection."
         )
+
+
+def _ensure_positive_int(name: str, value: int) -> None:
+    """
+    Validate positive integer CLI argument.
+    """
+    if value <= 0:
+        raise ValueError(f"{name} must be > 0")
+
+
+def _validate_output_path(path: Path) -> None:
+    """
+    Validate ONNX output file path.
+    """
+    if path.suffix.lower() != ".onnx":
+        raise ValueError(f"Output path must end with .onnx: {path}")
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    """
+    Validate CLI args before running exporters.
+    """
+    _ensure_positive_int("--opset", args.opset)
+
+    if args.command == "videomae":
+        if not args.model_dir.is_dir():
+            raise ValueError(f"Model directory not found: {args.model_dir}")
+        _ensure_positive_int("--frames", args.frames)
+        _ensure_positive_int("--height", args.height)
+        _ensure_positive_int("--width", args.width)
+        _validate_output_path(args.output)
+        return
+
+    if args.command == "x3d":
+        if not args.checkpoint.is_file():
+            raise ValueError(f"Checkpoint file not found: {args.checkpoint}")
+        _ensure_positive_int("--num-classes", args.num_classes)
+        _ensure_positive_int("--frames", args.frames)
+        _ensure_positive_int("--height", args.height)
+        _ensure_positive_int("--width", args.width)
+        _validate_output_path(args.output)
+        return
+
+    if args.command == "yolo":
+        if not args.weights.is_file():
+            raise ValueError(f"Weights file not found: {args.weights}")
+        _ensure_positive_int("--imgsz", args.imgsz)
+        _validate_output_path(args.output)
+        return
+
+    raise ValueError(f"Unsupported command: {args.command}")
 
 
 def load_pytorchvideo_hub() -> X3DHubProtocol:
@@ -383,6 +438,10 @@ def main() -> None:
     """CLI entrypoint."""
     parser = build_parser()
     args = parser.parse_args()
+    try:
+        validate_args(args)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.command == "videomae":
         export_videomae_to_onnx(
