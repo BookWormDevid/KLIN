@@ -11,7 +11,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 import async_timeout
@@ -139,12 +139,15 @@ class InferenceProcessor(IKlinInference):
             self.mae.mae_model, local_files_only=True
         )
 
-        model = VideoMAEForVideoClassification.from_pretrained(
-            self.mae.mae_model, local_files_only=True
+        model = cast(
+            VideoMAEForVideoClassification,
+            VideoMAEForVideoClassification.from_pretrained(
+                self.mae.mae_model, local_files_only=True
+            ),
         )
-
-        self.mae.model = model.to(self.processing.device)  # type: ignore
-        self.mae.model.eval()
+        cast(torch.nn.Module, model).to(self.processing.device)
+        model.eval()
+        self.mae.model = model
 
     def find_mae_path(self) -> str:
         """

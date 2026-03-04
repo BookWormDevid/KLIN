@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from typing import Annotated
 from uuid import UUID
 
-import aiofiles  # type: ignore[import-untyped]
+import aiofiles
 from dishka import FromDishka
 from dishka.integrations.litestar import inject
 from litestar import Controller, MediaType, Response, get, post
