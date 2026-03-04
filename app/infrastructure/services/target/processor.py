@@ -19,14 +19,13 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-from app.infrastructure.services.target.x3d_net.x3d_net import generate_model
-
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
 from app.application.dto import KlinResultDto
 from app.application.interfaces import IKlinCallbackSender, IKlinInference
 from app.config import app_settings
+from app.infrastructure.services.target.x3d_net.x3d_net import generate_model
 from app.models.klin import KlinModel
 
 
@@ -36,6 +35,7 @@ BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
 MAE_DIR = BASE_DIR_MAE / app_settings.videomae_path
 YOLO_DIR = BASE_DIR_MAE / app_settings.yolo_path
 X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
+
 
 @dataclass
 class VideoMAEConfig:
@@ -57,6 +57,7 @@ class YoloConfig:
     yolo: YOLO | None = None
     yolo_path: str | None = None
 
+
 @dataclass
 class X3DConfig:
     """
@@ -65,6 +66,7 @@ class X3DConfig:
 
     model: torch.nn.Module | None = None
     model_path: str | None = None
+
 
 @dataclass
 class ProcessorConfig:
@@ -199,52 +201,69 @@ class InferenceProcessor(IKlinInference):
         """
         if self.x3d.model is not None:
             return
+
         model = generate_model(
-            x3d_version="M", # S, M, XL
+            x3d_version="M",  # S, M, XL
             n_classes=2,
             n_input_channels=3,
-            take="class",
             dropout=0,
             base_bn_splits=1,
         )
+
+        model = torch.nn.DataParallel(model)
+
+        # Загружаем веса
         weights = torch.load(X3D_DIR, map_location=self.processing.device)
         model.load_state_dict(weights)
+
         model.to(self.processing.device)
         model.eval()
+
         self.x3d.model = model
 
-    def _quick_x3d_check(self, video_path: str) -> bool:
+    def _quick_x3d_check(self, video_path: str) -> dict[int, float]:
         """
         Возвращает True если обнаружена драка.
         """
+        check_answer = {}
+        self.ensure_x3d_loaded()
+
+        if self.x3d.model is None:
+            raise RuntimeError("Модель X3D не загружена")
 
         cap = cv2.VideoCapture(video_path)
-        frames = []
+        frames_list: list = []
 
-        while len(frames) < 16:
+        while len(frames_list) < 16:
             ret, frame = cap.read()
             if not ret:
                 break
             frame = cv2.resize(frame, (224, 224))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames.append(frame)
+            frames_list.append(frame)
 
         cap.release()
 
-        if len(frames) < 16:
-            return False
+        if len(frames_list) < 16:
+            check_answer[0] = 0.0
+            return check_answer
 
-        frames = np.array(frames)
-        frames = torch.from_numpy(frames).permute(3, 0, 1, 2).unsqueeze(0).float() / 255.0
-        frames = frames.to(self.processing.device)
+        frames_np = np.array(frames_list)
+
+        frames_tensor = (
+            torch.from_numpy(frames_np).permute(3, 0, 1, 2).unsqueeze(0).float() / 255.0
+        )
+        frames_tensor = frames_tensor.to(self.processing.device)
 
         with torch.no_grad():
-            output = self.x3d.model(frames)
+            output = self.x3d.model(frames_tensor)
 
         probs = torch.nn.functional.softmax(output.squeeze(), dim=0)
+        confidence = probs[1].item()  # уверенность для класса 'fight'
         pred = torch.argmax(probs).item()
+        check_answer[int(pred)] = confidence
 
-        return pred == 1  # если 1 = fight
+        return check_answer  # если 1 = fight
 
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float
@@ -476,6 +495,7 @@ class InferenceProcessor(IKlinInference):
         )
         return state.mae_results, dict(state.bbox_by_time), objects, video_info
 
+    # не используется
     async def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""
         t = len(frames)
@@ -519,30 +539,35 @@ class InferenceProcessor(IKlinInference):
     async def analyze(self, model: KlinModel) -> KlinResultDto:
         """
         Сам процессор
-        Проверяет, что все модели загружены
-        Читает кадры с видео
-        Делит видео на чанки для обработки
-        Обработка videomae + yolo
-        Возвращает:
-        список mae [{time: [start_time_chunk, end_time_chunk], answer, confident}]
-        start_time_chunk - старт времени, когда найден класс
-        end_time_chunk - конец времени, когда найден класс
-        answer - класс
-        confident - уверенность в классе
-        словарь yolo
-        timestaps - время когда обнаружены классы
-        bbox - boundingbox
-        all_classes - список все классы что выдало videomae
-        objects - список все классы что выдало yolo
+        Сначала выполняется быстрый X3D check.
+        Если драка НЕ обнаружена (False) — сразу возвращаем x3d="False",
+        все остальные поля пустые (mae, yolo и т.д.).
+        Если драка обнаружена (True) — запускаем полную обработку YOLO + VideoMAE
+        и возвращаем полный результат с x3d="True".
         """
-        self._ensure_models_loaded()
+        self.ensure_x3d_loaded()  # X3D загружается всегда (нужен для быстрой проверки)
 
         start_ts = time.time()
         video_name = os.path.basename(model.video_path)
 
-        try:
-            logger.info("[API] Начало обработки видео: %s", video_name)
+        # === Быстрая проверка X3D ===
+        result_dict = self._quick_x3d_check(model.video_path)
+        is_fight = list(result_dict.keys())[0]
 
+        if not is_fight:
+            return KlinResultDto(
+                x3d=msgspec.json.encode(result_dict).decode("utf-8"),
+                mae="[]",
+                yolo="{}",
+                all_classes=[],
+                objects=[],
+            )
+
+        # === Если драка обнаружена — полная обработка ===
+
+        self._ensure_models_loaded()  # теперь загружаем MAE и YOLO (X3D уже загружен)
+
+        try:
             (
                 mae_results,
                 yolo_bbox,
@@ -557,6 +582,7 @@ class InferenceProcessor(IKlinInference):
             self._log_processing(video_name, video_info, processing_time)
 
             return KlinResultDto(
+                x3d=msgspec.json.encode(result_dict).decode("utf-8"),
                 mae=msgspec.json.encode(mae_results).decode("utf-8"),
                 yolo=msgspec.json.encode(yolo_bbox).decode("utf-8"),
                 all_classes=all_classes,
@@ -583,6 +609,7 @@ class KlinCallbackSender(IKlinCallbackSender):  # pylint: disable=too-few-public
 
         payload: dict[str, Any] = {
             "klin_id": str(model.id),
+            "x3d": model.x3d,
             "mae": model.mae,
             "yolo": model.yolo,
             "objects": model.objects,

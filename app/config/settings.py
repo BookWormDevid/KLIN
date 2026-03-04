@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     )
 
     Klin_queue = "Klin-queue"
+
     @property
     def videomae_path(self) -> str:
         """
@@ -45,6 +46,7 @@ class Settings(BaseSettings):
         return self.resolve_env_property(
             "VIDEOMAE_PATH", str, default_value=self.default_videomae_path
         )
+
     @property
     def yolo_path(self) -> str:
         """
@@ -59,7 +61,9 @@ class Settings(BaseSettings):
         """
         Источник x3d
         """
-        return self.resolve_env_property("X3D_PATH", str, default_value=self.default_x3d_path)
+        return self.resolve_env_property(
+            "X3D_PATH", str, default_value=self.default_x3d_path
+        )
 
     @property
     def database_url(self) -> str:
