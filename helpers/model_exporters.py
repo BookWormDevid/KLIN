@@ -73,9 +73,9 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
     This helps align Triton `config.pbtxt` names with exported graph names.
     """
     try:
-        import onnxruntime as ort  # type: ignore[import-not-found]
-
-        session = ort.InferenceSession(onnx_path.as_posix())
+        ort_module = importlib.import_module("onnxruntime")
+        inference_session = cast(Any, ort_module.InferenceSession)
+        session = inference_session(onnx_path.as_posix())
         input_names = [item.name for item in session.get_inputs()]
         output_names = [item.name for item in session.get_outputs()]
         print(f"[ONNX] Inputs: {input_names}")
@@ -85,9 +85,9 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
         pass
 
     try:
-        import onnx  # type: ignore[import-not-found]
-
-        model = onnx.load(onnx_path.as_posix())
+        onnx_module = importlib.import_module("onnx")
+        onnx_load = cast(Any, onnx_module.load)
+        model = onnx_load(onnx_path.as_posix())
         input_names = [item.name for item in model.graph.input]
         output_names = [item.name for item in model.graph.output]
         print(f"[ONNX] Inputs: {input_names}")
