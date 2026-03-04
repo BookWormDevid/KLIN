@@ -20,6 +20,11 @@ import cv2
 import msgspec
 import numpy as np
 import torch
+import x3d_net as x3d
+from x3d_net import generate_model
+import torch.nn as nn
+import torch.nn.functional as F
+
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
@@ -33,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
 MAE_DIR = BASE_DIR_MAE / app_settings.videomae_path
-
+YOLO_DIR = BASE_DIR_MAE / app_settings.yolo_path
+X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
 
 @dataclass
 class VideoMAEConfig:
@@ -55,6 +61,14 @@ class YoloConfig:
     yolo: YOLO | None = None
     yolo_path: str | None = None
 
+@dataclass
+class X3DConfig:
+    """
+    Переменные для x3d
+    """
+
+    model: torch.nn.Module | None = None
+    model_path: str | None = None
 
 @dataclass
 class ProcessorConfig:
@@ -112,6 +126,7 @@ class InferenceProcessor(IKlinInference):
         self.mae = VideoMAEConfig()
         self.yolo = YoloConfig()
         self.processing = ProcessorConfig()
+        self.x3d = X3DConfig()
 
     def _ensure_models_loaded(self) -> None:
         """
@@ -160,9 +175,12 @@ class InferenceProcessor(IKlinInference):
         Автоматически найти путь к модели yolo
         Ищет по заданному пути
         """
-        base_yolo_path = Path(__file__).parent.parent.parent.parent.parent
-        self.yolo.yolo_path = str(base_yolo_path / "models" / "yolov8x.pt")
+        self.yolo.yolo_path = str(YOLO_DIR)
         return self.yolo.yolo_path
+
+    def find_x3d_path(self) -> str:
+        self.x3d.model_path = str(X3D_DIR)
+        return self.x3d.model_path
 
     def ensure_yolo_loaded(self) -> None:
         """
@@ -175,6 +193,26 @@ class InferenceProcessor(IKlinInference):
         self.yolo.yolo = YOLO(weights_path)
 
         self.yolo.yolo.to(self.processing.device)
+
+    def ensure_x3d_loaded(self) -> None:
+        """
+        Загружает модель x3d
+        """
+        if self.x3d.model is not None:
+            return
+        model = generate_model(
+            x3d_version="M", # S, M, XL
+            n_classes=2,
+            n_input_channels=3,
+            take="class",
+            dropout=0,
+            base_bn_splits=1,
+        )
+        weights = torch.load(X3D_DIR, map_location=self.processing.device)
+        model.load_state_dict(weights)
+        model.to(self.processing.device)
+        model.eval()
+        self.x3d.model = model
 
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float

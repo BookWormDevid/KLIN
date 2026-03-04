@@ -30,12 +30,13 @@ class Settings(BaseSettings):
     db_idle_in_transaction_session_timeout: int = 30000
 
     default_videomae_path = "models/videomae-UCF-crime"
+    default_yolo_path = "models/yolov8x.pt"
+    default_x3d_path = "models/pre_trained_x3d_model.pt"
     default_cors_allowed_origins = (
         "http://localhost,http://127.0.0.1,http://localhost:3000,http://127.0.0.1:3000"
     )
 
     Klin_queue = "Klin-queue"
-
     @property
     def videomae_path(self) -> str:
         """
@@ -44,6 +45,21 @@ class Settings(BaseSettings):
         return self.resolve_env_property(
             "VIDEOMAE_PATH", str, default_value=self.default_videomae_path
         )
+    @property
+    def yolo_path(self) -> str:
+        """
+        Источник yolo
+        """
+        return self.resolve_env_property(
+            "YOLO_PATH", str, default_value=self.default_yolo_path
+        )
+
+    @property
+    def x3d_path(self) -> str:
+        """
+        Источник x3d
+        """
+        return self.resolve_env_property("X3D_PATH", str, default_value=self.default_x3d_path)
 
     @property
     def database_url(self) -> str:
