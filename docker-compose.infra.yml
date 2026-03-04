@@ -6,7 +6,7 @@ services:
       networks:
         - web
       environment:
-        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/klin?sslmode=disable"
+        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/postgres?sslmode=disable"
       ports:
         - "9187:9187"
       depends_on:

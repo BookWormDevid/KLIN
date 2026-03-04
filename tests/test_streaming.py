@@ -1,7 +1,3 @@
-# pylint: disable="protected-access"
-# pylint: disable="no-member"
-# pylint: disable="unnecessary-pass"
-# pylint: disable="import-error"
 """
 Тесты логики стриминговой обработки видео
 """
@@ -24,9 +20,15 @@ class FakeVideoCapture:
         self.fps = fps
         self._opened = True
 
-    def isOpened(self) -> bool:  # pylint: disable="invalid-name"
+    def is_opened(self) -> bool:
         """Проверяет, открыто ли видео."""
         return self._opened
+
+    def __getattr__(self, attr: str):
+        """Совместимость с API cv2.VideoCapture."""
+        if attr == "isOpened":
+            return self.is_opened
+        raise AttributeError(attr)
 
     def read(self) -> tuple[bool, np.ndarray | None]:
         """
@@ -50,7 +52,15 @@ class FakeVideoCapture:
 
     def release(self) -> None:
         """Освобождает ресурсы (в фейке — ничего)."""
-        pass
+        self._opened = False
+
+
+class InferenceProcessorTestAdapter(InferenceProcessor):
+    """Адаптер для тестирования protected-методов через публичные обертки."""
+
+    async def process_video_stream(self, video_path: str):
+        """Публичная обертка над потоковой обработкой видео."""
+        return await self._process_video_stream(video_path)
 
 
 @pytest.mark.asyncio
@@ -64,27 +74,29 @@ async def test_process_video_stream_mocked(monkeypatch):
     - правильный формат возвращаемых данных
     - вызов YOLO на нужных кадрах (если stride позволяет)
     """
-    processor = InferenceProcessor()
+    processor = InferenceProcessorTestAdapter()
 
     # Мокаем зависимости
     processor.mae.model = MagicMock()
     processor.mae.processor = MagicMock()
     processor.yolo.yolo = MagicMock()
 
-    processor._run_yolo_on_frame = MagicMock(return_value=[])
-    processor._predict_mae_chunk = MagicMock(
+    run_yolo_mock = MagicMock(return_value=[])
+    predict_mae_mock = MagicMock(
         return_value={
             "time": [0.0, 1.0],
             "answer": "test_label",
             "confident": 0.92,
         }
     )
+    monkeypatch.setattr(processor, "_run_yolo_on_frame", run_yolo_mock)
+    monkeypatch.setattr(processor, "_predict_mae_chunk", predict_mae_mock)
 
     # Подменяем VideoCapture
     monkeypatch.setattr(
         cv2,
         "VideoCapture",
-        lambda path: FakeVideoCapture(frame_count=10, fps=30.0),
+        lambda _path: FakeVideoCapture(frame_count=10, fps=30.0),
     )
 
     # Запускаем обработку
@@ -93,15 +105,15 @@ async def test_process_video_stream_mocked(monkeypatch):
         yolo_bbox,
         detected_objects,
         video_info,
-    ) = await processor._process_video_stream("fake.mp4")
+    ) = await processor.process_video_stream("fake.mp4")
 
     # Проверки
     assert isinstance(mae_results, list)
     assert len(mae_results) >= 1, "Должен быть хотя бы один чанк MAE"
 
     # Проверяем вызовы MAE
-    assert processor._predict_mae_chunk.call_count >= 1
-    assert processor._predict_mae_chunk.call_count <= 2
+    assert predict_mae_mock.call_count >= 1
+    assert predict_mae_mock.call_count <= 2
     # при chunk_size=16 и 10 кадрах → 1 чанк + паддинг
 
     # Проверяем структуру результата MAE
@@ -118,7 +130,7 @@ async def test_process_video_stream_mocked(monkeypatch):
     expected_yolo_calls = (
         10 + processor.processing.yolo_stride - 1
     ) // processor.processing.yolo_stride
-    assert processor._run_yolo_on_frame.call_count == expected_yolo_calls
+    assert run_yolo_mock.call_count == expected_yolo_calls
 
     # Проверяем информацию о видео
     assert isinstance(video_info, dict)

@@ -36,6 +36,13 @@ class IKlinRepository(Protocol):
         """
 
     @abstractmethod
+    async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None:
+        """
+        Атомарно переводит задачу из PENDING в PROCESSING.
+        Возвращает модель, если захват выполнен, иначе None.
+        """
+
+    @abstractmethod
     async def create(self, model: KlinModel) -> KlinModel:
         """
         Метод для создания запроса в бд

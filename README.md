@@ -249,7 +249,7 @@ uv run python helpers/model_exporters.py videomae \
 
 # X3D checkpoint (.pt/.pth -> ONNX)
 uv run python helpers/model_exporters.py x3d \
-  --checkpoint /path/to/x3d_checkpoint.pt \
+  --checkpoint models/pre_trained_x3d_model.pt \
   --target-ir-version 9
 
 # YOLO (.pt -> ONNX)

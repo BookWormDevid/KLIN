@@ -1,4 +1,3 @@
-# pylint: disable=redefined-outer-name
 """
 Настройки litestar, prometheus, swagger, контейнера dishka
 """
