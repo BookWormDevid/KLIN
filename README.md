@@ -3,6 +3,7 @@
 KLIN - сервис асинхронной обработки видео для детекции потенциально опасных событий.
 
 Проект включает:
+
 - API на Litestar (прием видео, получение статуса обработки)
 - воркер на FastStream + RabbitMQ
 - хранение результатов в PostgreSQL
@@ -39,7 +40,6 @@ KLIN - сервис асинхронной обработки видео для 
 └── tests/                # Unit и интеграционные тесты
 ```
 
-
 ## Требования
 
 - `git`
@@ -61,12 +61,14 @@ cp example.env .env
 Заполните в `.env` значения вместо `*_change_me`.
 
 Минимум для API/воркера:
+
 - `DATABASE_URL`
 - `RABBIT_URL`
 
 Если запускаете полный `docker-compose.infra.yml`, заполните также переменные для PostgreSQL, RabbitMQ, Grafana, PgAdmin и Alertmanager.
 
 Для Triton доступны опциональные переменные:
+
 - `TRITON_IMAGE_TAG` (по умолчанию `24.01-py3`)
 - `TRITON_EXIT_ON_ERROR` (по умолчанию `false`)
 
@@ -263,7 +265,6 @@ uv run python helpers/model_exporters.py yolo \
 `--target-ir-version 9` нужен для совместимости с Triton `24.01` (ORT в этом образе поддерживает IR <= 9).
 
 Подробности по структуре Triton-репозитория: `model_repository/README.md`.
-
 
 ## Остановка сервисов
 
