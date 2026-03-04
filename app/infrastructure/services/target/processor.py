@@ -221,7 +221,7 @@ class InferenceProcessor(IKlinInference):
 
         self.x3d.model = model
 
-    def _quick_x3d_check(self, video_path: str) -> dict[int, float]:
+    def _quick_x3d_check(self, video_path: str) -> dict[bool, float]:
         """
         Возвращает True если обнаружена драка.
         """
@@ -245,7 +245,7 @@ class InferenceProcessor(IKlinInference):
         cap.release()
 
         if len(frames_list) < 16:
-            check_answer[0] = 0.0
+            check_answer[False] = 0.0
             return check_answer
 
         frames_np = np.array(frames_list)
@@ -261,7 +261,7 @@ class InferenceProcessor(IKlinInference):
         probs = torch.nn.functional.softmax(output.squeeze(), dim=0)
         confidence = probs[1].item()  # уверенность для класса 'fight'
         pred = torch.argmax(probs).item()
-        check_answer[int(pred)] = confidence
+        check_answer[bool(pred)] = confidence
 
         return check_answer  # если 1 = fight
 
