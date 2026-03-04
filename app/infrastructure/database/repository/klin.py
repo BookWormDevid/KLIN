@@ -5,12 +5,12 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.exceptions import KlinNotFoundError
 from app.application.interfaces import IKlinRepository
-from app.models.klin import KlinModel
+from app.models.klin import KlinModel, ProcessingState
 
 
 @dataclass
@@ -31,6 +31,30 @@ class KlinRepository(IKlinRepository):
             if not klin:
                 raise KlinNotFoundError(klin_id)
             return klin
+
+    async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
+        """
+        Атомарно захватывает задачу для обработки.
+        Переводит состояние из PENDING в PROCESSING.
+        """
+        async with self.session() as session:
+            async with session.begin():
+                claim_stmt = (
+                    update(KlinModel)
+                    .where(
+                        KlinModel.id == klin_id,
+                        KlinModel.state == ProcessingState.PENDING,
+                    )
+                    .values(state=ProcessingState.PROCESSING)
+                    .returning(KlinModel.id)
+                )
+                claimed_id = await session.scalar(claim_stmt)
+
+            if claimed_id is None:
+                return None
+
+            query = select(KlinModel).where(KlinModel.id == claimed_id).limit(1)
+            return await session.scalar(query)
 
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """

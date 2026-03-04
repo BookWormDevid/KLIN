@@ -1,4 +1,3 @@
-# pylint: disable="import-error"
 """
 Набор unit-тестов для класса BaseSettings.
 """

@@ -44,7 +44,7 @@ class KlinService:
             try:
                 await self._klin_process_producer.send(payload)
                 return
-            except Exception as exc:  # pylint: disable=broad-except
+            except Exception as exc:
                 if attempt == max_attempts:
                     raise KlinEnqueueError(
                         "Failed to enqueue "
@@ -60,7 +60,7 @@ class KlinService:
         klin.mae = str(error)
         try:
             await self._klin_repository.update(klin)
-        except Exception as update_exc:  # pylint: disable=broad-except
+        except Exception as update_exc:
             logger.exception(
                 "Failed to persist enqueue error state. klin_id=%s error=%s",
                 klin.id,
@@ -69,7 +69,7 @@ class KlinService:
 
         try:
             await self._klin_callback_sender.post_consumer(klin)
-        except Exception as callback_exc:  # pylint: disable=broad-except
+        except Exception as callback_exc:
             logger.exception(
                 "Failed to send enqueue error callback. klin_id=%s error=%s",
                 klin.id,
@@ -102,7 +102,13 @@ class KlinService:
         Запускает процессор по id задачи.
         В конце удаляет файл который обработался.
         """
-        klin: KlinModel = await self._klin_repository.get_by_id(klin_id)
+        klin = await self._klin_repository.claim_for_processing(klin_id)
+        if klin is None:
+            logger.info(
+                "Skip klin processing due to idempotency guard. klin_id=%s",
+                klin_id,
+            )
+            return
 
         try:
             process = await self._klin_inference_service.analyze(klin)
@@ -116,7 +122,7 @@ class KlinService:
             await self._klin_callback_sender.post_consumer(klin)
             logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
-        except Exception as exc:  # pylint: disable=broad-except
+        except Exception as exc:
             klin.mae = str(exc)
             klin.state = ProcessingState.ERROR
             await self._klin_callback_sender.post_consumer(klin)
@@ -129,7 +135,7 @@ class KlinService:
         finally:
             try:
                 await self._klin_repository.update(klin)
-            except Exception as exc:  # pylint: disable=broad-except
+            except Exception as exc:
                 logger.exception(
                     "Failed to persist klin state. klin_id=%s error=%s",
                     klin_id,

@@ -1,4 +1,3 @@
-# pylint: disable=no-member
 """
 Подключение alembic к бд
 """

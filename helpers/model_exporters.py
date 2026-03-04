@@ -83,7 +83,7 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
         print(f"[ONNX] Inputs: {input_names}")
         print(f"[ONNX] Outputs: {output_names}")
         return
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:
         ort_exc = exc
 
     try:
@@ -94,7 +94,7 @@ def maybe_inspect_onnx_io(onnx_path: Path) -> None:
         output_names = [item.name for item in model.graph.output]
         print(f"[ONNX] Inputs: {input_names}")
         print(f"[ONNX] Outputs: {output_names}")
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:
         if ort_exc is not None:
             print(f"[ONNX] onnxruntime inspection failed: {ort_exc}")
         print(f"[ONNX] onnx inspection failed: {exc}")

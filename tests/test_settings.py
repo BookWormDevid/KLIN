@@ -1,4 +1,3 @@
-# pylint: disable="import-error"
 """
 Тестирование конфига приложения
 """

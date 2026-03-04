@@ -114,7 +114,7 @@ class KlinController(Controller):
         try:
             await klin_service.get_n_imferences(1)
             return Response({"status": "ready"})
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             raise HTTPException(
                 status_code=503, detail=f"Service unavailable: {str(e)}"
             ) from e
