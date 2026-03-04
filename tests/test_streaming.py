@@ -58,16 +58,6 @@ class FakeVideoCapture:
 class InferenceProcessorTestAdapter(InferenceProcessor):
     """Адаптер для тестирования protected-методов через публичные обертки."""
 
-    def set_yolo_runner(self, runner: MagicMock) -> MagicMock:
-        """Подменяет обработчик YOLO."""
-        self._run_yolo_on_frame = runner
-        return runner
-
-    def set_mae_predictor(self, predictor: MagicMock) -> MagicMock:
-        """Подменяет предиктор MAE."""
-        self._predict_mae_chunk = predictor
-        return predictor
-
     async def process_video_stream(self, video_path: str):
         """Публичная обертка над потоковой обработкой видео."""
         return await self._process_video_stream(video_path)
@@ -91,16 +81,16 @@ async def test_process_video_stream_mocked(monkeypatch):
     processor.mae.processor = MagicMock()
     processor.yolo.yolo = MagicMock()
 
-    run_yolo_mock = processor.set_yolo_runner(MagicMock(return_value=[]))
-    predict_mae_mock = processor.set_mae_predictor(
-        MagicMock(
-            return_value={
-                "time": [0.0, 1.0],
-                "answer": "test_label",
-                "confident": 0.92,
-            }
-        )
+    run_yolo_mock = MagicMock(return_value=[])
+    predict_mae_mock = MagicMock(
+        return_value={
+            "time": [0.0, 1.0],
+            "answer": "test_label",
+            "confident": 0.92,
+        }
     )
+    monkeypatch.setattr(processor, "_run_yolo_on_frame", run_yolo_mock)
+    monkeypatch.setattr(processor, "_predict_mae_chunk", predict_mae_mock)
 
     # Подменяем VideoCapture
     monkeypatch.setattr(

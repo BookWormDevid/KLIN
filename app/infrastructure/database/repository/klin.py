@@ -3,6 +3,7 @@
 """
 
 from dataclasses import dataclass
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -54,7 +55,8 @@ class KlinRepository(IKlinRepository):
                 return None
 
             query = select(KlinModel).where(KlinModel.id == claimed_id).limit(1)
-            return await session.scalar(query)
+            klin = await session.scalar(query)
+            return cast(KlinModel | None, klin)
 
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """

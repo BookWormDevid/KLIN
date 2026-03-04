@@ -10,6 +10,7 @@ import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,11 +20,6 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-import x3d_net as x3d
-from x3d_net import generate_model
-import torch.nn as nn
-import torch.nn.functional as F
-
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
@@ -39,6 +35,7 @@ BASE_DIR_MAE = Path(__file__).parent.parent.parent.parent.parent
 MAE_DIR = BASE_DIR_MAE / app_settings.videomae_path
 YOLO_DIR = BASE_DIR_MAE / app_settings.yolo_path
 X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
+
 
 @dataclass
 class VideoMAEConfig:
@@ -60,6 +57,7 @@ class YoloConfig:
     yolo: YOLO | None = None
     yolo_path: str | None = None
 
+
 @dataclass
 class X3DConfig:
     """
@@ -68,6 +66,7 @@ class X3DConfig:
 
     model: torch.nn.Module | None = None
     model_path: str | None = None
+
 
 @dataclass
 class ProcessorConfig:
@@ -202,19 +201,31 @@ class InferenceProcessor(IKlinInference):
         """
         if self.x3d.model is not None:
             return
+        try:
+            x3d_module = import_module("x3d_net")
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                "x3d_net module is required for X3D model loading"
+            ) from exc
+
+        generate_model = getattr(x3d_module, "generate_model", None)
+        if generate_model is None:
+            raise RuntimeError("x3d_net.generate_model is not available")
+
         model = generate_model(
-            x3d_version="M", # S, M, XL
+            x3d_version="M",  # S, M, XL
             n_classes=2,
             n_input_channels=3,
             take="class",
             dropout=0,
             base_bn_splits=1,
         )
+        model_typed = cast(torch.nn.Module, model)
         weights = torch.load(X3D_DIR, map_location=self.processing.device)
-        model.load_state_dict(weights)
-        model.to(self.processing.device)
-        model.eval()
-        self.x3d.model = model
+        model_typed.load_state_dict(weights)
+        model_typed.to(self.processing.device)
+        model_typed.eval()
+        self.x3d.model = model_typed
 
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float
