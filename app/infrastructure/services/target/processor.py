@@ -1,4 +1,3 @@
-# pylint: disable=no-member
 """
 Процессор для взаимодействия с приложением litestar
 """

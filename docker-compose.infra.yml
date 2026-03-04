@@ -87,14 +87,15 @@ services:
 
     triton:
         profiles: ["triton"]
-        image: nvcr.io/nvidia/tritonserver:24.01-py3
+        image: nvcr.io/nvidia/tritonserver:${TRITON_IMAGE_TAG:-24.01-py3}
         restart: unless-stopped
-        command: >
-            tritonserver
-            --model-repository=/models
-            --grpc-port=8001
-            --http-port=8008
-            --metrics-port=8002
+        command:
+            - tritonserver
+            - --model-repository=/models
+            - --grpc-port=8001
+            - --http-port=8008
+            - --metrics-port=8002
+            - --exit-on-error=${TRITON_EXIT_ON_ERROR:-false}
         ports:
             - "8008:8008"
             - "8001:8001"

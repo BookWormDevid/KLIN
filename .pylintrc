@@ -29,8 +29,10 @@ known-third-party = pytest, sqlalchemy
 
 [TYPECHECK]
 ignored-classes = SQLAlchemy, scoped_session
+extension-pkg-allow-list = cv2
 
 generated-members =
+    cv2.*,
     request,
     response,
     status_code,
