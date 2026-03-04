@@ -19,10 +19,7 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-import x3d_net as x3d
-from x3d_net import generate_model
-import torch.nn as nn
-import torch.nn.functional as F
+from app.infrastructure.services.target.x3d_net.x3d_net import generate_model
 
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
@@ -215,6 +212,39 @@ class InferenceProcessor(IKlinInference):
         model.to(self.processing.device)
         model.eval()
         self.x3d.model = model
+
+    def _quick_x3d_check(self, video_path: str) -> bool:
+        """
+        Возвращает True если обнаружена драка.
+        """
+
+        cap = cv2.VideoCapture(video_path)
+        frames = []
+
+        while len(frames) < 16:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame = cv2.resize(frame, (224, 224))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame)
+
+        cap.release()
+
+        if len(frames) < 16:
+            return False
+
+        frames = np.array(frames)
+        frames = torch.from_numpy(frames).permute(3, 0, 1, 2).unsqueeze(0).float() / 255.0
+        frames = frames.to(self.processing.device)
+
+        with torch.no_grad():
+            output = self.x3d.model(frames)
+
+        probs = torch.nn.functional.softmax(output.squeeze(), dim=0)
+        pred = torch.argmax(probs).item()
+
+        return pred == 1  # если 1 = fight
 
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float

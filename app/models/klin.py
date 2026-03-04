@@ -26,17 +26,19 @@ class KlinModel(BaseModel):
     response_url - ссылка для отправки вывода
     video_path - ссылка на созданное видео
     state - состояние строки
+    x3d - вывод x3d
     mae - вывод videomae
     yolo - вывод yolo
     all_classes - вывод всех классов, что нашёл videomae
     objects - вывод yolo bounding boxes на кадрах
     """
 
-    __tablename__ = "MAE"
+    __tablename__ = "klin"
 
     response_url: Mapped[str | None] = mapped_column(nullable=True)
     video_path: Mapped[str] = mapped_column(String(), nullable=False)
     state: Mapped[ProcessingState] = mapped_column(String())
+    x3d: Mapped[str | None] = mapped_column(String(), nullable=True)
     mae: Mapped[str | None] = mapped_column(String(), nullable=True)
     yolo: Mapped[str | None] = mapped_column(String(), nullable=True)
     all_classes: Mapped[list[str] | None] = mapped_column(

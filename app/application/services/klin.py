@@ -106,6 +106,7 @@ class KlinService:
 
         try:
             process = await self._klin_inference_service.analyze(klin)
+            klin.x3d = process.x3d
             klin.mae = process.mae
             klin.yolo = process.yolo
             klin.objects = process.objects if process.objects is not None else []
@@ -117,7 +118,7 @@ class KlinService:
             logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
         except Exception as exc:  # pylint: disable=broad-except
-            klin.mae = str(exc)
+            klin.x3d = str(exc)
             klin.state = ProcessingState.ERROR
             await self._klin_callback_sender.post_consumer(klin)
             logger.exception(

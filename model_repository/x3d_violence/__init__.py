@@ -1,1 +1,1 @@
-from app.infrastructure.services.target.x3d_net import
+from app.infrastructure.services.target.x3d_net.x3d_net import

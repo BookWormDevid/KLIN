@@ -28,6 +28,7 @@ class KlinResultDto(msgspec.Struct, frozen=True):
     и все классы найденные MAE.
     """
 
+    x3d: str | None
     mae: str | None
     yolo: str | None
     objects: list[str] | None
@@ -41,6 +42,7 @@ class KlinReadDto(msgspec.Struct, frozen=True):
     """
 
     id: uuid.UUID
+    x3d: str | None
     mae: str | None
     yolo: str | None
     objects: list[str] | None
@@ -54,6 +56,7 @@ class KlinReadDto(msgspec.Struct, frozen=True):
         """
         return KlinReadDto(
             id=model.id,
+            x3d=model.x3d,
             mae=model.mae,
             yolo=model.yolo,
             objects=model.objects,
