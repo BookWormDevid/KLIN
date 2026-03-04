@@ -277,7 +277,7 @@ class TestPerformKlin:
         """
         (
             klin_service,
-            mock_repository,
+            _,
             mock_inference_service,
             _,
             sample_klin_model,
@@ -334,7 +334,7 @@ class TestPerformKlin:
         """
         (
             klin_service,
-            mock_repository,
+            _,
             mock_inference_service,
             _,
             sample_klin_model,
@@ -365,7 +365,7 @@ class TestPerformKlin:
         """
         (
             klin_service,
-            mock_repository,
+            _,
             mock_inference_service,
             _,
             sample_klin_model,
