@@ -1,0 +1,44 @@
+name: "yolo_person"
+backend: "onnxruntime"
+max_batch_size: 8
+
+# Expected model file: model_repository/yolo_person/1/model.onnx
+# Default Ultralytics ONNX export usually has input "images" and output "output0".
+input [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    dims: [3, 640, 640]
+  }
+]
+
+output [
+  {
+    name: "output0"
+    data_type: TYPE_FP32
+    dims: [84, -1]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [1, 2, 4, 8]
+  max_queue_delay_microseconds: 2000
+}
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+    gpus: [0]
+  }
+]
+
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator [
+      {
+        name: "tensorrt"
+      }
+    ]
+  }
+}

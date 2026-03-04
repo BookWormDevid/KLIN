@@ -8,13 +8,6 @@ disable =
     broad-exception-caught,
 
 
-[DESIGN]
-max-locals = 30
-max-statements = 60
-max-branches = 15
-max-nested-blocks = 5
-min-public-methods = 1
-
 [FORMAT]
 max-line-length = 120
 docstring-min-length = 5
@@ -32,7 +25,7 @@ dummy-variables-rgx = _|dummy|ignore
 
 [IMPORTS]
 known-standard-library = sys, os, re, typing, collections, datetime
-known-third-party = flask, pytest, sqlalchemy
+known-third-party = pytest, sqlalchemy
 
 [TYPECHECK]
 ignored-classes = SQLAlchemy, scoped_session

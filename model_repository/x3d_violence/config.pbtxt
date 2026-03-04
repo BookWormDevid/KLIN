@@ -1,0 +1,44 @@
+name: "x3d_violence"
+backend: "onnxruntime"
+max_batch_size: 16
+
+# Expected model file: model_repository/x3d_violence/1/model.onnx
+# Input convention for ONNX export: NCTHW (N, 3, 16, 224, 224).
+input [
+  {
+    name: "input"
+    data_type: TYPE_FP32
+    dims: [3, 16, 224, 224]
+  }
+]
+
+output [
+  {
+    name: "logits"
+    data_type: TYPE_FP32
+    dims: [2]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [1, 4, 8, 16]
+  max_queue_delay_microseconds: 3000
+}
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 2
+    gpus: [0]
+  }
+]
+
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator [
+      {
+        name: "tensorrt"
+      }
+    ]
+  }
+}

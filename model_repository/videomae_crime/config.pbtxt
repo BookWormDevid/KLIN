@@ -1,0 +1,44 @@
+name: "videomae_crime"
+backend: "onnxruntime"
+max_batch_size: 4
+
+# Expected model file: model_repository/videomae_crime/1/model.onnx
+# VideoMAE ONNX input convention is typically (N, T, C, H, W) = (N, 16, 3, 224, 224).
+input [
+  {
+    name: "pixel_values"
+    data_type: TYPE_FP32
+    dims: [16, 3, 224, 224]
+  }
+]
+
+output [
+  {
+    name: "logits"
+    data_type: TYPE_FP32
+    dims: [14]
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [1, 2, 4]
+  max_queue_delay_microseconds: 4000
+}
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+    gpus: [0]
+  }
+]
+
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator [
+      {
+        name: "tensorrt"
+      }
+    ]
+  }
+}

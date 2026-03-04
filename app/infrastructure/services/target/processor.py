@@ -75,6 +75,22 @@ class ProcessorConfig:
     yolo_classes: list[int] = field(default_factory=lambda: [0])
 
 
+@dataclass
+class VideoStreamState:
+    """
+    Изменяемое состояние потоковой обработки видео.
+    """
+
+    mae_results: list[dict[str, Any]] = field(default_factory=list)
+    bbox_by_time: dict[float, list[list[float]]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    detected_class_ids: set[int] = field(default_factory=set)
+    chunk_buffer: list[np.ndarray] = field(default_factory=list)
+    chunk_start_frame: int = 0
+    frame_idx: int = 0
+
+
 class InferenceProcessor(IKlinInference):
     """
     Процессор. Содержит методы подключения моделей,
@@ -233,6 +249,126 @@ class InferenceProcessor(IKlinInference):
             "confident": conf,
         }
 
+    def _update_yolo_stream_state(
+        self, frame_resized: np.ndarray, state: VideoStreamState, fps: float
+    ) -> None:
+        """
+        Запускает YOLO на кадре по stride и обновляет состояние.
+        """
+        if state.frame_idx % self.processing.yolo_stride != 0:
+            return
+
+        detections = self._run_yolo_on_frame(frame_resized, state.frame_idx, fps)
+        for detection in detections:
+            timestep = float(detection["timesteps"])
+            state.bbox_by_time[timestep].append(detection["bbox"])
+            state.detected_class_ids.add(int(detection["class_id"]))
+
+    def _update_mae_stream_state(
+        self, frame_resized: np.ndarray, state: VideoStreamState, fps: float
+    ) -> None:
+        """
+        Копит кадры в чанк и при заполнении запускает MAE.
+        """
+        state.chunk_buffer.append(frame_resized)
+        if len(state.chunk_buffer) != self.processing.chunk_size:
+            return
+
+        state.mae_results.append(
+            self._predict_mae_chunk(
+                chunk_frames=state.chunk_buffer,
+                start_frame=state.chunk_start_frame,
+                end_frame=state.frame_idx,
+                fps=fps,
+            )
+        )
+        state.chunk_buffer = []
+        state.chunk_start_frame = state.frame_idx + 1
+
+    def _process_stream_frame(
+        self, frame: np.ndarray, state: VideoStreamState, fps: float
+    ) -> None:
+        """
+        Обрабатывает один кадр для YOLO и MAE.
+        """
+
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
+
+        self._update_yolo_stream_state(frame_resized, state, fps)
+        self._update_mae_stream_state(frame_resized, state, fps)
+        state.frame_idx += 1
+
+    def _flush_partial_chunk(self, state: VideoStreamState, fps: float) -> None:
+        """
+        Дополняет неполный чанк последним кадром и запускает MAE.
+        """
+
+        if not state.chunk_buffer:
+            return
+
+        pad_count = self.processing.chunk_size - len(state.chunk_buffer)
+        if pad_count > 0:
+            state.chunk_buffer.extend([state.chunk_buffer[-1]] * pad_count)
+
+        state.mae_results.append(
+            self._predict_mae_chunk(
+                chunk_frames=state.chunk_buffer,
+                start_frame=state.chunk_start_frame,
+                end_frame=state.frame_idx - 1,
+                fps=fps,
+            )
+        )
+
+    def _collect_stream_results(
+        self,
+        cap: cv2.VideoCapture,
+        fps: float,
+        video_path: str,
+    ) -> VideoStreamState:
+        """
+        Собирает MAE и YOLO результаты из видеопотока.
+        """
+        state = VideoStreamState()
+        with torch.no_grad():
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                self._process_stream_frame(frame, state, fps)
+
+        if state.frame_idx == 0:
+            raise ValueError(f"Кадры не прочитаны: {video_path}")
+
+        self._flush_partial_chunk(state, fps)
+        return state
+
+    def _build_video_info(
+        self,
+        *,
+        total_frames: int,
+        fps: float,
+        duration: float,
+        frames_read: int,
+    ) -> dict[str, Any]:
+        """
+        Формирует метаданные обработки видео.
+        """
+        return {
+            "total_frames": total_frames,
+            "fps": fps,
+            "duration": duration,
+            "frames_read": frames_read,
+        }
+
+    def _resolve_detected_objects(self, detected_class_ids: set[int]) -> list[str]:
+        """
+        Преобразует ID детектированных классов в названия.
+        """
+        assert self.yolo.yolo is not None
+        names = self.yolo.yolo.names
+        return [names[class_id] for class_id in detected_class_ids]
+
     async def _process_video_stream(
         self, video_path: str
     ) -> tuple[
@@ -256,78 +392,19 @@ class InferenceProcessor(IKlinInference):
         fps = float(cap.get(cv2.CAP_PROP_FPS))
         duration = (total_frames / fps) if fps > 0 else 0.0
 
-        mae_results: list[dict[str, Any]] = []
-        bbox_by_time: dict[float, list[list[float]]] = defaultdict(list)
-        detected_class_ids: set[int] = set()
-
-        chunk_buffer: list[np.ndarray] = []
-        chunk_start_frame = 0
-        frame_idx = 0
         try:
-            with torch.no_grad():
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
-
-                    if frame_idx % self.processing.yolo_stride == 0:
-                        detections = self._run_yolo_on_frame(
-                            frame_resized,
-                            frame_idx,
-                            fps,
-                        )
-                        for detection in detections:
-                            timesteps = float(detection["timesteps"])
-                            bbox_by_time[timesteps].append(detection["bbox"])
-                            detected_class_ids.add(int(detection["class_id"]))
-
-                    chunk_buffer.append(frame_resized)
-                    if len(chunk_buffer) == self.processing.chunk_size:
-                        mae_results.append(
-                            self._predict_mae_chunk(
-                                chunk_frames=chunk_buffer,
-                                start_frame=chunk_start_frame,
-                                end_frame=frame_idx,
-                                fps=fps,
-                            )
-                        )
-                        chunk_buffer = []
-                        chunk_start_frame = frame_idx + 1
-
-                    frame_idx += 1
-
-                if frame_idx == 0:
-                    raise ValueError(f"Кадры не прочитаны: {video_path}")
-
-                if chunk_buffer:
-                    pad_count = self.processing.chunk_size - len(chunk_buffer)
-                    if pad_count > 0:
-                        chunk_buffer.extend([chunk_buffer[-1]] * pad_count)
-
-                    mae_results.append(
-                        self._predict_mae_chunk(
-                            chunk_frames=chunk_buffer,
-                            start_frame=chunk_start_frame,
-                            end_frame=frame_idx - 1,
-                            fps=fps,
-                        )
-                    )
+            state = self._collect_stream_results(cap, fps, video_path)
         finally:
             cap.release()
 
-        names = self.yolo.yolo.names
-        objects = [names[class_id] for class_id in detected_class_ids]
-
-        video_info = {
-            "total_frames": total_frames,
-            "fps": fps,
-            "duration": duration,
-            "frames_read": frame_idx,
-        }
-        return mae_results, dict(bbox_by_time), objects, video_info
+        objects = self._resolve_detected_objects(state.detected_class_ids)
+        video_info = self._build_video_info(
+            total_frames=total_frames,
+            fps=fps,
+            duration=duration,
+            frames_read=state.frame_idx,
+        )
+        return state.mae_results, dict(state.bbox_by_time), objects, video_info
 
     async def _chunk_frames(self, frames: np.ndarray) -> np.ndarray:
         """Разделение кадров на чанки"""

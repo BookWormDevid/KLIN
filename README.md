@@ -1,114 +1,185 @@
 # KLIN (Klin Logical Inference Negation)
 
-Сервис для детекции агрессии на видео:
-- API на Litestar
+KLIN - сервис асинхронной обработки видео для детекции потенциально опасных событий.
+
+Проект включает:
+- API на Litestar (прием видео, получение статуса обработки)
 - воркер на FastStream + RabbitMQ
-- PostgreSQL
-- мониторинг (Prometheus, Grafana, Alertmanager)
-- эксперименты и метрики через MLflow
+- хранение результатов в PostgreSQL
+- ML-инференс через X3D -> VideoMAE -> YOLO
+- инфраструктуру мониторинга (Prometheus, Grafana, Alertmanager)
+- MLflow для экспериментов
+- репозиторий ONNX-моделей для Triton (`model_repository/`)
+
+## Архитектура потока
+
+```text
+Клиент
+  -> POST /api/v1/Klin/upload (multipart)
+  -> API сохраняет задачу в PostgreSQL (state=PENDING)
+  -> API публикует сообщение в RabbitMQ
+  -> Worker читает очередь и запускает инференс (VideoMAE + YOLO)
+  -> Worker обновляет запись в PostgreSQL (FINISHED/ERROR)
+  -> Worker отправляет callback на response_url
+  -> Клиент читает статус по GET /api/v1/Klin/{id}
+```
 
 ## Требования
 
 - `git`
-- `python` 3.10+
+- `python >= 3.10`
 - `uv`
 - `docker` + Docker Compose plugin
-- `make` (опционально, для удобных команд)
+- `make` (опционально)
 
-## 1) Установка uv
+## Быстрый старт (Docker)
 
-Linux/macOS:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Windows (PowerShell):
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-## 2) Установка зависимостей проекта
+### 1) Клонирование и окружение
 
 ```bash
 git clone https://github.com/BookWormDevid/KLIN.git
 cd KLIN
-
-uv venv
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-
-uv sync
-uv sync --dev # Если планируете менять код
-```
-
-## 3) Настройка `.env`
-
-```bash
 cp example.env .env
-# Windows: copy example.env .env
 ```
 
-Что обязательно сделать:
-- заменить все значения вида `*_change_me`
-- убедиться, что `DATABASE_URL` и `RABBIT_URL` указывают на рабочие сервисы
-- при обучении настроить `MLFLOW_TRACKING_URI` (или оставить локальный SQLite из примера)
+Заполните в `.env` значения вместо `*_change_me`.
 
-Минимум для запуска API/воркера:
+Минимум для API/воркера:
 - `DATABASE_URL`
 - `RABBIT_URL`
 
-Для полного запуска `docker-compose.infra.yml` заполните все переменные из `example.env`.
+Если запускаете полный `docker-compose.infra.yml`, заполните также переменные для PostgreSQL, RabbitMQ, Grafana, PgAdmin и Alertmanager.
 
-## 4) Запуск в Docker (рекомендуется)
-
-Сеть `web` в compose-файлах объявлена как `external`, поэтому ее нужно создать один раз:
+### 2) Создать внешнюю Docker-сеть
 
 ```bash
 docker network create web
 ```
 
-Поднять инфраструктуру:
+### 3) Поднять инфраструктуру
+
+Минимально (достаточно для работы API/воркера):
+
+```bash
+docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq triton
+```
+
+Полный стек (monitoring + traefik + sysadmin UIs):
 
 ```bash
 docker compose -f docker-compose.infra.yml up --build -d
 ```
 
-Поднять API и воркер:
+### 4) Поднять API и worker
 
 ```bash
 docker compose -f docker-compose.yml up --build -d
 ```
 
-## 5) Локальный запуск приложения (без Docker для API/воркера)
+### 5) Применить миграции (один раз на БД)
 
-Поднимите зависимости (PostgreSQL и RabbitMQ), затем запускайте процессы из локального окружения:
+```bash
+docker compose -f docker-compose.yml exec klin_api_development /code/.venv/bin/alembic upgrade head
+```
+
+### 6) Проверка
+
+- Swagger: `http://localhost/api/docs`
+- Live health: `http://localhost/api/v1/Klin/health/live`
+
+## Локальный запуск (без Docker для API/worker)
+
+### 1) Установка зависимостей
+
+```bash
+uv venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+
+uv sync
+uv sync --dev
+```
+
+### 2) Поднять зависимости (PostgreSQL + RabbitMQ)
 
 ```bash
 docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq
+```
 
+### 3) Миграции
+
+```bash
+uv run alembic upgrade head
+```
+
+### 4) Запуск процессов
+
+В отдельных терминалах:
+
+```bash
 uv run -m uvicorn --host 0.0.0.0 --port 8000 app.presentation.litestar.run:app
 uv run -m faststream run app.presentation.faststream.app:app
 ```
 
-## 6) Полезные URL
+Или через `Makefile`:
 
-При запуске через Docker + Traefik:
+```bash
+make start-api
+make start-queue
+```
+
+## API
+
+Базовый префикс: `/api/v1/Klin`
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `POST` | `/upload` | Загрузить видео на обработку |
+| `GET` | `/{klin_id}` | Получить статус и результат по ID |
+| `GET` | `/` | Получить последние записи |
+| `GET` | `/health/live` | Live-check API |
+| `GET` | `/health/ready` | Readiness-check сервиса |
+
+### Пример загрузки видео
+
+```bash
+curl -X POST 'http://localhost/api/v1/Klin/upload' \
+  -F 'data=@tests/videos/test.mp4' \
+  -F 'response_url=https://webhook.site/your-id'
+```
+
+Пример ответа:
+
+```json
+{
+  "id": "0f5d5f5a-5bf4-4afa-8ef1-1b0be4b7ce4a",
+  "mae": null,
+  "yolo": null,
+  "objects": null,
+  "all_classes": null,
+  "state": "PENDING"
+}
+```
+
+Проверка статуса:
+
+```bash
+curl 'http://localhost/api/v1/Klin/<klin_id>'
+```
+
+## Полезные URL (при полном Docker-запуске)
+
 - API docs: `http://localhost/api/docs`
-- Health: `http://localhost/api/v1/Klin/health/live`
 - RabbitMQ UI: `http://localhost:15672`
+- Traefik: `http://traefik.localhost`
 - Prometheus: `http://prometheus.localhost`
 - Grafana: `http://grafana.localhost`
 - Alertmanager: `http://alertmanager.localhost`
 - PgAdmin: `http://pgadmin.localhost`
 
-При локальном запуске API без Traefik:
-- API docs: `http://localhost:8000/api/docs`
+## Разработка
 
-## 7) Команды для разработки
-
-Линтеры/статический анализ:
+Линтинг и статический анализ:
 
 ```bash
 make
@@ -120,17 +191,16 @@ make
 uv run pytest
 ```
 
-Pre-commit hooks:
+Pre-commit:
 
 ```bash
 uv run pre-commit install
 uv run pre-commit install --hook-type pre-push
-
 uv run pre-commit run --all-files
 uv run pre-commit run --hook-stage pre-push --all-files
 ```
 
-## 8) EDA и обучение VideoMAE
+## EDA и обучение VideoMAE
 
 ```bash
 # EDA по action splits (13 классов, без Normal)
@@ -143,13 +213,56 @@ uv run python sandbox/src/eda_action_splits.py --include-normal
 uv run python sandbox/src/train.py
 ```
 
-## 9) Остановка сервисов
+## Экспорт моделей в ONNX для Triton
+
+Утилита: `helpers/model_exporters.py`
+
+Примеры:
 
 ```bash
-docker compose -f docker-compose.yml down # или stop
-docker compose -f docker-compose.infra.yml down # или stop, что удобнее
+# VideoMAE (HuggingFace directory -> ONNX)
+uv run python helpers/model_exporters.py videomae \
+  --model-dir models/videomae-UCF-crime
+
+# X3D checkpoint (.pt/.pth -> ONNX)
+uv run python helpers/model_exporters.py x3d \
+  --checkpoint /path/to/x3d_checkpoint.pt
+
+# YOLO (.pt -> ONNX)
+uv run python helpers/model_exporters.py yolo \
+  --weights models/yolov8x.pt
+```
+
+Путь назначения по умолчанию - `model_repository/<model_name>/1/model.onnx`.
+
+Подробности по структуре Triton-репозитория: `model_repository/README.md`.
+
+## Структура репозитория
+
+```text
+.
+├── app/                  # Основной backend (API, worker, сервисы, DI, БД)
+├── data/                 # Данные
+├── docs/                 # Документация и архитектурные материалы
+├── helpers/              # Вспомогательные скрипты (экспорт, анализ)
+├── model_repository/     # Triton model repository
+├── models/               # Локальные веса/каталоги моделей
+├── monitoring/           # Конфиги Prometheus/Grafana/Alertmanager
+├── sandbox/              # EDA/обучение/эксперименты
+└── tests/                # Unit и интеграционные тесты
+```
+
+## Остановка сервисов
+
+```bash
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.infra.yml down
 ```
 
 ## Документация
 
 - ML system design: `docs/ML_System_Design_Doc.md`
+
+## License
+
+Проект распространяется под лицензией, указанной в `LICENSE`.
