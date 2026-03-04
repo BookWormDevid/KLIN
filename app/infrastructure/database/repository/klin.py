@@ -1,4 +1,3 @@
-# pylint: disable=broad-exception-raised
 """
 Содержит методы для взаимодействия с базой данных
 """

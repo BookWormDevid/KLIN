@@ -1,5 +1,4 @@
 # pylint: disable=too-few-public-methods
-# pylint: disable=unnecessary-ellipsis
 """
 Передача информации из инфраструктурного слоя.
 Содержит классы для взаимодействия инфраструктурного слоя со слоями выше.
@@ -21,9 +20,8 @@ class IKlinInference(Protocol):
     @abstractmethod
     async def analyze(self, model: KlinModel) -> KlinResultDto:
         """
-        Метод передачи данных процессора
+        Метод передачи данных процессора и запуска анализа
         """
-        ...
 
 
 class IKlinRepository(Protocol):
@@ -36,28 +34,24 @@ class IKlinRepository(Protocol):
         """
         Метод передачи данных из бд по id
         """
-        ...
 
     @abstractmethod
     async def create(self, model: KlinModel) -> KlinModel:
         """
         Метод для создания запроса в бд
         """
-        ...
 
     @abstractmethod
     async def update(self, model: KlinModel) -> None:
         """
         Метод для обновления запроса в бд
         """
-        ...
 
     @abstractmethod
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """
         Метод для получения запроса к бд - последние n строк по id
         """
-        ...
 
 
 class IKlinProcessProducer(Protocol):
@@ -71,8 +65,6 @@ class IKlinProcessProducer(Protocol):
         Метод для отправки сообщений в брокер
         """
 
-    ...
-
 
 class IKlinCallbackSender(Protocol):
     """
@@ -84,4 +76,3 @@ class IKlinCallbackSender(Protocol):
         """
         Метод для отправки json с выводом процессора
         """
-        ...

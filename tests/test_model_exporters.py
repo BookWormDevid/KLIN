@@ -49,6 +49,8 @@ def test_main_dispatches_videomae_export(
             str(model_dir),
             "--output",
             str(output),
+            "--target-ir-version",
+            "9",
         ],
     )
 
@@ -56,3 +58,26 @@ def test_main_dispatches_videomae_export(
 
     assert called["model_dir"] == model_dir
     assert called["output_path"] == output
+    assert called["target_ir_version"] == 9
+
+
+def test_validate_args_rejects_non_positive_target_ir(tmp_path: Path) -> None:
+    """
+    Валидация должна отклонять невалидную IR-версию ONNX.
+    """
+    model_dir = tmp_path / "videomae"
+    model_dir.mkdir()
+
+    parser = model_exporters.build_parser()
+    args = parser.parse_args(
+        [
+            "videomae",
+            "--model-dir",
+            str(model_dir),
+            "--target-ir-version",
+            "0",
+        ]
+    )
+
+    with pytest.raises(ValueError, match="--target-ir-version must be > 0"):
+        model_exporters.validate_args(args)

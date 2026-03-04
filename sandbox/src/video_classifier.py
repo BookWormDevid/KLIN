@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
-from tqdm import tqdm  # type: ignore[import-untyped]
+from tqdm import tqdm
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 
 

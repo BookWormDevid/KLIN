@@ -24,6 +24,22 @@ KLIN - сервис асинхронной обработки видео для 
   -> Клиент читает статус по GET /api/v1/Klin/{id}
 ```
 
+## Структура репозитория
+
+```text
+.
+├── app/                  # Основной backend (API, worker, сервисы, DI, БД)
+├── data/                 # Данные
+├── docs/                 # Документация и архитектурные материалы
+├── helpers/              # Вспомогательные скрипты (экспорт, анализ)
+├── model_repository/     # Triton model repository
+├── models/               # Локальные веса/каталоги моделей
+├── monitoring/           # Конфиги Prometheus/Grafana/Alertmanager
+├── sandbox/              # EDA/обучение/эксперименты
+└── tests/                # Unit и интеграционные тесты
+```
+
+
 ## Требования
 
 - `git`
@@ -49,6 +65,12 @@ cp example.env .env
 - `RABBIT_URL`
 
 Если запускаете полный `docker-compose.infra.yml`, заполните также переменные для PostgreSQL, RabbitMQ, Grafana, PgAdmin и Alertmanager.
+
+Для Triton доступны опциональные переменные:
+- `TRITON_IMAGE_TAG` (по умолчанию `24.01-py3`)
+- `TRITON_EXIT_ON_ERROR` (по умолчанию `false`)
+
+Если у вас RTX 50xx (например RTX 5080), задайте более новый `TRITON_IMAGE_TAG` (например `25.xx-py3`), иначе контейнер `24.01` может вывести `No supported GPU(s) detected`.
 
 ### 2) Создать внешнюю Docker-сеть
 
@@ -222,35 +244,26 @@ uv run python sandbox/src/train.py
 ```bash
 # VideoMAE (HuggingFace directory -> ONNX)
 uv run python helpers/model_exporters.py videomae \
-  --model-dir models/videomae-UCF-crime
+  --model-dir models/videomae-UCF-crime \
+  --target-ir-version 9
 
 # X3D checkpoint (.pt/.pth -> ONNX)
 uv run python helpers/model_exporters.py x3d \
-  --checkpoint /path/to/x3d_checkpoint.pt
+  --checkpoint /path/to/x3d_checkpoint.pt \
+  --target-ir-version 9
 
 # YOLO (.pt -> ONNX)
 uv run python helpers/model_exporters.py yolo \
-  --weights models/yolov8x.pt
+  --weights models/yolov8x.pt \
+  --target-ir-version 9
 ```
 
 Путь назначения по умолчанию - `model_repository/<model_name>/1/model.onnx`.
 
+`--target-ir-version 9` нужен для совместимости с Triton `24.01` (ORT в этом образе поддерживает IR <= 9).
+
 Подробности по структуре Triton-репозитория: `model_repository/README.md`.
 
-## Структура репозитория
-
-```text
-.
-├── app/                  # Основной backend (API, worker, сервисы, DI, БД)
-├── data/                 # Данные
-├── docs/                 # Документация и архитектурные материалы
-├── helpers/              # Вспомогательные скрипты (экспорт, анализ)
-├── model_repository/     # Triton model repository
-├── models/               # Локальные веса/каталоги моделей
-├── monitoring/           # Конфиги Prometheus/Grafana/Alertmanager
-├── sandbox/              # EDA/обучение/эксперименты
-└── tests/                # Unit и интеграционные тесты
-```
 
 ## Остановка сервисов
 

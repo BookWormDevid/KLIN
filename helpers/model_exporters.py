@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+import onnx
 import torch
 from torch import nn
 from transformers import VideoMAEForVideoClassification
@@ -111,6 +112,44 @@ def _ensure_positive_int(name: str, value: int) -> None:
         raise ValueError(f"{name} must be > 0")
 
 
+def maybe_rewrite_onnx_ir_version(
+    output_path: Path, target_ir_version: int | None
+) -> None:
+    """
+    Rewrite ONNX IR version after export for runtime compatibility.
+
+    Useful when exporting with recent ONNX packages but deploying to older
+    runtimes (for example Triton 24.01 / ORT with max supported IR=9).
+    """
+    if target_ir_version is None:
+        return
+
+    _ensure_positive_int("--target-ir-version", target_ir_version)
+    model = onnx.load(output_path.as_posix(), load_external_data=True)
+    source_ir = int(model.ir_version)
+    if source_ir == target_ir_version:
+        print(f"[ONNX] IR version already {target_ir_version}, no rewrite needed.")
+        return
+
+    model.ir_version = target_ir_version
+    external_data_path = output_path.with_name(f"{output_path.name}.data")
+    if external_data_path.exists():
+        onnx.save_model(
+            model,
+            output_path.as_posix(),
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            location=external_data_path.name,
+            size_threshold=1024,
+            convert_attribute=False,
+        )
+    else:
+        onnx.save(model, output_path.as_posix())
+
+    onnx.checker.check_model(output_path.as_posix())
+    print(f"[ONNX] Rewrote IR version: {source_ir} -> {target_ir_version}")
+
+
 def _validate_output_path(path: Path) -> None:
     """
     Validate ONNX output file path.
@@ -131,6 +170,8 @@ def validate_args(args: argparse.Namespace) -> None:
         _ensure_positive_int("--frames", args.frames)
         _ensure_positive_int("--height", args.height)
         _ensure_positive_int("--width", args.width)
+        if args.target_ir_version is not None:
+            _ensure_positive_int("--target-ir-version", args.target_ir_version)
         _validate_output_path(args.output)
         return
 
@@ -141,6 +182,8 @@ def validate_args(args: argparse.Namespace) -> None:
         _ensure_positive_int("--frames", args.frames)
         _ensure_positive_int("--height", args.height)
         _ensure_positive_int("--width", args.width)
+        if args.target_ir_version is not None:
+            _ensure_positive_int("--target-ir-version", args.target_ir_version)
         _validate_output_path(args.output)
         return
 
@@ -148,6 +191,8 @@ def validate_args(args: argparse.Namespace) -> None:
         if not args.weights.is_file():
             raise ValueError(f"Weights file not found: {args.weights}")
         _ensure_positive_int("--imgsz", args.imgsz)
+        if args.target_ir_version is not None:
+            _ensure_positive_int("--target-ir-version", args.target_ir_version)
         _validate_output_path(args.output)
         return
 
@@ -174,6 +219,7 @@ def export_videomae_to_onnx(
     opset: int,
     dynamic_batch: bool,
     local_files_only: bool,
+    target_ir_version: int | None,
 ) -> None:
     """Export VideoMAE model directory to ONNX."""
     print(f"[VideoMAE] Loading model from: {model_dir}")
@@ -201,6 +247,7 @@ def export_videomae_to_onnx(
         dynamic_axes=dynamic_axes,
         opset_version=opset,
     )
+    maybe_rewrite_onnx_ir_version(output_path, target_ir_version)
     maybe_inspect_onnx_io(output_path)
     print("[VideoMAE] Done.")
 
@@ -280,6 +327,7 @@ def export_x3d_to_onnx(
     opset: int,
     strict_load: bool,
     dynamic_batch: bool,
+    target_ir_version: int | None,
 ) -> None:
     """Export X3D checkpoint (.pt/.pth) to ONNX."""
     print(f"[X3D] Building model variant: {variant}")
@@ -317,6 +365,7 @@ def export_x3d_to_onnx(
         dynamic_axes=dynamic_axes,
         opset_version=opset,
     )
+    maybe_rewrite_onnx_ir_version(output_path, target_ir_version)
     maybe_inspect_onnx_io(output_path)
     print("[X3D] Done.")
 
@@ -330,6 +379,7 @@ def export_yolo_to_onnx(
     dynamic: bool,
     simplify: bool,
     half: bool,
+    target_ir_version: int | None,
 ) -> None:
     """Export YOLO .pt weights to ONNX and move result to Triton path."""
     print(f"[YOLO] Loading weights: {weights_path}")
@@ -348,6 +398,7 @@ def export_yolo_to_onnx(
     shutil.copy2(src, output_path)
     print(f"[YOLO] Exported from: {src}")
     print(f"[YOLO] Saved to: {output_path}")
+    maybe_rewrite_onnx_ir_version(output_path, target_ir_version)
     maybe_inspect_onnx_io(output_path)
     print("[YOLO] Done.")
 
@@ -365,6 +416,12 @@ def add_videomae_subparser(
     parser.add_argument("--height", type=int, default=224)
     parser.add_argument("--width", type=int, default=224)
     parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument(
+        "--target-ir-version",
+        type=int,
+        default=None,
+        help="Rewrite exported ONNX IR version (e.g. 9 for Triton 24.01)",
+    )
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic batch axis"
     )
@@ -393,6 +450,12 @@ def add_x3d_subparser(
     parser.add_argument("--width", type=int, default=224)
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument(
+        "--target-ir-version",
+        type=int,
+        default=None,
+        help="Rewrite exported ONNX IR version (e.g. 9 for Triton 24.01)",
+    )
+    parser.add_argument(
         "--strict-load", action="store_true", help="Use strict state_dict loading"
     )
     parser.add_argument(
@@ -411,6 +474,12 @@ def add_yolo_subparser(
     parser.add_argument("--output", type=Path, default=DEFAULT_YOLO_OUT)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--opset", type=int, default=17)
+    parser.add_argument(
+        "--target-ir-version",
+        type=int,
+        default=None,
+        help="Rewrite exported ONNX IR version (e.g. 9 for Triton 24.01)",
+    )
     parser.add_argument(
         "--static-batch", action="store_true", help="Disable dynamic axes in export"
     )
@@ -453,6 +522,7 @@ def main() -> None:
             opset=args.opset,
             dynamic_batch=not args.static_batch,
             local_files_only=not args.allow_remote_files,
+            target_ir_version=args.target_ir_version,
         )
         return
 
@@ -468,6 +538,7 @@ def main() -> None:
             opset=args.opset,
             strict_load=args.strict_load,
             dynamic_batch=not args.static_batch,
+            target_ir_version=args.target_ir_version,
         )
         return
 
@@ -480,6 +551,7 @@ def main() -> None:
             dynamic=not args.static_batch,
             simplify=not args.no_simplify,
             half=args.half,
+            target_ir_version=args.target_ir_version,
         )
         return
 
