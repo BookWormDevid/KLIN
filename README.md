@@ -103,7 +103,8 @@ docker compose -f docker-compose.yml up --build -d
 ### 5) Применить миграции (один раз на БД)
 
 ```bash
-docker compose -f docker-compose.yml exec klin_api_development /code/.venv/bin/alembic upgrade head
+alembic revision --autogenerate -m "Initial migration"
+alembic upgrade head
 ```
 
 ### 6) Проверка

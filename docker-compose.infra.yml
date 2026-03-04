@@ -86,18 +86,17 @@ services:
           sh -c "rabbitmq-plugins enable rabbitmq_prometheus && docker-entrypoint.sh rabbitmq-server"
 
     triton:
-        profiles: ["triton"]
         image: nvcr.io/nvidia/tritonserver:${TRITON_IMAGE_TAG:-24.01-py3}
         restart: unless-stopped
         command:
             - tritonserver
             - --model-repository=/models
             - --grpc-port=8001
-            - --http-port=8008
+            - --http-port=8000
             - --metrics-port=8002
             - --exit-on-error=${TRITON_EXIT_ON_ERROR:-false}
         ports:
-            - "8008:8008"
+            - "8000:8000"
             - "8001:8001"
             - "8002:8002"
         volumes:
