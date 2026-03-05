@@ -48,7 +48,7 @@ KLIN - сервис асинхронной обработки видео для 
 - `docker` + Docker Compose plugin
 - `make` (опционально)
 
-## Быстрый старт (Docker)
+## Быстрый старт
 
 ### 1) Клонирование и окружение
 
@@ -60,19 +60,10 @@ cp example.env .env
 
 Заполните в `.env` значения вместо `*_change_me`.
 
-Минимум для API/воркера:
-
-- `DATABASE_URL`
-- `RABBIT_URL`
-
-Если запускаете полный `docker-compose.infra.yml`, заполните также переменные для PostgreSQL, RabbitMQ, Grafana, PgAdmin и Alertmanager.
-
 Для Triton доступны опциональные переменные:
 
 - `TRITON_IMAGE_TAG` (по умолчанию `24.01-py3`)
 - `TRITON_EXIT_ON_ERROR` (по умолчанию `false`)
-
-Если у вас RTX 50xx (например RTX 5080), задайте более новый `TRITON_IMAGE_TAG` (например `25.xx-py3`), иначе контейнер `24.01` может вывести `No supported GPU(s) detected`.
 
 ### 2) Создать внешнюю Docker-сеть
 
@@ -94,10 +85,30 @@ docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq triton
 docker compose -f docker-compose.infra.yml up --build -d
 ```
 
-### 4) Поднять API и worker
+### 4) Поднять API и worker (docker или локально)
 
+
+#### docker
 ```bash
 docker compose -f docker-compose.yml up --build -d
+```
+
+#### local (В основном для дебага)
+```bash
+uv venv
+source .venv/bin/activate
+# Windows PowerShell: .venv\Scripts\Activate.ps1
+
+uv sync
+uv sync --dev # если планируете менять код
+```
+В отдельных терминалах
+```bash
+make start-api
+```
+
+```bash
+make start-queue
 ```
 
 ### 5) Применить миграции (один раз на БД)
@@ -112,85 +123,17 @@ alembic upgrade head
 - Swagger: `http://localhost/api/docs`
 - Live health: `http://localhost/api/v1/Klin/health/live`
 
-## Локальный запуск (без Docker для API/worker)
-
-### 1) Установка зависимостей
-
-```bash
-uv venv
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-
-uv sync
-uv sync --dev
-```
-
-### 2) Поднять зависимости (PostgreSQL + RabbitMQ)
-
-```bash
-docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq
-```
-
-### 3) Миграции
-
-```bash
-uv run alembic upgrade head
-```
-
-### 4) Запуск процессов
-
-В отдельных терминалах:
-
-```bash
-uv run -m uvicorn --host 0.0.0.0 --port 8008 app.presentation.litestar.run:app
-uv run -m faststream run app.presentation.faststream.app:app
-```
-
-Или через `Makefile`:
-
-```bash
-make start-api
-make start-queue
-```
-
 ## API
 
 Базовый префикс: `/api/v1/Klin`
 
-| Метод | Путь | Назначение |
-|---|---|---|
-| `POST` | `/upload` | Загрузить видео на обработку |
-| `GET` | `/{klin_id}` | Получить статус и результат по ID |
-| `GET` | `/` | Получить последние записи |
-| `GET` | `/health/live` | Live-check API |
-| `GET` | `/health/ready` | Readiness-check сервиса |
-
-### Пример загрузки видео
-
-```bash
-curl -X POST 'http://localhost/api/v1/Klin/upload' \
-  -F 'data=@tests/videos/test.mp4' \
-  -F 'response_url=https://webhook.site/your-id'
-```
-
-Пример ответа:
-
-```json
-{
-  "id": "0f5d5f5a-5bf4-4afa-8ef1-1b0be4b7ce4a",
-  "mae": null,
-  "yolo": null,
-  "objects": null,
-  "all_classes": null,
-  "state": "PENDING"
-}
-```
-
-Проверка статуса:
-
-```bash
-curl 'http://localhost/api/v1/Klin/<klin_id>'
-```
+| Метод  | Путь            |  Назначение                       |
+|--------|-----------------|-----------------------------------|
+| `POST` | `/upload`       | Загрузить видео на обработку      |
+| `GET`  | `/{klin_id}`    | Получить статус и результат по ID |
+| `GET`  | `/`             | Получить последние записи         |
+| `GET`  | `/health/live`  | Live-check API                    |
+| `GET`  | `/health/ready` | Readiness-check сервиса           |
 
 ## Полезные URL (при полном Docker-запуске)
 
