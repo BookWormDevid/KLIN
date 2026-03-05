@@ -2,7 +2,6 @@
 Настройки приложения с валидацией
 """
 
-from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
@@ -13,7 +12,6 @@ from app.config.base import BaseSettings
 load_dotenv()
 
 
-@dataclass
 class Settings(BaseSettings):
     """
     В классе представлены методы для передачи настроек
