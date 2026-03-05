@@ -32,3 +32,29 @@ services:
 networks:
   web:
     external: true
+
+# frontend:
+#     build: ./sandbox/scr/frontend  # Путь к папке, где лежит Dockerfile фронта
+#     container_name: klin-frontend
+#     ports:
+#       - "3000:3000"
+#     environment:
+#       - WDS_SOCKET_PORT=0 # Чтобы работало живое обновление кода (HMR)
+#     volumes:
+#       - ./sandbox/scr/frontend:/app             # Прокидываем код для разработки
+#       - /app/node_modules           # Исключаем локальные node_modules
+#     depends_on:
+#       - backend
+
+#   s3-storage:
+#     image: minio/minio
+#     container_name: klin-s3
+#     ports:
+#       - "9000:9000"    # API
+#       - "9001:9001"    # Консоль
+#     environment:
+#       MINIO_ROOT_USER: admin
+#       MINIO_ROOT_PASSWORD: password123
+#     volumes:
+#       - ./minio_data:/data
+#     command: server /data --console-address ":9001"

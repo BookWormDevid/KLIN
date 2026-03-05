@@ -1,0 +1,45 @@
+после docker-compose up -d
+
+Зайти на http://твой-ip:9001 (логин: admin, пароль: password123).
+Создай Bucket с названием analysed-videos.
+В настройках бакета (Access Policy) поставить Public.
+в настройках бакета (раздел Permissions -> CORS) вставить этот конфиг:
+[
+    {
+        "AllowedHeaders": ["*"],
+        "AllowedMethods": ["GET", "HEAD", "PUT", "POST"],
+        "AllowedOrigins": ["*"],
+        "ExposeHeaders": []
+    }
+]
+
+----------------------------------------------------------------
+для бэка:
+
+import boto3
+import os
+from botocore.client import Config
+
+# Используем переменные или имя сервиса из docker-compose
+S3_ENDPOINT = "http://s3-storage:9000" 
+BUCKET_NAME = "analysed-videos"
+
+s3 = boto3.client(
+    's3',
+    endpoint_url=S3_ENDPOINT,
+    aws_access_key_id='admin',
+    aws_secret_access_key='password123',
+    config=Config(signature_version='s3v4'),
+    region_name='us-east-1' # Для MinIO это формальность, но нужно
+)
+
+def process_and_upload(video_file_path, filename):
+    # 1. Загружаем файл
+    s3.upload_file(video_file_path, BUCKET_NAME, filename)
+    
+    # 2. Формируем URL для фронтенда
+    # ВАЖНО: Здесь должен быть внешний IP сервера, который видит браузер пользователя
+    SERVER_IP = "192.168.210.85" 
+    video_url = f"http://{SERVER_IP}:9000/{BUCKET_NAME}/{filename}"
+    
+    return video_url
