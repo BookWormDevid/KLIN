@@ -87,13 +87,14 @@ docker compose -f docker-compose.infra.yml up --build -d
 
 ### 4) Поднять API и worker (docker или локально)
 
-
 #### docker
+
 ```bash
 docker compose -f docker-compose.yml up --build -d
 ```
 
 #### local (В основном для дебага)
+
 ```bash
 uv venv
 source .venv/bin/activate
@@ -101,8 +102,11 @@ source .venv/bin/activate
 
 uv sync
 uv sync --dev # если планируете менять код
+
 ```
+
 В отдельных терминалах
+
 ```bash
 make start-api
 ```
