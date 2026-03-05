@@ -19,7 +19,7 @@ KLIN - сервис асинхронной обработки видео для 
   -> POST /api/v1/Klin/upload (multipart)
   -> API сохраняет задачу в PostgreSQL (state=PENDING)
   -> API публикует сообщение в RabbitMQ
-  -> Worker читает очередь и запускает инференс (VideoMAE + YOLO)
+  -> Worker читает очередь и запускает инференс (x3d -> VideoMAE -> YOLO)
   -> Worker обновляет запись в PostgreSQL (FINISHED/ERROR)
   -> Worker отправляет callback на response_url
   -> Клиент читает статус по GET /api/v1/Klin/{id}
