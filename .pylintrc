@@ -1,5 +1,5 @@
 [MASTER]
-ignore = migrations, .venv, venv, .env
+ignore = migrations, .venv, venv, .env, x3d_net.py
 max-module-lines = 1200
 jobs = 0
 

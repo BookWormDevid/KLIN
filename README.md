@@ -142,7 +142,7 @@ uv run alembic upgrade head
 В отдельных терминалах:
 
 ```bash
-uv run -m uvicorn --host 0.0.0.0 --port 8000 app.presentation.litestar.run:app
+uv run -m uvicorn --host 0.0.0.0 --port 8008 app.presentation.litestar.run:app
 uv run -m faststream run app.presentation.faststream.app:app
 ```
 

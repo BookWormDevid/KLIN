@@ -16,6 +16,7 @@ from app.application.interfaces import (
     IKlinProcessProducer,
     IKlinRepository,
 )
+from app.config import app_settings
 from app.models import KlinModel, ProcessingState
 
 
@@ -37,7 +38,7 @@ class KlinService:
         """
         Публикация задачи в очередь с повторными попытками.
         """
-        max_attempts = 3
+        max_attempts = app_settings.max_retry_attempts
         payload = KlinProcessDto(klin_id=klin_id)
 
         for attempt in range(1, max_attempts + 1):
@@ -45,7 +46,7 @@ class KlinService:
                 await self._klin_process_producer.send(payload)
                 return
             except Exception as exc:  # pylint: disable=broad-except
-                if attempt == max_attempts:
+                if attempt >= max_attempts:
                     raise KlinEnqueueError(
                         "Failed to enqueue "
                         f"klin_id={klin_id} after {max_attempts} attempts"
@@ -102,7 +103,15 @@ class KlinService:
         Запускает процессор по id задачи.
         В конце удаляет файл который обработался.
         """
-        klin: KlinModel = await self._klin_repository.get_by_id(klin_id)
+        klin: KlinModel | None = await self._klin_repository.claim_for_processing(
+            klin_id
+        )
+        if klin is None:
+            logger.info(
+                "Klin processig skipped because claim was not aquired. klin_id=%s",
+                klin_id,
+            )
+            return
 
         try:
             process = await self._klin_inference_service.analyze(klin)
@@ -114,11 +123,13 @@ class KlinService:
                 process.all_classes if process.all_classes is not None else []
             )
             klin.state = ProcessingState.FINISHED
+
             await self._klin_callback_sender.post_consumer(klin)
             logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
         except Exception as exc:  # pylint: disable=broad-except
-            klin.x3d = str(exc)
+            klin.x3d = "Execution error. View mae."
+            klin.mae = str(exc)
             klin.state = ProcessingState.ERROR
             await self._klin_callback_sender.post_consumer(klin)
             logger.exception(

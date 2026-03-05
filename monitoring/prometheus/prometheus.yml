@@ -17,14 +17,14 @@ scrape_configs:
   #- job_name: "litestar_app"
   #  metrics_path: /metrics
   #  static_configs:
-  #    - targets: ["litestar_app:8000"]
+  #    - targets: ["litestar_app:8008"]
 
-  # Вариант B: Litestar на ХОСТЕ (если /metrics открывается как http://localhost:8000/metrics)
+  # Вариант B: Litestar на ХОСТЕ (если /metrics открывается как http://localhost:8008/metrics)
   # Раскомментируй этот job и закомментируй вариант A выше.
   - job_name: "litestar_app_host"
     metrics_path: /metrics
     static_configs:
-      - targets: ["host.docker.internal:8000"]
+      - targets: ["host.docker.internal:8008"]
 
   # =========================
   # Node Exporter

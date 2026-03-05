@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     """
 
     app_host: str = "0.0.0.0"
-    app_port: int = 8000
+    app_port: int = 8008
 
     log_level: Any = "info"
 
@@ -29,12 +29,14 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
-    default_videomae_path = "models/videomae-UCF-crime"
-    default_yolo_path = "models/yolov8x.pt"
-    default_x3d_path = "models/pre_trained_x3d_model.pt"
-    default_cors_allowed_origins = (
+    default_videomae_path: str = "models/videomae-UCF-crime"
+    default_yolo_path: str = "models/yolov8x.pt"
+    default_x3d_path: str = "models/pre_trained_x3d_model.pt"
+
+    default_cors_allowed_origins: str = (
         "http://localhost,http://127.0.0.1,http://localhost:3000,http://127.0.0.1:3000"
     )
+    default_max_retry_attemps: int = 1
 
     Klin_queue = "Klin-queue"
 
@@ -121,6 +123,15 @@ class Settings(BaseSettings):
         if not origins:
             raise ValueError("CORS_ALLOWED_ORIGINS must contain at least one origin")
         return origins
+
+    @property
+    def max_retry_attempts(self) -> int:
+        """
+        Общая настройка для попыток выполнения
+        """
+        return self.resolve_env_property(
+            "MAX_RETRY_ATTEMPTS", int, default_value=self.default_max_retry_attemps
+        )
 
     @property
     def klin_secret(self) -> str:
