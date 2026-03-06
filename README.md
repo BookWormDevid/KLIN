@@ -2,7 +2,7 @@
 
 KLIN - сервис асинхронной обработки видео для детекции потенциально опасных событий.
 
-Проект включает:
+## Проект включает
 
 - API на Litestar (прием видео, получение статуса обработки)
 - воркер на FastStream + RabbitMQ
@@ -12,7 +12,7 @@ KLIN - сервис асинхронной обработки видео для 
 - MLflow для экспериментов
 - репозиторий ONNX-моделей для Triton (`model_repository/`)
 
-## Архитектура потока
+### Архитектура потока
 
 ```text
 Клиент
@@ -25,7 +25,7 @@ KLIN - сервис асинхронной обработки видео для 
   -> Клиент читает статус по GET /api/v1/Klin/{id}
 ```
 
-## Структура репозитория
+### Структура репозитория
 
 ```text
 .
@@ -40,6 +40,9 @@ KLIN - сервис асинхронной обработки видео для 
 └── tests/                # Unit и интеграционные тесты
 ```
 
+<details>
+<summary><h1> Как запустить проект</summary>
+
 ## Требования
 
 - `git`
@@ -48,8 +51,7 @@ KLIN - сервис асинхронной обработки видео для 
 - `docker` + Docker Compose plugin
 - `make`
 
-<details>
-<summary>## Как запустить проект</summary>
+### 0) Help | Man | Помощь
 
 ```bash
 make   # Help по командам из Makefile
@@ -78,14 +80,6 @@ docker network create web
 
 ### 3) Поднять инфраструктуру
 
-Минимально (достаточно для работы API/воркера):
-
-```bash
-docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq triton
-```
-
-Полный стек (monitoring + traefik + sysadmin UIs):
-
 ```bash
 make infra-up
 ```
@@ -110,14 +104,12 @@ make app-up
 make uv-dev
 ```
 
-В отдельных терминалах
-
 ```bash
-make start-api-local
+make start-api-local  # В отдельном терминале
 ```
 
 ```bash
-make start-queue-local
+make start-queue-local  # В отдельном терминале
 ```
 
 ### 6) Проверка
@@ -130,17 +122,7 @@ make start-queue-local
 - Live health: `http://localhost:8008/api/v1/Klin/health/live` (if local)
 - Web UI: `http://localhost:8008/frontend`                     (if local)
 
-### Остановка сервисов
-
-```bash
-make docker-stop
-make infra-down
-make app-down
-```
-
-</details>
-
-## API
+#### API
 
 Базовый префикс: `/api/v1/Klin`
 
@@ -152,7 +134,7 @@ make app-down
 | `GET`  | `/health/live`  | Live-check API                    |
 | `GET`  | `/health/ready` | Readiness-check сервиса           |
 
-## Полезные URL (при полном Docker-запуске)
+#### Полезные URL (при полном Docker-запуске)
 
 - API docs: `http://localhost/api/docs`
 - RabbitMQ UI: `http://localhost:15672`
@@ -162,8 +144,18 @@ make app-down
 - Alertmanager: `http://alertmanager.localhost`
 - PgAdmin: `http://pgadmin.localhost`
 
+### Остановка сервисов
+
+```bash
+make docker-stop
+make infra-down
+make app-down
+```
+
+</details>
+
 <details>
-<summary>## Линтинг и статический анализ</summary>
+<summary><h3> Линтинг и статический анализ</h2></summary>
 
 ```bash
 make lint
@@ -184,7 +176,7 @@ make pre-commit
 </details>
 
 <details>
-<summary>## Data science и ONNX </summary>
+<summary><h2>Data science и ONNX </h2></summary>
 
 ```bash
 # EDA по action splits (13 классов, без Normal)
