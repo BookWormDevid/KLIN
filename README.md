@@ -130,6 +130,14 @@ make start-queue-local
 - Live health: `http://localhost:8008/api/v1/Klin/health/live` (if local)
 - Web UI: `http://localhost:8008/frontend`                     (if local)
 
+### Остановка сервисов
+
+```bash
+make docker-stop
+make infra-down
+make app-down
+```
+
 </details>
 
 ## API
@@ -154,9 +162,8 @@ make start-queue-local
 - Alertmanager: `http://alertmanager.localhost`
 - PgAdmin: `http://pgadmin.localhost`
 
-## Разработка
-
-Линтинг и статический анализ:
+<details>
+<summary>## Линтинг и статический анализ</summary>
 
 ```bash
 make lint
@@ -174,7 +181,10 @@ Pre-commit:
 make pre-commit
 ```
 
-## EDA и обучение VideoMAE
+</details>
+
+<details>
+<summary>## Data science и ONNX </summary>
 
 ```bash
 # EDA по action splits (13 классов, без Normal)
@@ -187,7 +197,7 @@ uv run python sandbox/src/eda_action_splits.py --include-normal
 uv run python sandbox/src/train.py
 ```
 
-## Экспорт моделей в ONNX для Triton
+### Экспорт моделей в ONNX для Triton
 
 Утилита: `helpers/model_exporters.py`
 
@@ -216,13 +226,7 @@ uv run python helpers/model_exporters.py yolo \
 
 Подробности по структуре Triton-репозитория: `model_repository/README.md`.
 
-## Остановка сервисов
-
-```bash
-make docker-stop
-make infra-down
-make app-down
-```
+</details>
 
 ## Документация
 
