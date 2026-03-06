@@ -1,3 +1,5 @@
+<!-- markdownlint-disable-file MD033 -->
+
 # KLIN (Klin Logical Inference Negation)
 
 KLIN - сервис асинхронной обработки видео для детекции потенциально опасных событий.
