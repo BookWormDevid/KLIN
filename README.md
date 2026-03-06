@@ -46,16 +46,21 @@ KLIN - сервис асинхронной обработки видео для 
 - `python >= 3.10`
 - `uv`
 - `docker` + Docker Compose plugin
-- `make` (опционально)
+- `make`
 
-## Быстрый старт
+<details>
+<summary>## Как запустить проект</summary>
+
+```bash
+make   # Help по командам из Makefile
+```
 
 ### 1) Клонирование и окружение
 
 ```bash
 git clone https://github.com/BookWormDevid/KLIN.git
 cd KLIN
-cp example.env .env
+make init-env
 ```
 
 Заполните в `.env` значения вместо `*_change_me`.
@@ -82,50 +87,50 @@ docker compose -f docker-compose.infra.yml up -d postgresql rabbitmq triton
 Полный стек (monitoring + traefik + sysadmin UIs):
 
 ```bash
-docker compose -f docker-compose.infra.yml up --build -d
+make infra-up
 ```
 
-### 4) Поднять API и worker (docker или локально)
+### 4) Применить миграции (один раз на БД)
+
+```bash
+make migration
+```
+
+### 5) Поднять API и worker (docker или локально)
 
 #### docker
 
 ```bash
-docker compose -f docker-compose.yml up --build -d
+make app-up
 ```
 
 #### local (В основном для дебага)
 
 ```bash
-uv venv
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-
-uv sync
-uv sync --dev # если планируете менять код
-
+make uv-dev
 ```
 
 В отдельных терминалах
 
 ```bash
-make start-api
+make start-api-local
 ```
 
 ```bash
-make start-queue
-```
-
-### 5) Применить миграции (один раз на БД)
-
-```bash
-alembic revision --autogenerate -m "Initial migration"
-alembic upgrade head
+make start-queue-local
 ```
 
 ### 6) Проверка
 
 - Swagger: `http://localhost/api/docs`
-- Live health: `http://localhost/api/v1/Klin/health/live`
+- Live health: `http:localhost/api/v1/klin/health/live`
+- Web UI: `http://localhost/frontend`
+
+- Swagger: `http://localhost:8008/api/docs`                    (if local)
+- Live health: `http://localhost:8008/api/v1/Klin/health/live` (if local)
+- Web UI: `http://localhost:8008/frontend`                     (if local)
+
+</details>
 
 ## API
 
@@ -154,22 +159,19 @@ alembic upgrade head
 Линтинг и статический анализ:
 
 ```bash
-make
+make lint
 ```
 
 Тесты:
 
 ```bash
-uv run pytest
+make test
 ```
 
 Pre-commit:
 
 ```bash
-uv run pre-commit install
-uv run pre-commit install --hook-type pre-push
-uv run pre-commit run --all-files
-uv run pre-commit run --hook-stage pre-push --all-files
+make pre-commit
 ```
 
 ## EDA и обучение VideoMAE
@@ -217,8 +219,9 @@ uv run python helpers/model_exporters.py yolo \
 ## Остановка сервисов
 
 ```bash
-docker compose -f docker-compose.yml down
-docker compose -f docker-compose.infra.yml down
+make docker-stop
+make infra-down
+make app-down
 ```
 
 ## Документация
