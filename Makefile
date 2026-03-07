@@ -64,7 +64,7 @@ infra-up: init-env
 	docker compose -f docker-compose.infra.yml up --build -d
 
 infra-down:
-	docker compose -f docker-compsoe.infra.yml down
+	docker compose -f docker-compose.infra.yml down
 
 app-up: init-env
 	docker compose -f docker-compose.yml up --build -d
