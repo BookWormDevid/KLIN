@@ -1,294 +1,206 @@
 services:
+  # --- DATABASE SECTION ---
+  postgresql:
+    image: postgres:17.0
+    container_name: klin-postgresql-1
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_MAX_CONNECTIONS: 200
+    networks:
+      - web
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
-    postgres_exporter-klin:
-      image: prometheuscommunity/postgres-exporter:latest
-      restart: unless-stopped
-      networks:
-        - web
-      environment:
-        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/postgres?sslmode=disable"
-      ports:
-        - "9187:9187"
-      depends_on:
-        - postgresql
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: klin-pgadmin-1
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?PGADMIN_DEFAULT_EMAIL is required}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=web'
+      - 'traefik.http.routers.pgadmin.rule=Host(`pgadmin.localhost`)'
+      - 'traefik.http.services.pgadmin.loadbalancer.server.port=80'
+    networks:
+      - web
+    depends_on:
+      - postgresql
 
-    postgres_exporter-ml:
-      image: prometheuscommunity/postgres-exporter:latest
-      restart: unless-stopped
-      networks:
-        - web
-      environment:
-        DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgresql:5432/ml?sslmode=disable"
-      ports:
-        - "9188:9187"
-      depends_on:
-        - postgresql
+  # --- AIRFLOW 3.0 SECTION ---
+    # --- AIRFLOW 3.0 SECTION ---
+  airflow-init:
+    image: apache/airflow:latest
+    container_name: klin-airflow-init-1
+    networks:
+      - web
+    depends_on:
+      - postgresql
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
+      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+    # СБРАСЫВАЕМ entrypoint, чтобы он не подставлял 'airflow' в начало
+    entrypoint: /bin/bash
+    command: >
+      -c "pip install apache-airflow-providers-fab &&
+      airflow db migrate &&
+      airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true"
 
-    node_exporter:
-        image: prom/node-exporter:latest
-        container_name: node_exporter
-        restart: unless-stopped
-        networks:
-            - web
-        ports:
-            - "9100:9100"
-        volumes:
-            - /proc:/host/proc:ro
-            - /sys:/host/sys:ro
-            - /:/rootfs:ro
-        command:
-            - '--path.procfs=/host/proc'
-            - '--path.sysfs=/host/sys'
-            - '--path.rootfs=/rootfs'
-            - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+  airflow-webserver:
+    image: apache/airflow:latest
+    container_name: klin-airflow-webserver-1
+    restart: unless-stopped
+    networks:
+      - web
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW__API__SECRET_KEY: "super-secret-key-123"
+      AIRFLOW__WEBSERVER__SECRET_KEY: "super-secret-key-123"
+    # СБРАСЫВАЕМ entrypoint здесь тоже
+    entrypoint: /bin/bash
+    command: >
+      -c "pip install apache-airflow-providers-fab && airflow api-server"
+    ports:
+      - "8081:8080"
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.docker.network=web'
+      - 'traefik.http.routers.airflow.rule=Host(`airflow.localhost`)'
+      - 'traefik.http.services.airflow.loadbalancer.server.port=8080'
 
+  airflow-scheduler:
+    image: apache/airflow:latest
+    container_name: klin-airflow-scheduler-1
+    restart: unless-stopped
+    networks:
+      - web
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+    entrypoint: /bin/bash
+    command: >
+      -c "pip install apache-airflow-providers-fab && airflow scheduler"
 
-    postgresql:
-        image: postgres:17.0
-        restart: unless-stopped
-        environment:
-            POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
-            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-            POSTGRES_MAX_CONNECTIONS: 200
-        networks:
-            - web
-        ports:
-            - '5432:5432'
+  # --- MONITORING SECTION ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: klin-prometheus-1
+    restart: unless-stopped
+    networks:
+      - web
+    ports:
+      - '9090:9090'
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus_data:/prometheus
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-    rabbitmq:
-        image: rabbitmq:3-management
-        restart: unless-stopped
-        networks:
-            - web
-        ports:
-            - "5672:5672"
-            - "15672:15672"
-        environment:
-            RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER is required}
-            RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: klin-grafana-1
+    restart: unless-stopped
+    networks:
+      - web
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.grafana.rule=Host(`grafana.localhost`)'
 
-    rabbitmq_exporter:
-        image: kbudde/rabbitmq-exporter:latest
-        container_name: rabbitmq_exporter
-        restart: unless-stopped
-        environment:
-            RABBITMQ_URL: "http://${RABBITMQ_USER:?RABBITMQ_USER is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:15672"
-            RABBIT_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
-            RABBIT_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
-        networks:
-            - web
-        ports:
-            - "9419:9419"
-            - "15692:15692"
-        depends_on:
-            - rabbitmq
-        command: >
-          sh -c "rabbitmq-plugins enable rabbitmq_prometheus && docker-entrypoint.sh rabbitmq-server"
+  # --- EXPORTERS ---
+  postgres_exporter-klin:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: klin-postgres_exporter-klin-1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/postgres?sslmode=disable"
+    networks:
+      - web
 
-    triton:
-        image: nvcr.io/nvidia/tritonserver:${TRITON_IMAGE_TAG:-24.01-py3}
-        restart: unless-stopped
-        command:
-            - tritonserver
-            - --model-repository=/models
-            - --grpc-port=8001
-            - --http-port=8000
-            - --metrics-port=8002
-            - --exit-on-error=${TRITON_EXIT_ON_ERROR:-false}
-        ports:
-            - "8000:8000"
-            - "8001:8001"
-            - "8002:8002"
-        volumes:
-            - ./model_repository:/models:ro
-        deploy:
-            resources:
-                reservations:
-                    devices:
-                        - driver: nvidia
-                          capabilities: [gpu]
-        environment:
-            - NVIDIA_VISIBLE_DEVICES=all
-            - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-        networks:
-            - web
+  postgres_exporter-ml:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: klin-postgres_exporter-ml-1
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/ml?sslmode=disable"
+    networks:
+      - web
 
-    traefik:
-        image: traefik:latest
-        restart: unless-stopped
-        networks:
-            - web
-        ports:
-            - '80:80'
-        volumes:
-            - /var/run/docker.sock:/var/run/docker.sock
-        labels:
-            - 'traefik.enable=true'
-            - 'traefik.docker.network=web'
-            - 'traefik.http.routers.traefik.service=traefik'
-            - 'traefik.http.routers.traefik.rule=Host(`traefik.localhost`)'
-            - 'traefik.http.services.traefik.loadbalancer.server.port=8080'
-        command: --api.insecure=true --providers.docker
+  node_exporter:
+    image: prom/node-exporter:latest
+    container_name: node_exporter
+    restart: unless-stopped
+    networks:
+      - web
+    command:
+      - '--path.rootfs=/rootfs'
+    volumes:
+      - /:/rootfs:ro
 
-    pgadmin:
-        image: dpage/pgadmin4
-        restart: unless-stopped
-        environment:
-            PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?PGADMIN_DEFAULT_EMAIL is required}
-            PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}
-        labels:
-            - 'traefik.enable=true'
-            - 'traefik.docker.network=web'
-            - 'traefik.http.routers.pgadmin.rule=Host(`pgadmin.localhost`)'
-            - 'traefik.http.services.pgadmin.loadbalancer.server.port=80'
-        networks:
-            - web
-        depends_on:
-            - traefik
-            - postgresql
+  # --- MESSAGE BROKER & AI ---
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: klin-rabbitmq-1
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    networks:
+      - web
 
-    prometheus:
-        image: prom/prometheus:latest
-        restart: unless-stopped
-        networks:
-            - web
-        ports:
-            - '9090:9090'
-        volumes:
-            - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-            - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
-            - prometheus_data:/prometheus
-        labels:
-            - 'traefik.enable=true'
-            - 'traefik.docker.network=web'
-            - 'traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)'
-            - 'traefik.http.services.prometheus.loadbalancer.server.port=9090'
-        depends_on:
-            - traefik
-        extra_hosts:
-            - "host.docker.internal:host-gateway"
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.01-py3
+    container_name: klin-triton-1
+    restart: unless-stopped
+    command: ["tritonserver", "--model-repository=/models", "--metrics-port=8002"]
+    networks:
+      - web
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
 
-    alertmanager:
-        image: prom/alertmanager:latest
-        restart: unless-stopped
-        networks:
-            - web
-        environment:
-            ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?ALERT_EMAIL_TO is required}
-            ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:?ALERT_EMAIL_FROM is required}
-            SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
-            SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
-            SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
-            SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
-            TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
-            TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}
-        ports:
-            - '9093:9093'
-        volumes:
-            - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-        command:
-            - '--config.file=/etc/alertmanager/alertmanager.yml'
-            - '--config.expand-env'
-        labels:
-            - 'traefik.enable=true'
-            - 'traefik.docker.network=web'
-            - 'traefik.http.routers.alertmanager.rule=Host(`alertmanager.localhost`)'
-            - 'traefik.http.services.alertmanager.loadbalancer.server.port=9093'
-        depends_on:
-            - prometheus
-
-    grafana:
-      image: grafana/grafana-enterprise:latest
-      restart: unless-stopped
-      networks:
-        - web
-      volumes:
-        - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-        - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
-        - grafana_data:/var/lib/grafana
-      environment:
-        - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
-      labels:
-        - 'traefik.enable=true'
-        - 'traefik.docker.network=web'
-        - 'traefik.http.routers.grafana.rule=Host(`grafana.localhost`)'
-        - 'traefik.http.services.grafana.loadbalancer.server.port=3000'
-      depends_on:
-        - traefik
-        - prometheus
-
-    airflow-init:
-      image: apache/airflow:2.9.3
-      restart: "no"
-      networks:
-        - web
-      depends_on:
-        - postgresql
-      environment:
-        AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
-        AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      volumes:
-        - ./airflow/dags:/opt/airflow/dags
-        - ./airflow/logs:/opt/airflow/logs
-        - ./airflow/plugins:/opt/airflow/plugins
-      command: >
-        bash -c "
-        airflow db migrate &&
-        airflow users create
-          --username ${AIRFLOW_ADMIN_USER}
-          --password ${AIRFLOW_ADMIN_PASSWORD}
-          --firstname admin
-          --lastname admin
-          --role Admin
-          --email ${AIRFLOW_ADMIN_EMAIL}
-        "
-
-    airflow-webserver:
-      image: apache/airflow:2.9.3
-      restart: unless-stopped
-      networks:
-        - web
-      depends_on:
-        - airflow-init
-      environment:
-        AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
-        AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      volumes:
-        - ./airflow/dags:/opt/airflow/dags
-        - ./airflow/logs:/opt/airflow/logs
-        - ./airflow/plugins:/opt/airflow/plugins
-      command: webserver
-      ports:
-        - "8081:8080"
-      labels:
-        - 'traefik.enable=true'
-        - 'traefik.docker.network=web'
-        - 'traefik.http.routers.airflow.rule=Host(`airflow.localhost`)'
-        - 'traefik.http.services.airflow.loadbalancer.server.port=8080'
-
-    airflow-scheduler:
-      image: apache/airflow:2.9.3
-      restart: unless-stopped
-      networks:
-        - web
-      depends_on:
-        - airflow-init
-      environment:
-        AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
-        AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      volumes:
-        - ./airflow/dags:/opt/airflow/dags
-        - ./airflow/logs:/opt/airflow/logs
-        - ./airflow/plugins:/opt/airflow/plugins
-      command: scheduler
+  # --- GATEWAY ---
+  traefik:
+    image: traefik:latest
+    container_name: klin-traefik-1
+    restart: unless-stopped
+    networks:
+      - web
+    ports:
+      - '80:80'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --api.insecure=true --providers.docker
 
 networks:
-    web:
-        external: true
+  web:
+    external: true
 
 volumes:
-    prometheus_data:
-    grafana_data:
-    airflow_logs:
-    airflow_dags:
-    airflow_plugins:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
