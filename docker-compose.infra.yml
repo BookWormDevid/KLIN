@@ -188,6 +188,8 @@ services:
           devices:
             - driver: nvidia
               capabilities: [gpu]
+    networks:
+      - web
 
   # --- GATEWAY ---
   traefik:
