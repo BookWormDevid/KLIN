@@ -176,6 +176,8 @@ services:
       context: .
       dockerfile: Dockerfile.triton
     container_name: klin-triton
+    environment:
+      - TRITON_PYTHON_BACKEND_REBUILD_ENV=1
     restart: unless-stopped
     command: ["tritonserver", "--model-repository=/models"]
     volumes:
