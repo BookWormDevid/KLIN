@@ -46,7 +46,7 @@ pre-commit:
 	uv run pre-commit install
 	uv run pre-commit install --hook-type pre-push
 
-lint:
+lint: uv-dev
 	uv run ruff check --fix
 	uv run ruff format
 	uv run -m mypy .

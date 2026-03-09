@@ -14,7 +14,7 @@ dummy_input = torch.randn(1, 16, 3, 224, 224)
 
 torch.onnx.export(
     model,
-    dummy_input,
+    (dummy_input,),
     (dir / "model_repository/videomae_crime/1/model.onnx").resolve(),
     input_names=["pixel_values"],
     output_names=["logits"],

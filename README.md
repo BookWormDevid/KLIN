@@ -193,30 +193,22 @@ uv run python sandbox/src/train.py
 
 ### Экспорт моделей в ONNX для Triton
 
-Утилита: `helpers/model_exporters.py`
+Утилита: `helpers/*modelname*_to_onnx.py`
 
 Примеры:
 
 ```bash
-# VideoMAE (HuggingFace directory -> ONNX)
-uv run python helpers/model_exporters.py videomae \
-  --model-dir models/videomae-UCF-crime \
-  --target-ir-version 9
+# models/*
+# VideoMAE (local folder  -> ONNX)
+uv run helpers/videomae_to_onnx.py
 
 # X3D checkpoint (.pt/.pth -> ONNX)
-uv run python helpers/model_exporters.py x3d \
-  --checkpoint models/pre_trained_x3d_model.pt \
-  --target-ir-version 9
-
+# EMPTY FOR NOW
 # YOLO (.pt -> ONNX)
-uv run python helpers/model_exporters.py yolo \
-  --weights models/yolov8x.pt \
-  --target-ir-version 9
+uv run helpers/yolo_pt_to_onnx.py
 ```
 
 Путь назначения по умолчанию - `model_repository/<model_name>/1/model.onnx`.
-
-`--target-ir-version 9` нужен для совместимости с Triton `24.01` (ORT в этом образе поддерживает IR <= 9).
 
 Подробности по структуре Triton-репозитория: `model_repository/README.md`.
 
