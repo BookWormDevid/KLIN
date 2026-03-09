@@ -22,5 +22,6 @@ helpers/
 data/
 tests/
 docs/
+models/
 start.bat
 README.md
