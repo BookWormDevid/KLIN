@@ -172,7 +172,9 @@ services:
       - web
 
   triton:
-    image: klin-triton
+    build:
+      context: .
+      dockerfile: Dockerfile.triton
     container_name: klin-triton
     restart: unless-stopped
     command: ["tritonserver", "--model-repository=/models"]
