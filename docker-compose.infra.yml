@@ -172,12 +172,16 @@ services:
       - web
 
   triton:
-    image: nvcr.io/nvidia/tritonserver:24.01-py3
+    image: klin-triton
     container_name: klin-triton
     restart: unless-stopped
-    command: ["tritonserver", "--model-repository=/models", "--metrics-port=8002"]
-    networks:
-      - web
+    command: ["tritonserver", "--model-repository=/models"]
+    volumes:
+      - ./model_repository:/models
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
     deploy:
       resources:
         reservations:

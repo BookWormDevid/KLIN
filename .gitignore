@@ -8,6 +8,7 @@ model_repository/**/1/*.pt
 model_repository/**/1/*.pth
 model_repository/**/1/*.trt
 model_repository/**/1/*.data
+model_repository/
 mlruns/*/**
 tmp
 remote/MCG-NJU

@@ -54,3 +54,7 @@ scrape_configs:
   - job_name: "postgres_exporter-ml"
     static_configs:
       - targets: ["postgres_exporter-ml:9187"]
+
+  - job_name: 'triton'
+    static_configs:
+      - targets: ['klin-triton:8002']
