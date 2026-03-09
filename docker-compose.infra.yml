@@ -2,7 +2,7 @@ services:
   # --- DATABASE SECTION ---
   postgresql:
     image: postgres:17.0
-    container_name: klin-postgresql-1
+    container_name: klin-postgresql
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
@@ -17,7 +17,7 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: klin-pgadmin-1
+    container_name: klin-pgadmin
     restart: unless-stopped
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?PGADMIN_DEFAULT_EMAIL is required}
@@ -36,7 +36,7 @@ services:
     # --- AIRFLOW 3.0 SECTION ---
   airflow-init:
     image: apache/airflow:latest
-    container_name: klin-airflow-init-1
+    container_name: klin-airflow-init
     networks:
       - web
     depends_on:
@@ -44,7 +44,6 @@ services:
     environment:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
       AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
-    # СБРАСЫВАЕМ entrypoint, чтобы он не подставлял 'airflow' в начало
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab &&
@@ -53,7 +52,7 @@ services:
 
   airflow-webserver:
     image: apache/airflow:latest
-    container_name: klin-airflow-webserver-1
+    container_name: klin-airflow-webserver
     restart: unless-stopped
     networks:
       - web
@@ -67,7 +66,8 @@ services:
       AIRFLOW__API__AUTH_BACKENDS: "airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
       AIRFLOW__API__SECRET_KEY: "super-secret-key-123"
       AIRFLOW__WEBSERVER__SECRET_KEY: "super-secret-key-123"
-    # СБРАСЫВАЕМ entrypoint здесь тоже
+    volumes:
+      - ./dags:/opt/airflow/dags
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab && airflow api-server"
@@ -81,7 +81,7 @@ services:
 
   airflow-scheduler:
     image: apache/airflow:latest
-    container_name: klin-airflow-scheduler-1
+    container_name: klin-airflow-scheduler
     restart: unless-stopped
     networks:
       - web
@@ -92,6 +92,8 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+    volumes:
+      - ./dags:/opt/airflow/dags
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab && airflow scheduler"
@@ -99,7 +101,7 @@ services:
   # --- MONITORING SECTION ---
   prometheus:
     image: prom/prometheus:latest
-    container_name: klin-prometheus-1
+    container_name: klin-prometheus
     restart: unless-stopped
     networks:
       - web
@@ -117,7 +119,7 @@ services:
 
   grafana:
     image: grafana/grafana-enterprise:latest
-    container_name: klin-grafana-1
+    container_name: klin-grafana
     restart: unless-stopped
     networks:
       - web
@@ -133,7 +135,7 @@ services:
   # --- EXPORTERS ---
   postgres_exporter-klin:
     image: prometheuscommunity/postgres-exporter:latest
-    container_name: klin-postgres_exporter-klin-1
+    container_name: klin-postgres_exporter-klin
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/postgres?sslmode=disable"
     networks:
@@ -141,7 +143,7 @@ services:
 
   postgres_exporter-ml:
     image: prometheuscommunity/postgres-exporter:latest
-    container_name: klin-postgres_exporter-ml-1
+    container_name: klin-postgres_exporter-ml
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/ml?sslmode=disable"
     networks:
@@ -161,7 +163,7 @@ services:
   # --- MESSAGE BROKER & AI ---
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: klin-rabbitmq-1
+    container_name: klin-rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
@@ -171,7 +173,7 @@ services:
 
   triton:
     image: nvcr.io/nvidia/tritonserver:24.01-py3
-    container_name: klin-triton-1
+    container_name: klin-triton
     restart: unless-stopped
     command: ["tritonserver", "--model-repository=/models", "--metrics-port=8002"]
     networks:
@@ -186,7 +188,7 @@ services:
   # --- GATEWAY ---
   traefik:
     image: traefik:latest
-    container_name: klin-traefik-1
+    container_name: klin-traefik
     restart: unless-stopped
     networks:
       - web

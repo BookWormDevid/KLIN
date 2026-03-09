@@ -23,6 +23,8 @@ help:
 	@echo make docker-stop         # Full docker stop (both infra and app)
 
 
+init-env-psh:
+	@powershell -NoProfile -Command "if (Test-Path '.env') { Write-Host '.env already exists' } else { Copy-Item 'example.env' '.env'; Write-Host 'created .env from example.env' }"
 
 init-env:
 	@if [ ! -f .env ]; then \
@@ -60,13 +62,13 @@ start-queue-local:
 	uv run -m faststream run app.presentation.faststream.app:app
 
 
-infra-up: init-env
+infra-up: init-env-psh
 	docker compose -f docker-compose.infra.yml up --build -d
 
 infra-down:
 	docker compose -f docker-compose.infra.yml down
 
-app-up: init-env
+app-up: init-env-psh
 	docker compose -f docker-compose.yml up --build -d
 
 app-down:
