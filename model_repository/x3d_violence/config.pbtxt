@@ -18,10 +18,3 @@ output [
     dims: [2]
   }
 ]
-
-parameters: [
-  {
-    key: "EXECUTION_ENV_PATH",
-    value: { string_value: "/usr/bin/python3" }
-  }
-]
