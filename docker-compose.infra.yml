@@ -72,9 +72,9 @@ services:
       postgresql:
         condition: service_healthy
 
-  # --- AIRFLOW 3.0 SECTION ---
+  # --- AIRFLOW SECTION ---
   airflow-init:
-    image: apache/airflow:latest
+    image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.7}
     container_name: klin-airflow-init
     networks:
       - web
@@ -92,7 +92,7 @@ services:
       airflow users create --username ${AIRFLOW_ADMIN_USER:-admin} --firstname Admin --lastname User --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true"
 
   airflow-webserver:
-    image: apache/airflow:latest
+    image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.7}
     container_name: klin-airflow-webserver
     restart: unless-stopped
     networks:
@@ -117,14 +117,14 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health').read()"
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v2/version').read()"
       interval: 20s
       timeout: 10s
       retries: 5
       start_period: 30s
 
   airflow-scheduler:
-    image: apache/airflow:latest
+    image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.7}
     container_name: klin-airflow-scheduler
     restart: unless-stopped
     networks:
