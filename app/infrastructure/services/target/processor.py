@@ -11,7 +11,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import aiohttp
 import async_timeout
@@ -20,13 +20,11 @@ import msgspec
 import numpy as np
 import torch
 import tritonclient.http as httpclient  # type: ignore[import-untyped]
-from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
-from ultralytics import YOLO
+from numpy.typing import NDArray
 
 from app.application.dto import KlinResultDto
 from app.application.interfaces import IKlinCallbackSender, IKlinInference
 from app.config import app_settings
-from app.infrastructure.services.target.x3d_net.x3d_net import generate_model
 from app.models.klin import KlinModel
 
 
@@ -39,37 +37,6 @@ X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
 
 
 @dataclass
-class VideoMAEConfig:
-    """
-    Переменные для videomae
-    """
-
-    model: VideoMAEForVideoClassification | None = None
-    processor: VideoMAEImageProcessor | None = None
-    mae_model: str | None = None
-
-
-@dataclass
-class YoloConfig:
-    """
-    Переменные для yolo
-    """
-
-    yolo: YOLO | None = None
-    yolo_path: str | None = None
-
-
-@dataclass
-class X3DConfig:
-    """
-    Переменные для x3d
-    """
-
-    model: torch.nn.Module | None = None
-    model_path: str | None = None
-
-
-@dataclass
 class ProcessorConfig:
     """
     Переменные для процессора
@@ -77,15 +44,28 @@ class ProcessorConfig:
 
     chunk_size: int = 16
     frame_size: tuple[int, int] = (224, 224)
-    device: torch.device = field(
-        default_factory=lambda: torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
-    )
     yolo_stride: int = 2
     yolo_conf: float = 0.6
-    yolo_iou: float = 0.45
-    yolo_classes: list[int] = field(default_factory=lambda: [0])
+    yolo_classes: dict[int, str] = field(default_factory=lambda: {0: "person"})
+    allowed_classes: set[int] = field(default_factory=lambda: {0})
+    mae_classes: dict[int, str] = field(
+        default_factory=lambda: {
+            0: "Abuse",
+            1: "Arrest",
+            2: "Arson",
+            3: "Assault",
+            4: "Burglary",
+            5: "Explosion",
+            6: "Fighting",
+            7: "Normal",
+            8: "RoadAccident",
+            9: "Robbery",
+            10: "Shooting",
+            11: "Shoplifting",
+            12: "Stealing",
+            13: "Vandalism",
+        }
+    )
 
 
 @dataclass
@@ -104,6 +84,7 @@ class VideoStreamState:
     frame_idx: int = 0
 
 
+# pylint: disable=too-few-public-methods
 class InferenceProcessor(IKlinInference):
     """
     Процессор. Содержит методы подключения моделей,
@@ -122,150 +103,72 @@ class InferenceProcessor(IKlinInference):
         self.frame_size - разрешение для чтение кадров
         self.device - cuda
         """
-        self.mae = VideoMAEConfig()
-        self.yolo = YoloConfig()
+
         self.processing = ProcessorConfig()
-        self.x3d = X3DConfig()
-        self.triton = httpclient.InferenceServerClient(url="triton:8000")
+        self.triton = httpclient.InferenceServerClient(url="localhost:8000")
 
-    def _ensure_models_loaded(self) -> None:
-        """
-        Проверка, что обе модели загружены.
-        """
-        if self.mae.model is None:
-            self.ensure_mae_model_loaded()
-        if self.yolo.yolo is None:
-            self.ensure_yolo_loaded()
+    def _prepare_x3d_for_triton(self, frames: list[np.ndarray]) -> np.ndarray:
+        """ """
+        frames_np = np.array(frames).astype(np.float32) / 255.0
 
-        assert self.mae.model is not None
-        assert self.mae.processor is not None
-        assert self.yolo.yolo is not None
+        # T H W C → C T H W
+        frames_np = np.transpose(frames_np, (3, 0, 1, 2))
 
-    def ensure_mae_model_loaded(self) -> None:
-        """
-        Проверка, что модель videomae загружена.
-        Загружает код для модели и процессор из библиотеки
-        Проверяет cuda к модели
-        """
-        if self.mae.model is not None:
-            return
+        # batch
+        frames_np = np.expand_dims(frames_np, axis=0)
 
-        self.mae.mae_model = self.find_mae_path()
-        self.mae.processor = VideoMAEImageProcessor.from_pretrained(
-            self.mae.mae_model, local_files_only=True
-        )
+        return frames_np
 
-        model = cast(
-            VideoMAEForVideoClassification,
-            VideoMAEForVideoClassification.from_pretrained(
-                self.mae.mae_model, local_files_only=True
-            ),
-        )
-        cast(torch.nn.Module, model).to(self.processing.device)
-        model.eval()
-        self.mae.model = model
-
-    def find_mae_path(self) -> str:
-        """
-        Автоматически найти путь к модели videomae
-        Ищет по заданному пути
-        """
-        self.mae.mae_model = str(MAE_DIR)
-        return self.mae.mae_model
-
-    def find_yolo_path(self) -> str:
-        """
-        Автоматически найти путь к модели yolo
-        Ищет по заданному пути
-        """
-        self.yolo.yolo_path = str(YOLO_DIR)
-        return self.yolo.yolo_path
-
-    def find_x3d_path(self) -> str:
-        self.x3d.model_path = str(X3D_DIR)
-        return self.x3d.model_path
-
-    def ensure_yolo_loaded(self) -> None:
-        """
-        Загружает модель и проверяет cuda к модели
-        """
-        if self.yolo.yolo is not None:
-            return
-
-        weights_path = self.find_yolo_path()
-        self.yolo.yolo = YOLO(weights_path)
-
-        self.yolo.yolo.to(self.processing.device)
-
-    def ensure_x3d_loaded(self) -> None:
-        """
-        Загружает модель x3d
-        """
-        if self.x3d.model is not None:
-            return
-
-        model = generate_model(
-            x3d_version="M",  # S, M, XL
-            n_classes=2,
-            n_input_channels=3,
-            dropout=0,
-            base_bn_splits=1,
-        )
-
-        model = torch.nn.DataParallel(model)
-
-        # Загружаем веса
-        weights = torch.load(X3D_DIR, map_location=self.processing.device)
-        model.load_state_dict(weights)
-
-        model.to(self.processing.device)
-        model.eval()
-
-        self.x3d.model = model
-
-    def _quick_x3d_check(self, video_path: str) -> dict[int, float]:
-        """
-        Возвращает True если обнаружена драка.
-        """
-        check_answer = {}
-        self.ensure_x3d_loaded()
-
-        if self.x3d.model is None:
-            raise RuntimeError("Модель X3D не загружена")
+    def _quick_x3d_check(self, video_path: str) -> dict[str, float]:  # pylint: disable=too-many-locals
+        check_answer: dict[str, float] = {}
 
         cap = cv2.VideoCapture(video_path)
-        frames_list: list = []
+        frames_list: list[np.ndarray] = []
 
         while len(frames_list) < 16:
             ret, frame = cap.read()
             if not ret:
                 break
+
             frame = cv2.resize(frame, (224, 224))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
             frames_list.append(frame)
 
         cap.release()
 
         if len(frames_list) < 16:
-            check_answer[0] = 0.0
+            check_answer["False"] = 0.0
             return check_answer
 
-        frames_np = np.array(frames_list)
+        video = self._prepare_x3d_for_triton(frames_list)
 
-        frames_tensor = (
-            torch.from_numpy(frames_np).permute(3, 0, 1, 2).unsqueeze(0).float() / 255.0
+        inputs = httpclient.InferInput(
+            "video",
+            video.shape,
+            "FP32",
         )
-        frames_tensor = frames_tensor.to(self.processing.device)
 
-        with torch.no_grad():
-            output = self.x3d.model(frames_tensor)
+        inputs.set_data_from_numpy(video)
 
-        probs = torch.nn.functional.softmax(output.squeeze(), dim=0)
-        confidence = probs[1].item()  # уверенность для класса 'fight'
-        pred = torch.argmax(probs).item()
-        check_answer[int(pred)] = confidence
+        outputs = httpclient.InferRequestedOutput("logits")
 
-        return check_answer  # если 1 = fight
+        result = self.triton.infer(
+            model_name="x3d_violence",
+            inputs=[inputs],
+            outputs=[outputs],
+        )
+
+        logits = result.as_numpy("logits")[0]
+
+        probs = torch.softmax(torch.tensor(logits), dim=0).numpy()
+
+        pred = int(np.argmax(probs))
+        is_fight = bool(np.argmax(probs))
+        confidence = float(probs[pred])
+
+        check_answer[str(is_fight)] = confidence
+        return check_answer
 
     def _prepare_yolo_frame_for_triton(self, frame: np.ndarray) -> np.ndarray:
         img = cv2.resize(frame, (640, 640))
@@ -275,6 +178,49 @@ class InferenceProcessor(IKlinInference):
 
         return img
 
+    def _infer_yolo(self, img: np.ndarray) -> np.ndarray:
+        inputs = httpclient.InferInput("images", img.shape, "FP32")
+        inputs.set_data_from_numpy(img)
+
+        outputs = httpclient.InferRequestedOutput("output0")
+
+        result = self.triton.infer(
+            model_name="yolo_person",
+            inputs=[inputs],
+            outputs=[outputs],
+        )
+
+        preds: NDArray[np.float32] = result.as_numpy("output0")[0]
+        return preds.transpose(1, 0)
+
+    def _parse_yolo_detection(
+        self, pred: np.ndarray, timesteps: float
+    ) -> dict[str, Any] | None:
+        scores = pred[4:]
+        class_id = int(np.argmax(scores))
+        conf = scores[class_id]
+
+        if conf < self.processing.yolo_conf:
+            return None
+
+        if class_id not in self.processing.allowed_classes:
+            return None
+
+        x, y, w, h = pred[:4]
+
+        bbox = [
+            float(x - w / 2),
+            float(y - h / 2),
+            float(x + w / 2),
+            float(y + h / 2),
+        ]
+
+        return {
+            "class_id": class_id,
+            "timesteps": timesteps,
+            "bbox": bbox,
+        }
+
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float
     ) -> list[dict[str, Any]]:
@@ -282,56 +228,29 @@ class InferenceProcessor(IKlinInference):
 
         img = self._prepare_yolo_frame_for_triton(frame)
 
-        inputs = httpclient.InferInput(
-            "images",
-            img.shape,
-            "FP32",
-        )
-
-        inputs.set_data_from_numpy(img)
-
-        outputs = httpclient.InferRequestedOutput("output0")
-
-        result = self.triton.infer(
-            model_name="yolo",
-            inputs=[inputs],
-            outputs=[outputs],
-        )
-
-        preds = result.as_numpy("output0")
+        preds = self._infer_yolo(img)
 
         detections: list[dict[str, Any]] = []
 
-        for pred in preds[0]:
-            conf = pred[4]
-
-            if conf < self.processing.yolo_conf:
-                continue
-
-            class_id = int(np.argmax(pred[5:]))
-
-            if class_id not in self.processing.yolo_classes:
-                continue
-
-            x, y, w, h = pred[:4]
-
-            bbox = [
-                x - w / 2,
-                y - h / 2,
-                x + w / 2,
-                y + h / 2,
-            ]
-
-            detections.append(
-                {
-                    "class_id": class_id,
-                    "timesteps": float(timesteps),
-                    "bbox": bbox,
-                }
-            )
+        for pred in preds:
+            det = self._parse_yolo_detection(pred, timesteps)
+            if det:
+                detections.append(det)
 
         return detections
 
+    def _prepare_mae_chunk_for_triton(self, frames: list[np.ndarray]) -> np.ndarray:
+        frames_np = np.array(frames)
+
+        frames_np = frames_np.astype(np.float32) / 255.0
+
+        frames_np = np.transpose(frames_np, (0, 3, 1, 2))  # T C H W
+
+        frames_np = np.expand_dims(frames_np, axis=0)  # B T C H W
+
+        return frames_np
+
+    # pylint: disable=too-many-locals
     def _predict_mae_chunk(
         self,
         *,
@@ -340,23 +259,33 @@ class InferenceProcessor(IKlinInference):
         end_frame: int,
         fps: float,
     ) -> dict[str, Any]:
-        """
-        Классификация одного чанка кадров через VideoMAE.
-        """
-        assert self.mae.model is not None
-        assert self.mae.processor is not None
-        id2label: dict[int, str] = self.mae.model.config.id2label or {}
+        img = self._prepare_mae_chunk_for_triton(chunk_frames)
 
-        inputs = self.mae.processor(chunk_frames, return_tensors="pt").to(
-            self.processing.device
+        inputs = httpclient.InferInput(
+            "pixel_values",
+            img.shape,
+            "FP32",
         )
-        outputs = self.mae.model(**inputs)
-        logits = outputs.logits[0]
-        probs = torch.nn.functional.softmax(logits, dim=0)
 
-        pred_idx = int(logits.argmax().item())
-        conf = float(probs[pred_idx].item())
-        answer = id2label.get(pred_idx, str(pred_idx))
+        inputs.set_data_from_numpy(img)
+
+        outputs = httpclient.InferRequestedOutput("logits")
+
+        result = self.triton.infer(
+            model_name="videomae_crime",
+            inputs=[inputs],
+            outputs=[outputs],
+        )
+
+        logits = result.as_numpy("logits")[0]
+
+        exp = np.exp(logits - np.max(logits))
+        probs = exp / exp.sum()
+
+        pred_idx = int(np.argmax(probs))
+        conf = float(probs[pred_idx])
+
+        answer = self.processing.mae_classes.get(pred_idx, str(pred_idx))
 
         start_time = start_frame / fps if fps > 0 else 0.0
         end_time = (end_frame + 1) / fps if fps > 0 else 0.0
@@ -483,9 +412,11 @@ class InferenceProcessor(IKlinInference):
         """
         Преобразует ID детектированных классов в названия.
         """
-        assert self.yolo.yolo is not None
-        names = self.yolo.yolo.names
-        return [names[class_id] for class_id in detected_class_ids]
+        return [
+            self.processing.yolo_classes[c]
+            for c in detected_class_ids
+            if c in self.processing.yolo_classes
+        ]
 
     async def _process_video_stream(
         self, video_path: str
@@ -499,8 +430,6 @@ class InferenceProcessor(IKlinInference):
         Потоковая обработка видео без загрузки всех кадров в память.
         Одним проходом собирает MAE и YOLO результаты.
         """
-        assert self.mae.model is not None
-        assert self.yolo.yolo is not None
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -574,7 +503,6 @@ class InferenceProcessor(IKlinInference):
         Если драка обнаружена (True) — запускаем полную обработку YOLO + VideoMAE
         и возвращаем полный результат с x3d="True".
         """
-        self.ensure_x3d_loaded()  # X3D загружается всегда (нужен для быстрой проверки)
 
         start_ts = time.time()
         video_name = os.path.basename(model.video_path)
@@ -591,10 +519,6 @@ class InferenceProcessor(IKlinInference):
                 all_classes=[],
                 objects=[],
             )
-
-        # === Если драка обнаружена — полная обработка ===
-
-        self._ensure_models_loaded()  # теперь загружаем MAE и YOLO (X3D уже загружен)
 
         try:
             (
