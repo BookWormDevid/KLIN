@@ -349,7 +349,7 @@ services:
 
   node_exporter:
     image: prom/node-exporter:v1.10.2
-    container_name: node_exporter
+    container_name: klin-node-exporter
     restart: unless-stopped
     profiles:
       - observability
