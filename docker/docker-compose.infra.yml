@@ -58,9 +58,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
     entrypoint:
       - /bin/bash
-      - /opt/bootstrap/postgres-bootstrap.sh
+      - /opt/bootstrap/bootstrap.sh
     volumes:
-      - ./postgres/bootstrap.sh:/opt/bootstrap/postgres-bootstrap.sh:ro
+      - ./postgres:/opt/bootstrap:ro
 
   pgadmin:
     image: dpage/pgadmin4:9.12.0
@@ -255,8 +255,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}
     volumes:
+      - ../monitoring/alertmanager:/opt/alertmanager:ro
       - ../monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
-      - ../monitoring/alertmanager/render-and-start.sh:/opt/alertmanager/render-and-start.sh:ro
       - alertmanager_data:/alertmanager
     entrypoint:
       - /bin/sh
