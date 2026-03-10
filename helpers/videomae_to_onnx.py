@@ -26,6 +26,9 @@ def export_model(model: VideoMAEForVideoClassification) -> None:
         input_names=["pixel_values"],
         output_names=["logits"],
         opset_version=18,
+        external_data=True,
+        dynamo=True,
+        dynamic_shapes={"pixel_values": {0: "batch"}},
     )
 
 

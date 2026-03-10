@@ -1,5 +1,5 @@
 name: "x3d_violence"
-backend: "python"
+backend: "onnxruntime"
 
 max_batch_size: 8
 
@@ -16,5 +16,13 @@ output [
     name: "logits"
     data_type: TYPE_FP32
     dims: [2]
+  }
+]
+
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 1
+    gpus: [0]
   }
 ]
