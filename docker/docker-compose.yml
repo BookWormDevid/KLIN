@@ -1,10 +1,8 @@
-version: '3.9'
-
 services:
   klin_api_development:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     networks:
       - web
     environment:
@@ -12,7 +10,7 @@ services:
       RABBIT_URL: ${RABBIT_URL}
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=web"
+      - "traefik.docker.network=klin-web"
       - "traefik.http.routers.teamtasker_its_api_development.rule=Host(`localhost`)  && PathPrefix(`/api`)"
       - "traefik.http.services.teamtasker_its_api_development.loadbalancer.server.port=8008"
     command:
@@ -20,8 +18,8 @@ services:
 
   klin_processor_worker_development:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     networks:
       - web
     environment:
@@ -31,4 +29,4 @@ services:
       [ "/code/.venv/bin/python", "-m", "faststream", "run", "app.presentation.faststream.app:app" ]
 networks:
   web:
-    external: true
+    name: klin-web

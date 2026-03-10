@@ -33,6 +33,7 @@ KLIN - сервис асинхронной обработки видео для 
 .
 ├── app/                  # Основной backend (API, worker, сервисы, DI, БД)
 ├── data/                 # Данные
+├── docker/               # Dockerfiles, compose-файлы и docker-специфичные скрипты
 ├── docs/                 # Документация и архитектурные материалы
 ├── helpers/              # Вспомогательные скрипты (экспорт, анализ)
 ├── model_repository/     # Triton model repository
@@ -74,25 +75,19 @@ make init-env
 - `TRITON_IMAGE_TAG` (по умолчанию `24.01-py3`)
 - `TRITON_EXIT_ON_ERROR` (по умолчанию `false`)
 
-### 2) Создать внешнюю Docker-сеть
-
-```bash
-docker network create web
-```
-
-### 3) Поднять инфраструктуру
+### 2) Поднять инфраструктуру
 
 ```bash
 make infra-up
 ```
 
-### 4) Применить миграции (один раз на БД)
+### 3) Применить миграции (один раз на БД)
 
 ```bash
 make migration
 ```
 
-### 5) Поднять API и worker (docker или локально)
+### 4) Поднять API и worker (docker или локально)
 
 #### docker
 
@@ -114,7 +109,7 @@ make start-api-local  # В отдельном терминале
 make start-queue-local  # В отдельном терминале
 ```
 
-### 6) Проверка
+### 5) Проверка
 
 - Swagger: `http://localhost/api/docs`
 - Live health: `http:localhost/api/v1/klin/health/live`
@@ -218,6 +213,7 @@ uv run helpers/yolo_pt_to_onnx.py
 ## Документация
 
 - ML system design: `docs/ML_System_Design_Doc.md`
+- Docker compose files: `docker/docker-compose.yml`, `docker/docker-compose.infra.yml`
 
 ## License
 
