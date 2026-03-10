@@ -19,6 +19,7 @@ import cv2
 import msgspec
 import numpy as np
 import torch
+import tritonclient.http as httpclient
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
@@ -125,6 +126,7 @@ class InferenceProcessor(IKlinInference):
         self.yolo = YoloConfig()
         self.processing = ProcessorConfig()
         self.x3d = X3DConfig()
+        self.triton = httpclient.InferenceServerClient(url="triton:8000")
 
     def _ensure_models_loaded(self) -> None:
         """
@@ -265,43 +267,70 @@ class InferenceProcessor(IKlinInference):
 
         return check_answer  # если 1 = fight
 
+    def _prepare_yolo_frame_for_triton(self, frame: np.ndarray) -> np.ndarray:
+        img = cv2.resize(frame, (640, 640))
+        img = img.astype(np.float32) / 255.0
+        img = np.transpose(img, (2, 0, 1))
+        img = np.expand_dims(img, axis=0)
+
+        return img
+
     def _run_yolo_on_frame(
         self, frame: np.ndarray, frame_idx: int, fps: float
     ) -> list[dict[str, Any]]:
-        """
-        Запуск YOLO на одном кадре.
-        """
-        assert self.yolo.yolo is not None
-
         timesteps = frame_idx / fps if fps > 0 else 0.0
-        use_half = self.processing.device.type != "cpu"
-        with torch.no_grad():
-            preds = self.yolo.yolo(
-                frame,
-                conf=self.processing.yolo_conf,
-                iou=self.processing.yolo_iou,
-                classes=self.processing.yolo_classes,
-                half=use_half,
-                max_det=100,
-                show=False,
-                save=False,
+
+        img = self._prepare_yolo_frame_for_triton(frame)
+
+        inputs = httpclient.InferInput(
+            "images",
+            img.shape,
+            "FP32",
+        )
+
+        inputs.set_data_from_numpy(img)
+
+        outputs = httpclient.InferRequestedOutput("output0")
+
+        result = self.triton.infer(
+            model_name="yolo",
+            inputs=[inputs],
+            outputs=[outputs],
+        )
+
+        preds = result.as_numpy("output0")
+
+        detections: list[dict[str, Any]] = []
+
+        for pred in preds[0]:
+            conf = pred[4]
+
+            if conf < self.processing.yolo_conf:
+                continue
+
+            class_id = int(np.argmax(pred[5:]))
+
+            if class_id not in self.processing.yolo_classes:
+                continue
+
+            x, y, w, h = pred[:4]
+
+            bbox = [
+                x - w / 2,
+                y - h / 2,
+                x + w / 2,
+                y + h / 2,
+            ]
+
+            detections.append(
+                {
+                    "class_id": class_id,
+                    "timesteps": float(timesteps),
+                    "bbox": bbox,
+                }
             )
 
-            detections: list[dict[str, Any]] = []
-            for result in preds:
-                if result.boxes is None:
-                    continue
-
-                for box in result.boxes:
-                    detections.append(
-                        {
-                            "class_id": int(box.cls.item()),
-                            "timesteps": float(timesteps),
-                            "bbox": box.xyxyn[0].tolist(),
-                        }
-                    )
-
-            return detections
+        return detections
 
     def _predict_mae_chunk(
         self,
