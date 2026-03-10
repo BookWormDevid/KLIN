@@ -10,6 +10,7 @@ on:
       - "mlflow/**"
       - "mlruns/**"
       - "sandbox/**"
+      - "docker/**"
   pull_request:
     paths-ignore:
       - "**/*.md"
@@ -17,6 +18,7 @@ on:
       - "mlflow/**"
       - "mlruns/**"
       - "sandbox/**"
+      - "docker/**"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
