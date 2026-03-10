@@ -203,7 +203,8 @@ uv run python sandbox/src/train.py
 uv run helpers/videomae_to_onnx.py
 
 # X3D checkpoint (.pt/.pth -> ONNX)
-# EMPTY FOR NOW
+uv run helpers/x3d_pt_to_onnx.py
+
 # YOLO (.pt -> ONNX)
 uv run helpers/yolo_pt_to_onnx.py
 ```

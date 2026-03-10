@@ -1,3 +1,9 @@
+x-airflow-common-env: &airflow-common-env
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:?AIRFLOW_DATABASE_URL is required}
+  AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+  AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
+  AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
+
 services:
   # --- DATABASE SECTION ---
   postgresql:
@@ -11,9 +17,33 @@ services:
     networks:
       - web
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres-init:
+    image: postgres:17.0
+    container_name: klin-postgres-init
+    networks:
+      - web
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    entrypoint: /bin/bash
+    command: >
+      -c "until pg_isready -h postgresql -U ${POSTGRES_USER}; do sleep 2; done &&
+      psql -h postgresql -U ${POSTGRES_USER} -tc \"SELECT 1 FROM pg_database WHERE datname = '${ML_METRICS_DB_NAME:-ml}'\" | grep -q 1 ||
+      psql -h postgresql -U ${POSTGRES_USER} -c \"CREATE DATABASE ${ML_METRICS_DB_NAME:-ml}\""
 
   pgadmin:
     image: dpage/pgadmin4
@@ -30,25 +60,27 @@ services:
     networks:
       - web
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
 
   # --- AIRFLOW 3.0 SECTION ---
-    # --- AIRFLOW 3.0 SECTION ---
   airflow-init:
     image: apache/airflow:latest
     container_name: klin-airflow-init
     networks:
       - web
     depends_on:
-      - postgresql
+      postgresql:
+        condition: service_healthy
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
-      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
+      <<: *airflow-common-env
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab &&
       airflow db migrate &&
-      airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true"
+      airflow users create --username ${AIRFLOW_ADMIN_USER:-admin} --firstname Admin --lastname User --role Admin --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com} --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true"
 
   airflow-webserver:
     image: apache/airflow:latest
@@ -60,24 +92,27 @@ services:
       airflow-init:
         condition: service_completed_successfully
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
+      <<: *airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
       AIRFLOW__API__AUTH_BACKENDS: "airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
-      AIRFLOW__API__SECRET_KEY: "super-secret-key-123"
-      AIRFLOW__WEBSERVER__SECRET_KEY: "super-secret-key-123"
     volumes:
-      - ./dags:/opt/airflow/dags
+      - ./airflow/dags:/opt/airflow/dags:ro
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab && airflow api-server"
-    ports:
-      - "8081:8080"
     labels:
       - 'traefik.enable=true'
       - 'traefik.docker.network=web'
       - 'traefik.http.routers.airflow.rule=Host(`airflow.localhost`)'
       - 'traefik.http.services.airflow.loadbalancer.server.port=8080'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   airflow-scheduler:
     image: apache/airflow:latest
@@ -89,11 +124,10 @@ services:
       airflow-init:
         condition: service_completed_successfully
     environment:
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/airflow
+      <<: *airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__CORE__AUTH_MANAGER: "airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager"
     volumes:
-      - ./dags:/opt/airflow/dags
+      - ./airflow/dags:/opt/airflow/dags:ro
     entrypoint: /bin/bash
     command: >
       -c "pip install apache-airflow-providers-fab && airflow scheduler"
@@ -105,17 +139,55 @@ services:
     restart: unless-stopped
     networks:
       - web
-    ports:
-      - '9090:9090'
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - ./monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     labels:
       - 'traefik.enable=true'
       - 'traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)'
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9090/-/healthy >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: klin-alertmanager
+    restart: unless-stopped
+    networks:
+      - web
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?ALERT_EMAIL_TO is required}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:?ALERT_EMAIL_FROM is required}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --config.expand-env
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.alertmanager.rule=Host(`alertmanager.localhost`)'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9093/-/healthy >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   grafana:
     image: grafana/grafana-enterprise:latest
@@ -136,6 +208,9 @@ services:
   postgres_exporter-klin:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: klin-postgres_exporter-klin
+    depends_on:
+      postgresql:
+        condition: service_healthy
     environment:
       DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/postgres?sslmode=disable"
     networks:
@@ -144,8 +219,11 @@ services:
   postgres_exporter-ml:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: klin-postgres_exporter-ml
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/ml?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${ML_METRICS_DB_NAME:-ml}?sslmode=disable"
     networks:
       - web
 
@@ -168,8 +246,24 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    command: >
+      /bin/bash -c "rabbitmq-plugins enable --offline rabbitmq_prometheus &&
+      rabbitmq-server"
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     networks:
       - web
+    healthcheck:
+      test:
+        - CMD
+        - rabbitmq-diagnostics
+        - -q
+        - ping
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   triton:
     build:
@@ -183,9 +277,9 @@ services:
     volumes:
       - ./model_repository:/models
     ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:8002:8002"
     deploy:
       resources:
         reservations:
@@ -194,6 +288,14 @@ services:
               capabilities: [gpu]
     networks:
       - web
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   # --- GATEWAY ---
   traefik:
@@ -203,7 +305,7 @@ services:
     networks:
       - web
     ports:
-      - '80:80'
+      - '127.0.0.1:80:80'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     command: --api.insecure=true --providers.docker

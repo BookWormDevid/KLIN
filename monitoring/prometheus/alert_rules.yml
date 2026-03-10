@@ -1,0 +1,90 @@
+groups:
+  - name: infrastructure.targets
+    rules:
+      - alert: PrometheusTargetDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: infrastructure
+        annotations:
+          summary: "Prometheus target is down"
+          description: "Target {{ $labels.job }}/{{ $labels.instance }} has been unreachable for more than 2 minutes."
+
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful != 1
+        for: 5m
+        labels:
+          severity: warning
+          service: prometheus
+        annotations:
+          summary: "Prometheus config reload failed"
+          description: "Prometheus on {{ $labels.instance }} failed to reload its configuration."
+
+  - name: infrastructure.node
+    rules:
+      - alert: HostHighCpuUsage
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))) > 90
+        for: 10m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Host CPU usage is high"
+          description: "CPU usage on {{ $labels.instance }} has been above 90% for 10 minutes."
+
+      - alert: HostHighMemoryUsage
+        expr: 100 * (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 90
+        for: 10m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Host memory usage is high"
+          description: "Memory usage on {{ $labels.instance }} has been above 90% for 10 minutes."
+
+      - alert: HostLowDiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs",device!~"rootfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs",device!~"rootfs"}) < 0.15 and on (instance, device, mountpoint) node_filesystem_readonly == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: node
+        annotations:
+          summary: "Host disk space is low"
+          description: "Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }} has less than 15% free space."
+
+  - name: infrastructure.rabbitmq
+    rules:
+      - alert: RabbitMQQueueBacklog
+        expr: sum by (instance) (rabbitmq_queue_messages_ready) > 1000
+        for: 10m
+        labels:
+          severity: warning
+          service: rabbitmq
+        annotations:
+          summary: "RabbitMQ queue backlog is growing"
+          description: "RabbitMQ on {{ $labels.instance }} has more than 1000 ready messages for 10 minutes."
+
+  - name: infrastructure.postgres
+    rules:
+      - alert: PostgresHighConnections
+        expr: sum by (instance) (pg_stat_database_numbackends) > 150
+        for: 10m
+        labels:
+          severity: warning
+          service: postgres
+        annotations:
+          summary: "PostgreSQL connection count is high"
+          description: "PostgreSQL exporter {{ $labels.instance }} reports more than 150 active connections."
+
+  - name: infrastructure.triton
+    rules:
+      - alert: TritonInferenceFailures
+        expr: increase(nv_inference_request_failure[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: triton
+        annotations:
+          summary: "Triton inference failures detected"
+          description: "Triton on {{ $labels.instance }} recorded inference failures during the last 10 minutes."

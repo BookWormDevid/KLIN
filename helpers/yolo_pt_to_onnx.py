@@ -3,24 +3,39 @@ from pathlib import Path
 from ultralytics import YOLO
 
 
-dir = Path(__file__).parent.parent
+ROOT_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = ROOT_DIR / "models" / "yolov8x.pt"
+OUTPUT_DIR = ROOT_DIR / "model_repository" / "yolo_person" / "1"
+OUTPUT_PATH = OUTPUT_DIR / "model.onnx"
 
-model = YOLO("models/yolov8x.pt")
 
-out_dir = Path("model_repository/yolo_person/1")
-out_dir.mkdir(parents=True, exist_ok=True)
+def build_model() -> YOLO:
+    return YOLO(MODEL_PATH)
 
-exported_path = Path(
-    model.export(
-        format="onnx",
-        imgsz=640,
-        opset=17,
-        simplify=True,
-        device="cpu",
+
+def export_model(model: YOLO) -> Path:
+    exported_path = Path(
+        model.export(
+            format="onnx",
+            imgsz=640,
+            opset=17,
+            simplify=True,
+            device="cpu",
+        )
     )
-)
 
-target_path = out_dir / "model.onnx"
-exported_path.replace(target_path)
+    exported_path.replace(OUTPUT_PATH)
+    return OUTPUT_PATH
 
-print(f"Saved to: {target_path.resolve()}")
+
+def main() -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    model = build_model()
+    target_path = export_model(model)
+
+    print(f"Saved to: {target_path.resolve()}")
+
+
+if __name__ == "__main__":
+    main()

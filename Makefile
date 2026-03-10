@@ -7,7 +7,7 @@ help:
 	@echo .
 	@echo General:
 	@echo make init-env            # creating .env from example.env (if .env doesn't exist)
-	@echo make migration           # create and auto-apply alembic migrations for database
+	@echo make migration           # create and auto-apply alembic migrations for the main database
 	@echo .
 	@echo For development:
 	@echo make uv-dev              # create and sync .venv with dev dependencies
@@ -18,8 +18,8 @@ help:
 	@echo make start-queue-local   # Launch Queue locally
 	@echo .
 	@echo For production \ docker:
-	@echo make infra-up \ -down    # Full docker infra start/stop
-	@echo make app-up \ -down      # Full docker application start/stop
+	@echo make infra-up \ -down    # Full docker infra up/down
+	@echo make app-up \ -down      # Full docker application up/down
 	@echo make docker-stop         # Full docker stop (both infra and app)
 
 

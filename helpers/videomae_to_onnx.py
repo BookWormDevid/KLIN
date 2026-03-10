@@ -1,22 +1,42 @@
-import pathlib
+from pathlib import Path
 
 import torch
 from transformers import VideoMAEForVideoClassification
 
 
-dir = pathlib.Path(__file__).parent.parent
-model_path = dir / "models" / "videomae-ucf-crime"
+ROOT_DIR = Path(__file__).resolve().parent.parent
+MODEL_PATH = ROOT_DIR / "models" / "videomae-UCF-crime"
+OUTPUT_DIR = ROOT_DIR / "model_repository" / "videomae_crime" / "1"
+OUTPUT_PATH = OUTPUT_DIR / "model.onnx"
 
-model = VideoMAEForVideoClassification.from_pretrained(model_path)
-model.eval()
 
-dummy_input = torch.randn(1, 16, 3, 224, 224)
+def build_model() -> VideoMAEForVideoClassification:
+    model = VideoMAEForVideoClassification.from_pretrained(MODEL_PATH)
+    model.eval()
+    return model
 
-torch.onnx.export(
-    model,
-    (dummy_input,),
-    (dir / "model_repository/videomae_crime/1/model.onnx").resolve(),
-    input_names=["pixel_values"],
-    output_names=["logits"],
-    opset_version=18,
-)
+
+def export_model(model: VideoMAEForVideoClassification) -> None:
+    dummy_input = torch.randn(1, 16, 3, 224, 224)
+
+    torch.onnx.export(
+        model,
+        (dummy_input,),
+        OUTPUT_PATH.resolve(),
+        input_names=["pixel_values"],
+        output_names=["logits"],
+        opset_version=18,
+    )
+
+
+def main() -> None:
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    model = build_model()
+    export_model(model)
+
+    print(f"Saved to: {OUTPUT_PATH.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
