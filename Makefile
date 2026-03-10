@@ -64,17 +64,17 @@ start-queue-local:
 
 
 infra-up: init-env
-	docker compose -f docker-compose.infra.yml up --build -d
+	docker compose --env-file .env -f docker/docker-compose.infra.yml up --build -d
 
 infra-down:
-	docker compose -f docker-compose.infra.yml down
+	docker compose --env-file .env -f docker/docker-compose.infra.yml down
 
 app-up: init-env
-	docker compose -f docker-compose.yml up --build -d
+	docker compose --env-file .env -f docker/docker-compose.yml up --build -d
 
 app-down:
-	docker compose -f docker-compose.yml down
+	docker compose --env-file .env -f docker/docker-compose.yml down
 
 docker-stop:
-	docker compose -f docker-compose.yml stop
-	docker compose -f docker-compose.infra.yml stop
+	docker compose --env-file .env -f docker/docker-compose.yml stop
+	docker compose --env-file .env -f docker/docker-compose.infra.yml stop

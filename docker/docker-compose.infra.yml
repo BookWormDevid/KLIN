@@ -1,0 +1,477 @@
+x-airflow-common-env: &airflow-common-env
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:?AIRFLOW_DATABASE_URL is required}
+  AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
+  AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
+  AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+
+x-airflow-image: &airflow-image
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile.airflow
+  image: klin-airflow:3.1.7-fab3.3.0
+
+services:
+  # --- DATABASE SECTION ---
+  postgresql:
+    image: postgres:17.0
+    container_name: klin-postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: postgres
+      POSTGRES_MAX_CONNECTIONS: 200
+    networks:
+      - web
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d postgres
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres-init:
+    image: postgres:17.0
+    container_name: klin-postgres-init
+    networks:
+      - web
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      APP_DB_NAME: ${APP_DB_NAME:?APP_DB_NAME is required}
+      APP_DB_USER: ${APP_DB_USER:?APP_DB_USER is required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+      AIRFLOW_DB_NAME: ${AIRFLOW_DB_NAME:?AIRFLOW_DB_NAME is required}
+      AIRFLOW_DB_USER: ${AIRFLOW_DB_USER:?AIRFLOW_DB_USER is required}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?AIRFLOW_DB_PASSWORD is required}
+      ML_METRICS_DB_NAME: ${ML_METRICS_DB_NAME:-ml}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+    entrypoint:
+      - /bin/bash
+      - /opt/bootstrap/postgres-bootstrap.sh
+    volumes:
+      - ./postgres/bootstrap.sh:/opt/bootstrap/postgres-bootstrap.sh:ro
+
+  pgadmin:
+    image: dpage/pgadmin4:9.12.0
+    container_name: klin-pgadmin
+    restart: unless-stopped
+    profiles:
+      - ops
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?PGADMIN_DEFAULT_EMAIL is required}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?PGADMIN_DEFAULT_PASSWORD is required}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.pgadmin.rule=Host(`pgadmin.localhost`)"
+      - "traefik.http.services.pgadmin.loadbalancer.server.port=80"
+    networks:
+      - web
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1/misc/ping').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # --- AIRFLOW SECTION ---
+  airflow-init:
+    <<: *airflow-image
+    container_name: klin-airflow-init
+    networks:
+      - web
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+    command:
+      - airflow
+      - db
+      - migrate
+
+  airflow-create-admin:
+    <<: *airflow-image
+    container_name: klin-airflow-create-admin
+    networks:
+      - web
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+    entrypoint:
+      - /bin/bash
+      - -lc
+      - >
+        airflow users create
+        --username ${AIRFLOW_ADMIN_USER:-admin}
+        --firstname Admin
+        --lastname User
+        --role Admin
+        --email ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
+        --password ${AIRFLOW_ADMIN_PASSWORD:-admin} || true
+
+  airflow-webserver:
+    <<: *airflow-image
+    container_name: klin-airflow-webserver
+    restart: unless-stopped
+    networks:
+      - web
+    depends_on:
+      airflow-create-admin:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__API__AUTH_BACKENDS: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+    command:
+      - airflow
+      - api-server
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.airflow.rule=Host(`airflow.localhost`)"
+      - "traefik.http.services.airflow.loadbalancer.server.port=8080"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v2/monitor/health').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-image
+    container_name: klin-airflow-scheduler
+    restart: unless-stopped
+    networks:
+      - web
+    depends_on:
+      airflow-create-admin:
+        condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags:ro
+      - airflow_logs:/opt/airflow/logs
+    command:
+      - airflow
+      - scheduler
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8974/health').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # --- MONITORING SECTION ---
+  prometheus:
+    image: prom/prometheus:v3.5.1
+    container_name: klin-prometheus
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - web
+    volumes:
+      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.localhost`)"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      alertmanager:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - promtool
+        - check
+        - healthy
+        - --url=http://127.0.0.1:9090
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  alertmanager:
+    image: prom/alertmanager:v0.30.0
+    container_name: klin-alertmanager
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - web
+    environment:
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:?ALERT_EMAIL_TO is required}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:?ALERT_EMAIL_FROM is required}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:?SMTP_PORT is required}
+      SMTP_USER: ${SMTP_USER:?SMTP_USER is required}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:?TELEGRAM_CHAT_ID is required}
+    volumes:
+      - ../monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ../monitoring/alertmanager/render-and-start.sh:/opt/alertmanager/render-and-start.sh:ro
+      - alertmanager_data:/alertmanager
+    entrypoint:
+      - /bin/sh
+      - /opt/alertmanager/render-and-start.sh
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.alertmanager.rule=Host(`alertmanager.localhost`)"
+      - "traefik.http.services.alertmanager.loadbalancer.server.port=9093"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - amtool --alertmanager.url=http://127.0.0.1:9093 alert query >/dev/null 2>&1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  grafana:
+    image: grafana/grafana-enterprise:12.3.1
+    container_name: klin-grafana
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - web
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.localhost`)"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:3000/api/health >/dev/null
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # --- EXPORTERS ---
+  postgres_exporter-klin:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.18.1
+    container_name: klin-postgres_exporter-klin
+    restart: unless-stopped
+    profiles:
+      - observability
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${APP_DB_NAME:?APP_DB_NAME is required}?sslmode=disable
+    networks:
+      - web
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  postgres_exporter-ml:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.18.1
+    container_name: klin-postgres_exporter-ml
+    restart: unless-stopped
+    profiles:
+      - observability
+    depends_on:
+      postgres-init:
+        condition: service_completed_successfully
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${ML_METRICS_DB_NAME:-ml}?sslmode=disable
+    networks:
+      - web
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9187/metrics >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  node_exporter:
+    image: prom/node-exporter:v1.10.2
+    container_name: node_exporter
+    restart: unless-stopped
+    profiles:
+      - observability
+    networks:
+      - web
+    command:
+      - --path.rootfs=/rootfs
+    volumes:
+      - /:/rootfs:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:9100/metrics >/dev/null 2>&1 || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # --- MESSAGE BROKER & AI ---
+  rabbitmq:
+    image: rabbitmq:4.2.1-management
+    container_name: klin-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    command: >
+      /bin/bash -c "rabbitmq-plugins enable --offline rabbitmq_prometheus &&
+      rabbitmq-server"
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    networks:
+      - web
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test:
+        - CMD
+        - rabbitmq-diagnostics
+        - -q
+        - ping
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  triton:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.triton
+    container_name: klin-triton
+    environment:
+      - TRITON_PYTHON_BACKEND_REBUILD_ENV=1
+    restart: unless-stopped
+    command: ["tritonserver", "--model-repository=/models"]
+    volumes:
+      - ../model_repository:/models:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:8001:8001"
+      - "127.0.0.1:8002:8002"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+    networks:
+      - web
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v2/health/ready').read()"
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # --- GATEWAY ---
+  traefik:
+    image: traefik:v3.6.7
+    container_name: klin-traefik
+    restart: unless-stopped
+    networks:
+      - web
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=klin-web
+      - --entrypoints.web.address=:80
+      - --ping=true
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+    healthcheck:
+      test:
+        - CMD
+        - traefik
+        - healthcheck
+        - --ping
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+networks:
+  web:
+    name: klin-web
+
+volumes:
+  airflow_logs:
+  alertmanager_data:
+  grafana_data:
+  pgadmin_data:
+  postgres_data:
+  prometheus_data:
+  rabbitmq_data:

@@ -1,6 +1,6 @@
 # Triton Model Repository
 
-This directory is mounted into Triton as `/models` by `docker-compose.infra.yml`.
+This directory is mounted into Triton as `/models` by `docker/docker-compose.infra.yml`.
 
 ## Layout
 
