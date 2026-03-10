@@ -14,6 +14,8 @@ help:
 	@echo make pre-commit          # install all required pre-commit hooks
 	@echo make lint                # Start full project linting (including sandbox) and pylint for app
 	@echo make test                # Start application tests
+	@echo make ci-python           # Run the same Python quality checks as GitHub CI
+	@echo make ci-infra            # Validate docker compose files used in GitHub CI
 	@echo make start-api-local     # Launch API locally on port 8008
 	@echo make start-queue-local   # Launch Queue locally
 	@echo .
@@ -51,10 +53,21 @@ lint: uv-dev
 	uv run ruff check --fix
 	uv run ruff format
 	uv run -m mypy .
-	uv run pylint app
+	PYLINTHOME=.cache/pylint uv run pylint --jobs=1 app
 
 test:
 	uv run pytest
+
+ci-python: uv-dev
+	uv run ruff check app helpers tests
+	uv run ruff format --check app helpers tests
+	uv run -m mypy app helpers tests
+	PYLINTHOME=.cache/pylint uv run pylint --jobs=1 app
+	uv run pytest -q --maxfail=1
+
+ci-infra:
+	docker compose --env-file example.env -f docker/docker-compose.yml config >/dev/null
+	docker compose --env-file example.env -f docker/docker-compose.infra.yml config >/dev/null
 
 start-api-local:
 	uv run -m uvicorn --host 0.0.0.0 --port 8008 app.presentation.litestar.run:app

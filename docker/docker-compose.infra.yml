@@ -287,7 +287,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
     volumes:
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ../monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     labels:
       - "traefik.enable=true"
@@ -399,12 +398,8 @@ services:
       start_period: 30s
 
   triton:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.triton
+    image: nvcr.io/nvidia/tritonserver:25.12-py3
     container_name: klin-triton
-    environment:
-      - TRITON_PYTHON_BACKEND_REBUILD_ENV=1
     restart: unless-stopped
     command: ["tritonserver", "--model-repository=/models"]
     volumes:

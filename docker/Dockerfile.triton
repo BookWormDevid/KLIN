@@ -1,7 +1,0 @@
-FROM nvcr.io/nvidia/tritonserver:25.12-py3
-
-RUN pip install torch==2.5.1 torchvision==0.20.1 numpy==1.26.4
-
-# Can be improved later by aligning dependencies with the project lockfile
-# and moving to a more reproducible multi-stage build.
-# (Pyproject.toml добавить ещё группу... может быть)
