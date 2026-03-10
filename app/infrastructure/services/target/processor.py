@@ -19,7 +19,7 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-import tritonclient.http as httpclient
+import tritonclient.http as httpclient  # type: ignore[import-untyped]
 from transformers import VideoMAEForVideoClassification, VideoMAEImageProcessor
 from ultralytics import YOLO
 
