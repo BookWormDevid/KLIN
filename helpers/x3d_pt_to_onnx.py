@@ -1,5 +1,6 @@
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from typing import cast
 
 import torch
 
@@ -17,7 +18,8 @@ class ExportWrapper(torch.nn.Module):
         self.model = model
 
     def forward(self, video: torch.Tensor) -> torch.Tensor:
-        return self.model(video).squeeze(-1)
+        logits = cast(torch.Tensor, self.model(video))
+        return logits.squeeze(-1)
 
 
 def load_x3d_module(module_path: Path):
