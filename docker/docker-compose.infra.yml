@@ -399,9 +399,7 @@ services:
       start_period: 30s
 
   triton:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.triton
+    image: nvcr.io/nvidia/tritonserver:25.12-py3
     container_name: klin-triton
     environment:
       - TRITON_PYTHON_BACKEND_REBUILD_ENV=1
