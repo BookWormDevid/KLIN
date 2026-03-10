@@ -13,6 +13,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${APP_DB_NAME:?APP_DB_NAME is required}
       POSTGRES_MAX_CONNECTIONS: 200
     networks:
       - web
@@ -23,7 +24,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER} -d postgres
+        - pg_isready -U ${POSTGRES_USER} -d ${APP_DB_NAME}
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,9 +42,17 @@ services:
       PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     entrypoint: /bin/bash
     command: >
-      -c "until pg_isready -h postgresql -U ${POSTGRES_USER}; do sleep 2; done &&
-      psql -h postgresql -U ${POSTGRES_USER} -tc \"SELECT 1 FROM pg_database WHERE datname = '${ML_METRICS_DB_NAME:-ml}'\" | grep -q 1 ||
-      psql -h postgresql -U ${POSTGRES_USER} -c \"CREATE DATABASE ${ML_METRICS_DB_NAME:-ml}\""
+      -c "
+      until pg_isready -h postgresql -U ${POSTGRES_USER} -d ${APP_DB_NAME}; do
+        sleep 2
+      done
+
+      psql -h postgresql -U ${POSTGRES_USER} -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = '${AIRFLOW_DB_NAME:?AIRFLOW_DB_NAME is required}'\" | grep -q 1 ||
+      psql -h postgresql -U ${POSTGRES_USER} -d postgres -c \"CREATE DATABASE \\\"${AIRFLOW_DB_NAME:?AIRFLOW_DB_NAME is required}\\\"\"
+
+      psql -h postgresql -U ${POSTGRES_USER} -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = '${ML_METRICS_DB_NAME:-ml}'\" | grep -q 1 ||
+      psql -h postgresql -U ${POSTGRES_USER} -d postgres -c \"CREATE DATABASE \\\"${ML_METRICS_DB_NAME:-ml}\\\"\"
+      "
 
   pgadmin:
     image: dpage/pgadmin4
@@ -70,8 +79,8 @@ services:
     networks:
       - web
     depends_on:
-      postgresql:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     environment:
       <<: *airflow-common-env
     volumes:
@@ -212,7 +221,7 @@ services:
       postgresql:
         condition: service_healthy
     environment:
-      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/postgres?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${APP_DB_NAME:?APP_DB_NAME is required}?sslmode=disable"
     networks:
       - web
 
