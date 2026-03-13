@@ -41,7 +41,7 @@ async def base_handler(message: RabbitMessage) -> None:
 
     data = msgspec.json.decode(message.body, type=KlinProcessDto)
 
-    # Измеряем время обработки задачи
+    # Измеряем время обработки задач
     with KLIN_PROCESSING_TIME.time():
         await klin_service.perform_klin(klin_id=data.klin_id)
 
