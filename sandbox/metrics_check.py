@@ -2,7 +2,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 
 from helpers.analyze_safetensors_file import SafetensorsFileActions
 
@@ -48,24 +47,6 @@ class MetricCheck:
         print(f"📊 Общее количество параметров: {total_params:,}")
         print(f"🎯 Обучаемых параметров: {trainable_params:,}")
         print(f"📈 Процент обучаемых: {(trainable_params / total_params) * 100:.2f}%")
-
-        # Анализ по типам слоев
-        layer_df = pd.DataFrame(layer_stats)
-        layer_summary = (
-            layer_df.groupby("layer")
-            .agg({"parameters": "sum", "trainable": "mean"})
-            .sort_values("parameters", ascending=False)
-        )
-
-        print("\n📋 Распределение по слоям:")
-        for layer, row in layer_summary.head(10).iterrows():
-            trainable_pct = row["trainable"] * 100
-            print(
-                f"  {layer:20} {row['parameters']:>12,}params"
-                f" ({trainable_pct:.1f}% trainable)"
-            )
-
-        return layer_df
 
     def create_basic_plots(self, model, model_name):
         """Создание простых графиков для анализа модели"""
