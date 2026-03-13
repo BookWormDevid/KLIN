@@ -53,7 +53,7 @@ lint: uv-dev
 	uv run ruff check --fix
 	uv run ruff format
 	uv run -m mypy .
-	PYLINTHOME=.cache/pylint uv run pylint --jobs=1 app
+	uv run pylint app
 
 test:
 	uv run pytest
@@ -62,7 +62,7 @@ ci-python: uv-dev
 	uv run ruff check app helpers tests
 	uv run ruff format --check app helpers tests
 	uv run -m mypy app helpers tests
-	PYLINTHOME=.cache/pylint uv run pylint --jobs=1 app
+	uv run pylint app
 	uv run pytest -q --maxfail=1
 
 ci-infra:
