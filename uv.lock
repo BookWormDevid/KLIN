@@ -1568,6 +1568,9 @@ cli = [
     { name = "typer" },
     { name = "watchfiles" },
 ]
+prometheus = [
+    { name = "prometheus-client" },
+]
 rabbit = [
     { name = "aio-pika" },
 ]
@@ -2666,7 +2669,7 @@ dependencies = [
     { name = "dishka" },
     { name = "evaluate" },
     { name = "fastapi" },
-    { name = "faststream", extra = ["cli", "rabbit"] },
+    { name = "faststream", extra = ["cli", "prometheus", "rabbit"] },
     { name = "httpx" },
     { name = "litestar", extra = ["prometheus", "structlog"] },
     { name = "mlflow" },
@@ -2731,7 +2734,7 @@ requires-dist = [
     { name = "dishka", specifier = ">=1.7.2" },
     { name = "evaluate", specifier = ">=0.4.6" },
     { name = "fastapi", specifier = ">=0.127.0" },
-    { name = "faststream", extras = ["cli", "rabbit"], specifier = ">=0.6.6" },
+    { name = "faststream", extras = ["cli", "prometheus", "rabbit"], specifier = ">=0.6.6" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "litestar", extras = ["prometheus", "structlog"], specifier = ">=2.19.0" },
     { name = "mlflow", specifier = ">=3.8.1" },

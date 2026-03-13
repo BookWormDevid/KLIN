@@ -5,6 +5,7 @@ from ultralytics import YOLO
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 MODEL_PATH = ROOT_DIR / "models" / "yolov8x.pt"
+
 OUTPUT_DIR = ROOT_DIR / "model_repository" / "yolo_person" / "1"
 OUTPUT_PATH = OUTPUT_DIR / "model.onnx"
 
@@ -21,6 +22,10 @@ def export_model(model: YOLO) -> Path:
             opset=17,
             simplify=True,
             device="cpu",
+            # ВАЖНО для Triton batching
+            dynamic=True,
+            # фиксируем batch dimension
+            batch=1,
         )
     )
 
