@@ -53,18 +53,20 @@ pre-commit:
 lint: uv-dev
 	uv run ruff check --fix
 	uv run ruff format
-	uv run -m mypy .
+	uv run -m mypy app helpers tests
 	uv run pylint app
 
 test:
 	uv run pytest
 
-ci-python: uv-dev
-	uv run ruff check app helpers tests
-	uv run ruff format --check app helpers tests
-	uv run -m mypy app helpers tests
-	uv run pylint app
-	uv run pytest -q --maxfail=1
+ci-python:
+	uv venv --allow-existing
+	uv sync --group ci --frozen --no-install-project
+	uv run --no-sync ruff check app helpers tests
+	uv run --no-sync ruff format --check app helpers tests
+	uv run --no-sync -m mypy app helpers tests
+	uv run --no-sync pylint app
+	uv run --no-sync pytest -q --maxfail=1
 
 ci-infra:
 	docker compose --env-file example.env -f docker/docker-compose.yml config >/dev/null
