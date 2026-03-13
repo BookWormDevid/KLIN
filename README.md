@@ -191,7 +191,7 @@ uv run python sandbox/src/train.py
 - Скачайте базовые модели MAE, x3d и yolo в папку models/
 
 ```zsh
-make uv-ml # установите все зависимости для ML (необходимо для экспорта)
+make uv-dev # установите все зависимости для ML (необходимо для экспорта)
 ```
 
 Утилита: `helpers/*modelname*_to_onnx.py`

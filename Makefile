@@ -11,7 +11,6 @@ help:
 	@echo .
 	@echo For development:
 	@echo make uv-dev              # create and sync .venv with dev dependencies
-	@echo make uv-ml               # install ml dependency pack, including MLflow, onnx and training deps.
 	@echo make pre-commit          # install all required pre-commit hooks
 	@echo make lint                # Start full project linting (including sandbox) and pylint for app
 	@echo make test                # Start application tests
@@ -46,10 +45,6 @@ migration:
 uv-dev:
 	uv venv --allow-existing
 	uv sync --dev
-	uv sync --group ml
-
-uv-ml:
-	uv sync --group ml
 
 pre-commit:
 	uv run pre-commit install

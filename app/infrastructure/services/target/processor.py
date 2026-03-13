@@ -10,7 +10,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import aiohttp
 import async_timeout
@@ -36,18 +36,28 @@ X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
 
 
 @dataclass
-class ProcessorConfig:
-    """
-    Переменные для процессора
-    """
+class StreamConfig:
+    """Настройки потоковой обработки."""
 
     chunk_size: int = 16
     frame_size: tuple[int, int] = (224, 224)
+
+
+@dataclass
+class YoloConfig:
+    """Настройки инференса YOLO."""
+
     yolo_stride: int = 2
     yolo_batch_size: int = 32
     yolo_conf: float = 0.6
     yolo_classes: dict[int, str] = field(default_factory=lambda: {0: "person"})
     allowed_classes: set[int] = field(default_factory=lambda: {0})
+
+
+@dataclass
+class MaeConfig:
+    """Настройки классификации VideoMAE."""
+
     mae_classes: dict[int, str] = field(
         default_factory=lambda: {
             0: "Abuse",
@@ -69,6 +79,47 @@ class ProcessorConfig:
 
 
 @dataclass
+class ProcessorConfig:
+    """Конфигурация процессора."""
+
+    stream: StreamConfig = field(default_factory=StreamConfig)
+    yolo: YoloConfig = field(default_factory=YoloConfig)
+    mae: MaeConfig = field(default_factory=MaeConfig)
+
+    @property
+    def chunk_size(self) -> int:
+        return self.stream.chunk_size
+
+    @property
+    def frame_size(self) -> tuple[int, int]:
+        return self.stream.frame_size
+
+    @property
+    def yolo_stride(self) -> int:
+        return self.yolo.yolo_stride
+
+    @property
+    def yolo_batch_size(self) -> int:
+        return self.yolo.yolo_batch_size
+
+    @property
+    def yolo_conf(self) -> float:
+        return self.yolo.yolo_conf
+
+    @property
+    def yolo_classes(self) -> dict[int, str]:
+        return self.yolo.yolo_classes
+
+    @property
+    def allowed_classes(self) -> set[int]:
+        return self.yolo.allowed_classes
+
+    @property
+    def mae_classes(self) -> dict[int, str]:
+        return self.mae.mae_classes
+
+
+@dataclass
 class VideoStreamState:
     """
     Изменяемое состояние потоковой обработки видео.
@@ -85,8 +136,7 @@ class VideoStreamState:
     frame_idx: int = 0
 
 
-# pylint: disable=too-few-public-methods
-class InferenceProcessor(IKlinInference):
+class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-methods
     """
     Процессор. Содержит методы подключения моделей,
     обработки видео с помощью videomae и yolo.
@@ -173,9 +223,7 @@ class InferenceProcessor(IKlinInference):
 
         return batch_preds
 
-    def _parse_yolo_detection(
-        self, pred: np.ndarray, timesteps: float
-    ) -> dict[str, Any] | None:
+    def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
         scores = pred[4:]
         class_id = int(np.argmax(scores))
         conf = scores[class_id]
@@ -193,38 +241,42 @@ class InferenceProcessor(IKlinInference):
             float(y + h / 2),
         ]
 
-        return {
-            "class_id": class_id,
-            "timesteps": timesteps,
-            "bbox": bbox,
-        }
+        return class_id, bbox
+
+    def _build_yolo_batch(
+        self, yolo_buffer: list[tuple[int, np.ndarray]]
+    ) -> tuple[np.ndarray, list[int]]:
+        frame_indices = [frame_idx for frame_idx, _ in yolo_buffer]
+        batch_imgs = [
+            self._prepare_yolo_frame_for_triton(frame)[0] for _, frame in yolo_buffer
+        ]
+        return np.stack(batch_imgs, axis=0), frame_indices
+
+    def _store_yolo_detections(
+        self,
+        state: VideoStreamState,
+        preds: np.ndarray,
+        timesteps: float,
+    ) -> None:
+        for pred in preds:
+            detection = self._parse_yolo_detection(pred)
+            if detection is None:
+                continue
+            class_id, bbox = detection
+            state.bbox_by_time[timesteps].append(bbox)
+            state.detected_class_ids.add(class_id)
 
     def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
         """Обрабатывает накопленный батч кадров YOLO"""
         if not state.yolo_buffer:
             return
 
-        batch_imgs_list = []
-        frame_indices = []
-
-        for f_idx, frame in state.yolo_buffer:
-            img = self._prepare_yolo_frame_for_triton(frame)
-            batch_imgs_list.append(img[0])  # убираем размерность batch=1
-            frame_indices.append(f_idx)
-
-        batch_array = np.stack(batch_imgs_list, axis=0)  # (B, 3, 640, 640)
+        batch_array, frame_indices = self._build_yolo_batch(state.yolo_buffer)
         batch_preds_list = self._infer_yolo_batch(batch_array)
 
-        for i, preds in enumerate(batch_preds_list):
-            f_idx = frame_indices[i]
-            timesteps = f_idx / fps if fps > 0 else 0.0
-
-            for pred in preds:
-                det = self._parse_yolo_detection(pred, timesteps)
-                if det:
-                    timestep = float(det["timesteps"])
-                    state.bbox_by_time[timestep].append(det["bbox"])
-                    state.detected_class_ids.add(int(det["class_id"]))
+        for frame_idx, preds in zip(frame_indices, batch_preds_list, strict=False):
+            timesteps = frame_idx / fps if fps > 0 else 0.0
+            self._store_yolo_detections(state, preds, timesteps)
 
     def _update_yolo_stream_state(
         self, frame_resized: np.ndarray, state: VideoStreamState, fps: float
@@ -248,14 +300,7 @@ class InferenceProcessor(IKlinInference):
         frames_np = np.expand_dims(frames_np, axis=0)  # B T C H W
         return frames_np
 
-    def _predict_mae_chunk(
-        self,
-        *,
-        chunk_frames: list[np.ndarray],
-        start_frame: int,
-        end_frame: int,
-        fps: float,
-    ) -> dict[str, Any]:
+    def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
         img = self._prepare_mae_chunk_for_triton(chunk_frames)
 
         inputs = httpclient.InferInput("pixel_values", img.shape, "FP32")
@@ -268,21 +313,35 @@ class InferenceProcessor(IKlinInference):
             outputs=[outputs],
         )
 
-        logits = result.as_numpy("logits")[0]
+        logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
         exp = np.exp(logits - np.max(logits))
-        probs = exp / exp.sum()
+        probs = exp / np.sum(exp)
+        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
 
+    def _build_time_range(
+        self, start_frame: int, end_frame: int, fps: float
+    ) -> list[float]:
+        if fps <= 0:
+            return [0.0, 0.0]
+        return [start_frame / fps, (end_frame + 1) / fps]
+
+    def _predict_mae_chunk(
+        self,
+        *,
+        chunk_frames: list[np.ndarray],
+        start_frame: int,
+        end_frame: int,
+        fps: float,
+    ) -> dict[str, Any]:
+        probs = self._infer_mae_probs(chunk_frames)
         pred_idx = int(np.argmax(probs))
-        conf = float(probs[pred_idx])
+        confidence = float(probs[pred_idx])
         answer = self.processing.mae_classes.get(pred_idx, str(pred_idx))
 
-        start_time = start_frame / fps if fps > 0 else 0.0
-        end_time = (end_frame + 1) / fps if fps > 0 else 0.0
-
         return {
-            "time": [start_time, end_time],
+            "time": self._build_time_range(start_frame, end_frame, fps),
             "answer": answer,
-            "confident": conf,
+            "confident": confidence,
         }
 
     def _update_mae_stream_state(

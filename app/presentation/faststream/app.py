@@ -1,3 +1,5 @@
+"""FastStream приложение для обработки задач Klin через RabbitMQ."""
+
 import msgspec
 from dishka import make_container
 from faststream import FastStream
@@ -16,7 +18,7 @@ container = make_container(
 )
 broker = container.get(RabbitBroker)
 app = FastStream(broker)
-Klin_service = container.get(KlinService)
+klin_service = container.get(KlinService)
 
 # --- Prometheus метрики ---
 KLIN_PROCESSED = Counter(
@@ -35,11 +37,13 @@ start_http_server(8009)
     consume_args={"prefetch_count": 1},
 )
 async def base_handler(message: RabbitMessage) -> None:
+    """Обрабатывает входящее сообщение и запускает обработку Klin-задачи."""
+
     data = msgspec.json.decode(message.body, type=KlinProcessDto)
 
     # Измеряем время обработки задачи
     with KLIN_PROCESSING_TIME.time():
-        await Klin_service.perform_klin(klin_id=data.klin_id)
+        await klin_service.perform_klin(klin_id=data.klin_id)
 
     # Увеличиваем счетчик обработанных задач
     KLIN_PROCESSED.inc()
