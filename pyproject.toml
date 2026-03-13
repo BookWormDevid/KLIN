@@ -29,7 +29,7 @@ app_docker = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "dishka>=1.8.0",
-    "faststream[cli,rabbit]>=0.6.6",
+    "faststream[cli,prometheus,rabbit]>=0.6.6",
     "granian>=2.7.2",
     "litestar[prometheus,structlog]>=2.21.0",
     "msgspec>=0.20.0",
@@ -52,7 +52,6 @@ ml = [
     "albumentations==2.0.4",
     "accelerate>=1.12.0",
 ]
-
 
 dev = [
     "yt-dlp>=2025.12.8",
