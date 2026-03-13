@@ -24,6 +24,7 @@ dependencies = [
 
 [dependency-groups]
 app_docker = [
+    "aiofiles>=25.1.0",
     "aiohttp>=3.13.3",
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
