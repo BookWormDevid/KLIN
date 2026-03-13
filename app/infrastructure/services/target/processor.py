@@ -35,6 +35,7 @@ YOLO_DIR = BASE_DIR_MAE / app_settings.yolo_path
 X3D_DIR = BASE_DIR_MAE / app_settings.x3d_path
 
 
+# pylint: disable=too-many-instance-attributes
 @dataclass
 class ProcessorConfig:
     """
@@ -199,6 +200,7 @@ class InferenceProcessor(IKlinInference):
             "bbox": bbox,
         }
 
+    # pylint: disable=too-many-locals
     def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
         """Обрабатывает накопленный батч кадров YOLO"""
         if not state.yolo_buffer:
@@ -248,6 +250,7 @@ class InferenceProcessor(IKlinInference):
         frames_np = np.expand_dims(frames_np, axis=0)  # B T C H W
         return frames_np
 
+    # pylint: disable=too-many-locals
     def _predict_mae_chunk(
         self,
         *,

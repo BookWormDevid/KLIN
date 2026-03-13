@@ -1,3 +1,8 @@
+"""
+Запуск faststream.
+Rabbit очередь и метрики к обработанным задачам.
+"""
+
 import msgspec
 from dishka import make_container
 from faststream import FastStream
@@ -35,6 +40,12 @@ start_http_server(8009)
     consume_args={"prefetch_count": 1},
 )
 async def base_handler(message: RabbitMessage) -> None:
+    """
+    Получает json из очереди Rabbit и декодирует его.
+    Измеряет время обработки задачи.
+    Увеличивает счётчик всех обработанных задач для Prometheus
+    """
+
     data = msgspec.json.decode(message.body, type=KlinProcessDto)
 
     # Измеряем время обработки задачи
