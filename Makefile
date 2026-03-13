@@ -45,7 +45,7 @@ migration:
 
 uv-dev:
 	uv venv --allow-existing
-	uv sync --dev
+	uv sync --all-groups
 
 uv-ml:
 	uv sync --group ml
