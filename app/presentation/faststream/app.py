@@ -23,7 +23,7 @@ broker = container.get(RabbitBroker)
 app = FastStream(broker)
 Klin_service = container.get(KlinService)
 
-# --- Prometheus метрики ---
+# Prometheus метрики
 KLIN_PROCESSED = Counter(
     "klin_processed_total", "Общее количество обработанных задач Klin"
 )
@@ -31,7 +31,6 @@ KLIN_PROCESSING_TIME = Histogram(
     "klin_processing_seconds", "Время обработки одной задачи Klin"
 )
 
-# Запуск HTTP-сервера для Prometheus
 start_http_server(8009)
 
 
