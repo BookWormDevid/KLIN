@@ -72,16 +72,10 @@ async def test_process_video_stream_mocked(monkeypatch):
     - корректный вызов _predict_mae_chunk
     - обработку небольшого количества кадров
     - правильный формат возвращаемых данных
-    - вызов YOLO на нужных кадрах (если stride позволяет)
+    - вызов батчевого YOLO на нужном количестве кадров
     """
     processor = InferenceProcessorTestAdapter()
 
-    # Мокаем зависимости
-    processor.mae.model = MagicMock()
-    processor.mae.processor = MagicMock()
-    processor.yolo.yolo = MagicMock()
-
-    run_yolo_mock = MagicMock(return_value=[])
     predict_mae_mock = MagicMock(
         return_value={
             "time": [0.0, 1.0],
@@ -89,7 +83,13 @@ async def test_process_video_stream_mocked(monkeypatch):
             "confident": 0.92,
         }
     )
-    monkeypatch.setattr(processor, "_run_yolo_on_frame", run_yolo_mock)
+
+    def fake_infer_yolo_batch(batch_imgs: np.ndarray) -> list[np.ndarray]:
+        return [np.empty((0, 6), dtype=np.float32) for _ in range(batch_imgs.shape[0])]
+
+    infer_yolo_mock = MagicMock(side_effect=fake_infer_yolo_batch)
+
+    monkeypatch.setattr(processor, "_infer_yolo_batch", infer_yolo_mock)
     monkeypatch.setattr(processor, "_predict_mae_chunk", predict_mae_mock)
 
     # Подменяем VideoCapture
@@ -126,11 +126,13 @@ async def test_process_video_stream_mocked(monkeypatch):
     assert isinstance(first_result["confident"], float)
     assert first_result["confident"] > 0
 
-    # Проверяем YOLO — при stride=2 должен быть вызван ~5 раз
-    expected_yolo_calls = (
+    # Проверяем YOLO — при stride=2 в батч должно попасть ~5 кадров
+    expected_yolo_frames = (
         10 + processor.processing.yolo_stride - 1
     ) // processor.processing.yolo_stride
-    assert run_yolo_mock.call_count == expected_yolo_calls
+    assert infer_yolo_mock.call_count == 1
+    batch_arg = infer_yolo_mock.call_args.args[0]
+    assert batch_arg.shape[0] == expected_yolo_frames
 
     # Проверяем информацию о видео
     assert isinstance(video_info, dict)

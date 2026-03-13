@@ -6,14 +6,12 @@ on:
       - "**/*.md"
       - "docs/**"
       - "mlflow/**"
-      - "mlruns/**"
       - "sandbox/**"
   pull_request:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
       - "mlflow/**"
-      - "mlruns/**"
       - "sandbox/**"
   workflow_dispatch:
 
@@ -25,6 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   PYTHON_VERSION: "3.10"
   PYLINTHOME: .cache/pylint
   UV_NO_PROGRESS: "1"
@@ -38,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Detect changed areas
         id: filter
@@ -68,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -80,23 +79,23 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Sync CI dependencies
+        run: uv sync --group ci --frozen --no-install-project
+
       - name: Ruff check
-        run: uvx ruff check app helpers tests
+        run: uv run --no-sync ruff check app helpers tests
 
       - name: Ruff format check
-        run: uvx ruff format --check app helpers tests
-
-      - name: Sync dependencies
-        run: uv sync --dev --frozen --no-install-project
+        run: uv run --no-sync ruff format --check app helpers tests
 
       - name: Mypy
-        run: uv run -m mypy app helpers tests
+        run: uv run --no-sync -m mypy app helpers tests
 
       - name: Pylint (app only)
-        run: uv run pylint --jobs=1 app
+        run: uv run --no-sync pylint --jobs=1 app
 
       - name: Pytest
-        run: uv run pytest -q --maxfail=1
+        run: uv run --no-sync pytest -q --maxfail=1
 
       - name: Minimize uv cache
         if: always()
@@ -110,7 +109,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate app compose
         run: docker compose --env-file example.env -f docker/docker-compose.yml config >/dev/null

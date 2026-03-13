@@ -188,6 +188,12 @@ uv run python sandbox/src/train.py
 
 ### Экспорт моделей в ONNX для Triton
 
+- Скачайте базовые модели MAE, x3d и yolo в папку models/
+
+```zsh
+make uv-dev # установите все зависимости dev (необходимо для экспорта)
+```
+
 Утилита: `helpers/*modelname*_to_onnx.py`
 
 Примеры:

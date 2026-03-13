@@ -74,9 +74,9 @@ class InfrastructureProvider(Provider):
         """
         return async_sessionmaker(bind=engine, expire_on_commit=True, autoflush=False)
 
-    MAE_repository = provide(KlinRepository, provides=IKlinRepository)
-    MAE_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
-    MAE_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
+    KLIN_repository = provide(KlinRepository, provides=IKlinRepository)
+    KLIN_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
+    KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
 
 
 class ApplicationProvider(Provider):
@@ -85,7 +85,7 @@ class ApplicationProvider(Provider):
     """
 
     scope = Scope.APP
-    MAE_service = provide(KlinService)
+    KLIN_service = provide(KlinService)
 
 
 class VideoProvider(Provider):

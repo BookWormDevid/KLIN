@@ -30,7 +30,7 @@ class TestSettings(unittest.TestCase):
         """
         settings = Settings()
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(settings.videomae_path, "models/videomae-UCF-crime")
+            self.assertEqual(settings.videomae_path, "models/videomae-ucf-crime")
 
     def test_videomae_env(self) -> None:
         """
