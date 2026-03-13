@@ -1,6 +1,7 @@
 # Project-specific ignores
 tests/videos/*
-models/*
+models/**/
+models/*.pt
 model_repository/**/1/*.onnx
 model_repository/**/1/*.engine
 model_repository/**/1/*.pt
@@ -8,7 +9,6 @@ model_repository/**/1/*.data
 mlruns/*/**
 tmp
 *versions
-videos/
 
 
 

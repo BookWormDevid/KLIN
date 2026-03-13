@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
 
-    default_videomae_path: str = "models/videomae-UCF-crime"
+    default_videomae_path: str = "models/videomae-ucf-crime"
     default_yolo_path: str = "models/yolov8x.pt"
     default_x3d_path: str = "models/pre_trained_x3d_model.pt"
 
