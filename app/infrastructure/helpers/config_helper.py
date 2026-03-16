@@ -2,7 +2,29 @@
 Класс с конфигами для процессора
 """
 
+import asyncio
+from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Any
+
+import numpy as np
+
+
+@dataclass
+class VideoStreamState:
+    """
+    Изменяемое состояние потоковой обработки видео.
+    """
+
+    mae_results: list[dict[str, Any]] = field(default_factory=list)
+    bbox_by_time: dict[float, list[list[float]]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    detected_class_ids: set[int] = field(default_factory=set)
+    chunk_buffer: list[np.ndarray] = field(default_factory=list)
+    yolo_buffer: list[tuple[int, np.ndarray]] = field(default_factory=list)
+    chunk_start_frame: int = 0
+    frame_idx: int = 0
 
 
 @dataclass
@@ -46,3 +68,17 @@ class MaeConfig:
             13: "Vandalism",
         }
     )
+
+
+@dataclass
+class StreamProcessingContext:
+    """Временный контекст обработки одного видео"""
+
+    frame_queue: asyncio.Queue
+    yolo_task: asyncio.Task
+    mae_task: asyncio.Task
+    state: VideoStreamState
+    total_frames: int
+    fps: float
+    duration: float
+    frame_idx: int = 0

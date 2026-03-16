@@ -10,6 +10,7 @@ from .target import (
 )
 
 
+# pylint: disable=duplicate-code
 __all__ = [
     "InferenceProcessor",
     "KlinCallbackSender",
