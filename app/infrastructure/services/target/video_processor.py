@@ -99,9 +99,7 @@ class InferenceProcessor(IKlinInference):
         self.logging = LoggingHelper()
         self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
 
-    # ====================== X3D (без изменений) ======================
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
-        # ... (тот же код, что был) ...
         cap = cv2.VideoCapture(video_path)
         frames_list: list[np.ndarray] = []
 
