@@ -1,0 +1,2 @@
+class StreamProcessor:
+    pass

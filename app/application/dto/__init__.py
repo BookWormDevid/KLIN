@@ -2,7 +2,15 @@
 Бочка для передачи методов
 """
 
-from .klin import KlinProcessDto, KlinReadDto, KlinResultDto, KlinUploadDto
+from .klin import (
+    KlinProcessDto,
+    KlinReadDto,
+    KlinResultDto,
+    KlinUploadDto,
+    StreamReadDto,
+    StreamResultDto,
+    StreamUploadDto,
+)
 
 
 __all__ = (
@@ -10,4 +18,7 @@ __all__ = (
     "KlinResultDto",
     "KlinReadDto",
     "KlinProcessDto",
+    "StreamResultDto",
+    "StreamUploadDto",
+    "StreamReadDto",
 )

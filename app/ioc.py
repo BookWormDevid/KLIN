@@ -20,12 +20,17 @@ from app.application.interfaces import (
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
+    IKlinStream,
 )
-from app.application.services import KlinService
+from app.application.services import KlinService, StreamService
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinProcessProducer
-from app.infrastructure.services import InferenceProcessor, KlinCallbackSender
+from app.infrastructure.services import (
+    InferenceProcessor,
+    KlinCallbackSender,
+    StreamProcessor,
+)
 
 
 class InfrastructureProvider(Provider):
@@ -86,6 +91,7 @@ class ApplicationProvider(Provider):
 
     scope = Scope.APP
     KLIN_service = provide(KlinService)
+    STREAM_service = provide(StreamService)
 
 
 class VideoProvider(Provider):
@@ -95,3 +101,5 @@ class VideoProvider(Provider):
 
     scope = Scope.APP
     InferenceProcessor = provide(InferenceProcessor, provides=IKlinInference)
+
+    StreamProcessor = provide(StreamProcessor, provides=IKlinStream)

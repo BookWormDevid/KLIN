@@ -47,3 +47,18 @@ class KlinModel(BaseModel):
         nullable=True,
     )
     objects: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+
+class KlinStreamingModel(BaseModel):
+    __tablename__ = "klin_stream"
+
+    camera_url: Mapped[str | None] = mapped_column()
+    state: Mapped[ProcessingState] = mapped_column(String())
+    x3d: Mapped[str | None] = mapped_column(String(), nullable=True)
+    mae: Mapped[str | None] = mapped_column(String(), nullable=True)
+    yolo: Mapped[str | None] = mapped_column(String(), nullable=True)
+    all_classes: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String()),
+        nullable=True,
+    )
+    objects: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)

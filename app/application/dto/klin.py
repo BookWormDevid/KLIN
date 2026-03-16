@@ -7,7 +7,7 @@ import uuid
 
 import msgspec
 
-from app.models import KlinModel, ProcessingState
+from app.models import KlinModel, KlinStreamingModel, ProcessingState
 
 
 class KlinUploadDto(msgspec.Struct, frozen=True):
@@ -71,3 +71,36 @@ class KlinProcessDto(msgspec.Struct, frozen=True):
     """
 
     klin_id: uuid.UUID
+
+
+class StreamUploadDto:
+    camera_url: str
+
+
+class StreamResultDto:
+    x3d: str | None
+    mae: str | None
+    yolo: str | None
+    objects: list[str] | None
+
+
+class StreamReadDto(msgspec.Struct, frozen=True):
+    id: uuid.UUID
+    x3d: str | None
+    mae: str | None
+    yolo: str | None
+    objects: list[str] | None
+    all_classes: list[str] | None
+    state: ProcessingState
+
+    @classmethod
+    def from_streaming_model(cls, model: KlinStreamingModel) -> "StreamReadDto":
+        return StreamReadDto(
+            id=model.id,
+            x3d=model.x3d,
+            mae=model.mae,
+            yolo=model.yolo,
+            objects=model.objects,
+            all_classes=model.all_classes,
+            state=model.state,
+        )

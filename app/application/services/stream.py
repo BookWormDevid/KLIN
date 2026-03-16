@@ -1,0 +1,2 @@
+class StreamService:
+    pass

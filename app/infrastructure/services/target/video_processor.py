@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -17,7 +18,7 @@ import cv2
 import msgspec
 import numpy as np
 import torch
-import tritonclient.http as httpclient  # type: ignore[import-untyped]
+import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
 from app.application.dto import KlinResultDto
@@ -79,10 +80,6 @@ class ProcessorConfig:
 
 @dataclass
 class VideoStreamState:
-    """
-    Изменяемое состояние потоковой обработки видео.
-    """
-
     mae_results: list[dict[str, Any]] = field(default_factory=list)
     bbox_by_time: dict[float, list[list[float]]] = field(
         default_factory=lambda: defaultdict(list)
@@ -94,26 +91,17 @@ class VideoStreamState:
     frame_idx: int = 0
 
 
-class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-methods
-    """
-    Процессор. Содержит методы подключения моделей,
-    обработки видео с помощью videomae, yolo, x3d.
-    """
-
+class InferenceProcessor(IKlinInference):
     def __init__(self) -> None:
         self.processing = ProcessorConfig()
         self.prepare = PrepareForTriton()
         self.timerange = TimeRangeHelper()
         self.logging = LoggingHelper()
-        self.triton = httpclient.InferenceServerClient(url="localhost:8000")
+        self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
 
+    # ====================== X3D (без изменений) ======================
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
-        """
-        Просматриваем кадры,
-        подготовленные данные отправляем в triton,
-        вычисляем предсказанный класс и вероятность.
-        """
-
+        # ... (тот же код, что был) ...
         cap = cv2.VideoCapture(video_path)
         frames_list: list[np.ndarray] = []
 
@@ -127,11 +115,8 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
         cap.release()
 
-        # если видео пустое
         if len(frames_list) == 0:
             raise ValueError(f"Видео не содержит кадров: {video_path}")
-
-        # если кадров меньше необходимого количества
         if len(frames_list) < 16:
             raise ValueError(
                 f"Недостаточно кадров для X3D. "
@@ -140,9 +125,9 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
         video = self.prepare.prepare_x3d_for_triton(frames_list)
 
-        inputs = httpclient.InferInput("video", video.shape, "FP32")
+        inputs = grpcclient.InferInput("video", video.shape, "FP32")
         inputs.set_data_from_numpy(video)
-        outputs = httpclient.InferRequestedOutput("logits")
+        outputs = grpcclient.InferRequestedOutput("logits")
 
         result = self.triton.infer(
             model_name="x3d_violence",
@@ -158,14 +143,22 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
         return {str(bool(pred)): confidence}
 
-    def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
-        """
-        Один вызов Triton на весь батч
-        """
-        inputs = httpclient.InferInput("images", batch_imgs.shape, "FP32")
-        inputs.set_data_from_numpy(batch_imgs)
+    async def _infer_yolo_batch_async(
+        self, batch_imgs: np.ndarray
+    ) -> list[NDArray[np.float32]]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._infer_yolo_batch, batch_imgs)
 
-        outputs = httpclient.InferRequestedOutput("output0")
+    async def _infer_mae_probs_async(
+        self, chunk_frames: list[np.ndarray]
+    ) -> NDArray[np.float32]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._infer_mae_probs, chunk_frames)
+
+    def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
+        inputs = grpcclient.InferInput("images", batch_imgs.shape, "FP32")
+        inputs.set_data_from_numpy(batch_imgs)
+        outputs = grpcclient.InferRequestedOutput("output0")
 
         result = self.triton.infer(
             model_name="yolo_person",
@@ -174,19 +167,142 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         )
 
         raw_output: NDArray[np.float32] = result.as_numpy("output0")
-
         batch_preds: list[NDArray[np.float32]] = []
         for b in range(raw_output.shape[0]):
             per_image = raw_output[b]
             preds = per_image.transpose(1, 0)
             batch_preds.append(preds)
-
         return batch_preds
 
+    async def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
+        if not state.yolo_buffer:
+            return
+
+        batch_array, frame_indices = self._build_yolo_batch(state.yolo_buffer)
+        batch_preds_list = await self._infer_yolo_batch_async(batch_array)
+
+        for frame_idx, preds in zip(frame_indices, batch_preds_list, strict=False):
+            timesteps = frame_idx / fps if fps > 0 else 0.0
+            self._store_yolo_detections(state, preds, timesteps)
+
+    def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
+        # оригинальный код (без изменений)
+        img = self.prepare.prepare_mae_chunk_for_triton(chunk_frames)
+        inputs = grpcclient.InferInput("pixel_values", img.shape, "FP32")
+        inputs.set_data_from_numpy(img)
+        outputs = grpcclient.InferRequestedOutput("logits")
+
+        result = self.triton.infer(
+            model_name="videomae_crime",
+            inputs=[inputs],
+            outputs=[outputs],
+        )
+
+        logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
+        exp = np.exp(logits - np.max(logits))
+        probs = exp / np.sum(exp)
+        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
+
+    async def _predict_mae_chunk(
+        self,
+        *,
+        chunk_frames: list[np.ndarray],
+        start_frame: int,
+        end_frame: int,
+        fps: float,
+    ) -> dict[str, Any]:
+        probs = await self._infer_mae_probs_async(chunk_frames)
+        pred_idx = int(np.argmax(probs))
+        confidence = float(probs[pred_idx])
+        answer = self.processing.mae_classes.get(pred_idx, str(pred_idx))
+
+        return {
+            "time": self.timerange.build_time_range(start_frame, end_frame, fps),
+            "answer": answer,
+            "confident": confidence,
+        }
+
+    async def _yolo_pipeline(
+        self, frame_queue: asyncio.Queue, state: VideoStreamState, fps: float
+    ) -> None:
+        while True:
+            item = await frame_queue.get()
+            if item is None:
+                frame_queue.task_done()
+                break
+
+            frame_resized, frame_idx = item
+
+            if frame_idx % self.processing.yolo_stride != 0:
+                frame_queue.task_done()
+                continue
+
+            state.yolo_buffer.append((frame_idx, frame_resized))
+            if len(state.yolo_buffer) >= self.processing.yolo_batch_size:
+                await self._process_yolo_batch(state, fps)
+                state.yolo_buffer.clear()
+
+            frame_queue.task_done()
+
+    async def _mae_pipeline(
+        self, frame_queue: asyncio.Queue, state: VideoStreamState, fps: float
+    ) -> None:
+        while True:
+            item = await frame_queue.get()
+            if item is None:
+                frame_queue.task_done()
+                break
+
+            frame_resized, frame_idx = item
+
+            state.chunk_buffer.append(frame_resized)
+            if len(state.chunk_buffer) == self.processing.chunk_size:
+                state.mae_results.append(
+                    await self._predict_mae_chunk(
+                        chunk_frames=state.chunk_buffer,
+                        start_frame=state.chunk_start_frame,
+                        end_frame=frame_idx,
+                        fps=fps,
+                    )
+                )
+                state.chunk_buffer = []
+                state.chunk_start_frame = frame_idx + 1
+
+            frame_queue.task_done()
+
+    async def _flush_partial_chunk(self, state: VideoStreamState, fps: float) -> None:
+        if not state.chunk_buffer:
+            return
+
+        pad_count = self.processing.chunk_size - len(state.chunk_buffer)
+        if pad_count > 0:
+            state.chunk_buffer.extend([state.chunk_buffer[-1]] * pad_count)
+
+        state.mae_results.append(
+            await self._predict_mae_chunk(
+                chunk_frames=state.chunk_buffer,
+                start_frame=state.chunk_start_frame,
+                end_frame=state.frame_idx - 1,
+                fps=fps,
+            )
+        )
+
+    async def _flush_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
+        if state.yolo_buffer:
+            await self._process_yolo_batch(state, fps)
+            state.yolo_buffer.clear()
+
+    def _build_yolo_batch(
+        self, yolo_buffer: list[tuple[int, np.ndarray]]
+    ) -> tuple[np.ndarray, list[int]]:
+        frame_indices = [frame_idx for frame_idx, _ in yolo_buffer]
+        batch_imgs = [
+            self.prepare.prepare_yolo_frame_for_triton(frame)[0]
+            for _, frame in yolo_buffer
+        ]
+        return np.stack(batch_imgs, axis=0), frame_indices
+
     def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
-        """
-        Вычисляем класс id и bbox
-        """
         scores = pred[4:]
         class_id = int(np.argmax(scores))
         conf = scores[class_id]
@@ -203,31 +319,11 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             float(x + w / 2),
             float(y + h / 2),
         ]
-
         return class_id, bbox
 
-    def _build_yolo_batch(
-        self, yolo_buffer: list[tuple[int, np.ndarray]]
-    ) -> tuple[np.ndarray, list[int]]:
-        """
-        Подготовленные данные оборачиваем в батч.
-        """
-        frame_indices = [frame_idx for frame_idx, _ in yolo_buffer]
-        batch_imgs = [
-            self.prepare.prepare_yolo_frame_for_triton(frame)[0]
-            for _, frame in yolo_buffer
-        ]
-        return np.stack(batch_imgs, axis=0), frame_indices
-
     def _store_yolo_detections(
-        self,
-        state: VideoStreamState,
-        preds: np.ndarray,
-        timesteps: float,
+        self, state: VideoStreamState, preds: np.ndarray, timesteps: float
     ) -> None:
-        """
-        Заворачиваем вывод в нужные типы данных
-        """
         for pred in preds:
             detection = self._parse_yolo_detection(pred)
             if detection is None:
@@ -236,168 +332,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             state.bbox_by_time[timesteps].append(bbox)
             state.detected_class_ids.add(class_id)
 
-    def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
-        """
-        Обрабатывает накопленный батч кадров YOLO
-        """
-        if not state.yolo_buffer:
-            return
-
-        batch_array, frame_indices = self._build_yolo_batch(state.yolo_buffer)
-        batch_preds_list = self._infer_yolo_batch(batch_array)
-
-        for frame_idx, preds in zip(frame_indices, batch_preds_list, strict=False):
-            timesteps = frame_idx / fps if fps > 0 else 0.0
-            self._store_yolo_detections(state, preds, timesteps)
-
-    def _update_yolo_stream_state(
-        self, frame_resized: np.ndarray, state: VideoStreamState, fps: float
-    ) -> None:
-        """
-        Собирает кадры в батч (каждый yolo_stride кадр).
-        Когда батч заполнен — сразу обрабатывает.
-        """
-        if state.frame_idx % self.processing.yolo_stride != 0:
-            return
-
-        state.yolo_buffer.append((state.frame_idx, frame_resized))
-
-        if len(state.yolo_buffer) >= self.processing.yolo_batch_size:
-            self._process_yolo_batch(state, fps)
-            state.yolo_buffer.clear()
-
-    def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        """
-        Подготовленные данные отправляем в triton
-        """
-        img = self.prepare.prepare_mae_chunk_for_triton(chunk_frames)
-
-        inputs = httpclient.InferInput("pixel_values", img.shape, "FP32")
-        inputs.set_data_from_numpy(img)
-        outputs = httpclient.InferRequestedOutput("logits")
-
-        result = self.triton.infer(
-            model_name="videomae_crime",
-            inputs=[inputs],
-            outputs=[outputs],
-        )
-
-        logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
-        exp = np.exp(logits - np.max(logits))
-        probs = exp / np.sum(exp)
-        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
-
-    def _predict_mae_chunk(
-        self,
-        *,
-        chunk_frames: list[np.ndarray],
-        start_frame: int,
-        end_frame: int,
-        fps: float,
-    ) -> dict[str, Any]:
-        """
-        Вычисляем из полученных данных время, класс, уверенность
-        """
-        probs = self._infer_mae_probs(chunk_frames)
-        pred_idx = int(np.argmax(probs))
-        confidence = float(probs[pred_idx])
-        answer = self.processing.mae_classes.get(pred_idx, str(pred_idx))
-
-        return {
-            "time": self.timerange.build_time_range(start_frame, end_frame, fps),
-            "answer": answer,
-            "confident": confidence,
-        }
-
-    def _update_mae_stream_state(
-        self, frame_resized: np.ndarray, state: VideoStreamState, fps: float
-    ) -> None:
-        """
-        Обновляем полученные данные
-        """
-        state.chunk_buffer.append(frame_resized)
-        if len(state.chunk_buffer) != self.processing.chunk_size:
-            return
-
-        state.mae_results.append(
-            self._predict_mae_chunk(
-                chunk_frames=state.chunk_buffer,
-                start_frame=state.chunk_start_frame,
-                end_frame=state.frame_idx,
-                fps=fps,
-            )
-        )
-        state.chunk_buffer = []
-        state.chunk_start_frame = state.frame_idx + 1
-
-    def _process_stream_frame(
-        self, frame: np.ndarray, state: VideoStreamState, fps: float
-    ) -> None:
-        """
-        Собираем полученные данные вместе
-        """
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
-
-        self._update_yolo_stream_state(frame_resized, state, fps)
-        self._update_mae_stream_state(frame_resized, state, fps)
-        state.frame_idx += 1
-
-    def _flush_partial_chunk(self, state: VideoStreamState, fps: float) -> None:
-        """
-        Дообрабатываем остаток чанка mae в конце видео
-        """
-        if not state.chunk_buffer:
-            return
-
-        pad_count = self.processing.chunk_size - len(state.chunk_buffer)
-        if pad_count > 0:
-            state.chunk_buffer.extend([state.chunk_buffer[-1]] * pad_count)
-
-        state.mae_results.append(
-            self._predict_mae_chunk(
-                chunk_frames=state.chunk_buffer,
-                start_frame=state.chunk_start_frame,
-                end_frame=state.frame_idx - 1,
-                fps=fps,
-            )
-        )
-
-    def _flush_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
-        """
-        Добрабатываем остаток батча YOLO в конце видео"""
-        if state.yolo_buffer:
-            self._process_yolo_batch(state, fps)
-            state.yolo_buffer.clear()
-
-    def _collect_stream_results(
-        self,
-        cap: cv2.VideoCapture,
-        fps: float,
-        video_path: str,
-    ) -> VideoStreamState:
-        """
-        Все данные вместе уже с обработанными чанками и батчами
-        """
-        state = VideoStreamState()
-        with torch.no_grad():
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                self._process_stream_frame(frame, state, fps)
-
-        if state.frame_idx == 0:
-            raise ValueError(f"Кадры не прочитаны: {video_path}")
-
-        self._flush_partial_chunk(state, fps)
-        self._flush_yolo_batch(state, fps)
-        return state
-
     def _resolve_detected_objects(self, detected_class_ids: set[int]) -> list[str]:
-        """
-        Вычисляем классы yolo
-        """
         return [
             self.processing.yolo_classes[c]
             for c in detected_class_ids
@@ -412,9 +347,6 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         list[str],
         dict[str, Any],
     ]:
-        """
-        Процессор обработки
-        """
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError(f"Невозможно открыть видео: {video_path}")
@@ -423,10 +355,41 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         fps = float(cap.get(cv2.CAP_PROP_FPS))
         duration = (total_frames / fps) if fps > 0 else 0.0
 
+        state = VideoStreamState()
+        frame_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+
+        yolo_task = asyncio.create_task(self._yolo_pipeline(frame_queue, state, fps))
+        mae_task = asyncio.create_task(self._mae_pipeline(frame_queue, state, fps))
+
+        frame_idx = 0
         try:
-            state = self._collect_stream_results(cap, fps, video_path)
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
+
+                await frame_queue.put((frame_resized, frame_idx))
+                frame_idx += 1
         finally:
             cap.release()
+
+        await frame_queue.put(None)
+        await frame_queue.put(None)
+
+        pipeline_results = await asyncio.gather(
+            yolo_task, mae_task, return_exceptions=True
+        )
+        for res in pipeline_results:
+            if isinstance(res, BaseException):
+                raise res
+
+        state.frame_idx = frame_idx
+
+        await self._flush_partial_chunk(state, fps)
+        await self._flush_yolo_batch(state, fps)
 
         objects = self._resolve_detected_objects(state.detected_class_ids)
         video_info = self.logging.build_video_info(
@@ -438,11 +401,6 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         return state.mae_results, dict(state.bbox_by_time), objects, video_info
 
     async def analyze(self, model: KlinModel) -> KlinResultDto:
-        """
-        Конечный метод для вызова процессора
-        Вначале x3d проверяет есть ли аномалия на видео.
-        Если есть включаем mae и yolo.
-        """
         start_ts = time.time()
         video_name = os.path.basename(model.video_path)
 
