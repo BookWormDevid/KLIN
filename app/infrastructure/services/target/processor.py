@@ -110,10 +110,9 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
         """
         Просматриваем кадры,
-        подготовленные данных отправляем в triton,
+        подготовленные данные отправляем в triton,
         вычисляем предсказанный класс и вероятность.
         """
-        check_answer: dict[str, float] = {}
 
         cap = cv2.VideoCapture(video_path)
         frames_list: list[np.ndarray] = []
@@ -128,9 +127,16 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
         cap.release()
 
+        # если видео пустое
+        if len(frames_list) == 0:
+            raise ValueError(f"Видео не содержит кадров: {video_path}")
+
+        # если кадров меньше необходимого количества
         if len(frames_list) < 16:
-            check_answer["False"] = 0.0
-            return check_answer
+            raise ValueError(
+                f"Недостаточно кадров для X3D. "
+                f"Получено {len(frames_list)}, требуется 16"
+            )
 
         video = self.prepare.prepare_x3d_for_triton(frames_list)
 
@@ -150,8 +156,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         pred = int(np.argmax(probs))
         confidence = float(probs[pred])
 
-        check_answer[str(bool(pred))] = confidence
-        return check_answer
+        return {str(bool(pred)): confidence}
 
     def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
         """
