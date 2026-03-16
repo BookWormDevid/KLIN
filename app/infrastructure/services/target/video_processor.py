@@ -179,7 +179,6 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             self._store_yolo_detections(state, preds, timesteps)
 
     def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        # оригинальный код (без изменений)
         img = self.prepare.prepare_mae_chunk_for_triton(chunk_frames)
         inputs = grpcclient.InferInput("pixel_values", img.shape, "FP32")
         inputs.set_data_from_numpy(img)
