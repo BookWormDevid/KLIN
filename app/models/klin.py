@@ -52,6 +52,7 @@ class KlinModel(BaseModel):
 class KlinStreamingModel(BaseModel):
     __tablename__ = "klin_stream"
 
+    camera_id: Mapped[str | None] = mapped_column(String(), nullable=True)
     camera_url: Mapped[str | None] = mapped_column()
     state: Mapped[ProcessingState] = mapped_column(String())
     x3d: Mapped[str | None] = mapped_column(String(), nullable=True)

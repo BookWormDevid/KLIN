@@ -9,7 +9,6 @@ dependencies = [
     "aiohttp>=3.13.3",
     "asyncpg>=0.31.0",
     "dishka>=1.7.2",
-    "faststream[cli,prometheus,rabbit]>=0.6.6",
     "litestar[prometheus,structlog]>=2.19.0",
     "msgspec>=0.20.0",
     "torch>=2.10.0",
@@ -20,6 +19,7 @@ dependencies = [
     "apache-airflow>=3.1.0",
     "tritonclient[grpc,http]>=2.66.0",
     "opencv-python-headless>=4.13.0.92",
+    "faststream[cli,rabbit]>=0.6.6",
 ]
 
 

@@ -8,14 +8,13 @@ import uuid
 from abc import abstractmethod
 from typing import Protocol
 
-from app.application.dto import KlinProcessDto, KlinResultDto, StreamResultDto
+from app.application.dto import KlinProcessDto, KlinResultDto
 from app.models import KlinModel, KlinStreamingModel
 
 
 class IKlinStream(Protocol):
     @abstractmethod
-    async def streaming_analyze(self, model: KlinStreamingModel) -> StreamResultDto:
-        """ """
+    async def streaming_analyze(self, model: KlinStreamingModel) -> None: ...
 
 
 class IKlinInference(Protocol):

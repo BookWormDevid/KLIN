@@ -73,15 +73,17 @@ class KlinProcessDto(msgspec.Struct, frozen=True):
     klin_id: uuid.UUID
 
 
-class StreamUploadDto:
+class StreamUploadDto(msgspec.Struct, frozen=True):
     camera_url: str
+    camera_id: str
 
 
-class StreamResultDto:
+class StreamResultDto(msgspec.Struct, frozen=True):
     x3d: str | None
     mae: str | None
     yolo: str | None
     objects: list[str] | None
+    all_classes: list[str] | None
 
 
 class StreamReadDto(msgspec.Struct, frozen=True):
