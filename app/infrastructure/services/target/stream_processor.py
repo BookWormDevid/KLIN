@@ -8,6 +8,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import cast
 
 import cv2
 import msgspec
@@ -137,12 +138,16 @@ class StreamProcessor(IKlinStream):
         inputs = grpcclient.InferInput("pixel_values", img.shape, "FP32")
         inputs.set_data_from_numpy(img)
         outputs = grpcclient.InferRequestedOutput("logits")
+
         result = self.triton.infer(
             model_name="videomae_crime", inputs=[inputs], outputs=[outputs]
         )
+
         logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
         exp = np.exp(logits - np.max(logits))
-        return (exp / np.sum(exp)).astype(np.float32, copy=False)
+
+        probs = exp / np.sum(exp)
+        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
 
     def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
         scores = pred[4:]
@@ -401,6 +406,9 @@ class StreamProcessor(IKlinStream):
 
     # ====================== ГЛАВНЫЙ ПРОЦЕСС ======================
     async def streaming_analyze(self, model: KlinStreamingModel) -> None:
+        assert model.camera_url is not None
+        assert model.camera_id is not None
+
         x3d_window: list[np.ndarray] = []  # лучше локальное окно под каждую камеру
 
         tasks = [
