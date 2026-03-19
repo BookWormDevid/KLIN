@@ -6,8 +6,8 @@ services:
     networks:
       - web
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      RABBIT_URL: ${RABBIT_URL}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-${DATABASE_URL}}
+      RABBIT_URL: ${DOCKER_RABBIT_URL:-${RABBIT_URL}}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"
@@ -23,8 +23,8 @@ services:
     networks:
       - web
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      RABBIT_URL: ${RABBIT_URL}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-${DATABASE_URL}}
+      RABBIT_URL: ${DOCKER_RABBIT_URL:-${RABBIT_URL}}
     command:
       [ "/code/.venv/bin/python", "-m", "faststream", "run", "app.presentation.faststream.app:app" ]
 networks:
