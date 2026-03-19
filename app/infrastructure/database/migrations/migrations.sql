@@ -5,9 +5,6 @@ CREATE TABLE alembic_version (
     CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
 );
 
-INFO  [alembic.runtime.migration] Running upgrade  -> 7065f6dd6444, initial
--- Running upgrade  -> 7065f6dd6444
-
 CREATE TABLE klin (
     response_url VARCHAR,
     video_path VARCHAR NOT NULL,
