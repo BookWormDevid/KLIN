@@ -42,6 +42,9 @@ ensure_role() {
     "ALTER ROLE \"${role_name}\" WITH LOGIN PASSWORD '${role_password}'"
 }
 
+# Returns:
+#   0 if DB was newly created
+#   1 if DB already existed
 ensure_database() {
   local db_name="$1"
   local db_owner="$2"
@@ -50,11 +53,12 @@ ensure_database() {
     "SELECT 1 FROM pg_database WHERE datname = '${db_name}'" | grep -q 1; then
     "${psql_base[@]}" -c \
       "CREATE DATABASE \"${db_name}\" OWNER \"${db_owner}\""
-    return
+    return 0
   fi
 
   "${psql_base[@]}" -c \
     "ALTER DATABASE \"${db_name}\" OWNER TO \"${db_owner}\""
+  return 1
 }
 
 repair_database_ownership() {
@@ -108,11 +112,16 @@ SQL
 }
 
 ensure_role "${app_db_user}" "${app_db_password}"
-ensure_database "${app_db_name}" "${app_db_user}"
-repair_database_ownership "${app_db_name}" "${app_db_user}"
+if ensure_database "${app_db_name}" "${app_db_user}"; then
+  repair_database_ownership "${app_db_name}" "${app_db_user}"
+fi
 
 ensure_role "${airflow_db_user}" "${airflow_db_password}"
-ensure_database "${airflow_db_name}" "${airflow_db_user}"
-repair_database_ownership "${airflow_db_name}" "${airflow_db_user}"
+if ensure_database "${airflow_db_name}" "${airflow_db_user}"; then
+  repair_database_ownership "${airflow_db_name}" "${airflow_db_user}"
+fi
 
-ensure_database "${metrics_db_name}" "${admin_user}"
+ensure_database "${metrics_db_name}" "${admin_user}" || true
+
+echo "Postgres bootstrap complete"
+exit 0
