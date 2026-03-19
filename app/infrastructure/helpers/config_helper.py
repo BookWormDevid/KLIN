@@ -4,6 +4,7 @@
 
 import asyncio
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -82,3 +83,21 @@ class StreamProcessingContext:
     fps: float
     duration: float
     frame_idx: int = 0
+
+
+@dataclass
+class Queue:
+    executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
+    infer_semaphore: asyncio.Semaphore = asyncio.Semaphore(4)
+    yolo_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
+    mae_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
+    x3d_window: list[np.ndarray] = field(default_factory=list)
+    source_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
+    stop_event: asyncio.Event = asyncio.Event()
+
+
+@dataclass
+class HeavyLogic:
+    heavy_active = asyncio.Event()
+    last_trigger_time = 0.0
+    HEAVY_COOLDOWN = 10.0

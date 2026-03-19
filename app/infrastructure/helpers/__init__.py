@@ -3,7 +3,9 @@
 """
 
 from app.infrastructure.helpers.config_helper import (
+    HeavyLogic,
     MaeConfig,
+    Queue,
     StreamConfig,
     StreamProcessingContext,
     VideoStreamState,
@@ -23,4 +25,6 @@ __all__ = [
     "LoggingHelper",
     "StreamProcessingContext",
     "VideoStreamState",
+    "Queue",
+    "HeavyLogic",
 ]
