@@ -75,7 +75,8 @@ class MaeConfig:
 class StreamProcessingContext:
     """Временный контекст обработки одного видео"""
 
-    frame_queue: asyncio.Queue
+    yolo_queue: asyncio.Queue
+    mae_queue: asyncio.Queue
     yolo_task: asyncio.Task
     mae_task: asyncio.Task
     state: VideoStreamState

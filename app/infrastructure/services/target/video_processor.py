@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import time
@@ -214,6 +215,13 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             "confident": confidence,
         }
 
+    async def _run_predict_mae_chunk(self, **kwargs: Any) -> dict[str, Any]:
+        predict_mae_chunk = cast(Any, self._predict_mae_chunk)
+        result: Any = predict_mae_chunk(**kwargs)
+        if inspect.isawaitable(result):
+            return cast(dict[str, Any], await result)
+        return cast(dict[str, Any], result)
+
     async def _yolo_pipeline(
         self, frame_queue: asyncio.Queue, state: VideoStreamState, fps: float
     ) -> None:
@@ -250,7 +258,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             state.chunk_buffer.append(frame_resized)
             if len(state.chunk_buffer) == self.processing.chunk_size:
                 state.mae_results.append(
-                    await self._predict_mae_chunk(
+                    await self._run_predict_mae_chunk(
                         chunk_frames=state.chunk_buffer,
                         start_frame=state.chunk_start_frame,
                         end_frame=frame_idx,
@@ -271,13 +279,14 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             state.chunk_buffer.extend([state.chunk_buffer[-1]] * pad_count)
 
         state.mae_results.append(
-            await self._predict_mae_chunk(
+            await self._run_predict_mae_chunk(
                 chunk_frames=state.chunk_buffer,
                 start_frame=state.chunk_start_frame,
                 end_frame=state.frame_idx - 1,
                 fps=fps,
             )
         )
+        state.chunk_buffer = []
 
     async def _flush_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
         if state.yolo_buffer:
@@ -349,16 +358,18 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         duration = total_frames / fps if fps > 0 else 0.0
 
         state = VideoStreamState()
-        frame_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        yolo_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        mae_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
 
         ctx = StreamProcessingContext(
-            frame_queue=frame_queue,
+            yolo_queue=yolo_queue,
+            mae_queue=mae_queue,
             state=state,
             total_frames=total_frames,
             fps=fps,
             duration=duration,
-            yolo_task=asyncio.create_task(self._yolo_pipeline(frame_queue, state, fps)),
-            mae_task=asyncio.create_task(self._mae_pipeline(frame_queue, state, fps)),
+            yolo_task=asyncio.create_task(self._yolo_pipeline(yolo_queue, state, fps)),
+            mae_task=asyncio.create_task(self._mae_pipeline(mae_queue, state, fps)),
         )
 
         try:
@@ -369,13 +380,15 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
-                await frame_queue.put((frame_resized, ctx.frame_idx))
+                await ctx.yolo_queue.put((frame_resized, ctx.frame_idx))
+                await ctx.mae_queue.put((frame_resized, ctx.frame_idx))
                 ctx.frame_idx += 1
+                state.frame_idx = ctx.frame_idx
 
         finally:
             cap.release()
-            await frame_queue.put(None)
-            await frame_queue.put(None)
+            await ctx.yolo_queue.put(None)
+            await ctx.mae_queue.put(None)
 
         # ожидание завершения пайплайнов
         pipeline_results = await asyncio.gather(
