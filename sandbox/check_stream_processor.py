@@ -25,6 +25,7 @@ async def test_stream():
 
     # Вариант 1 — локальный видеофайл (самый надёжный для отладки)
     test_file = r"C:\Users\meksi\Documents\GitHub\fi004.mp4"
+
     # test_file = "short_test.mp4"   # положите короткий клип рядом со скриптом
 
     model = FakeModel(camera_url=test_file, camera_id="LOCAL_TEST_001")

@@ -19,6 +19,7 @@ class ProcessingState(str, enum.Enum):
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
     FINISHED = "FINISHED"
+    STOPPED = "STOPPED"
     ERROR = "ERROR"
 
 

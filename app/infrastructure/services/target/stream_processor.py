@@ -75,14 +75,25 @@ class ProcessorConfig:
         return self.mae.mae_classes
 
 
+@dataclass
+class StreamContext:
+    queue: Queue
+    heavy: HeavyLogic
+    stop_event: asyncio.Event
+
+
 class StreamProcessor(IKlinStream):
     def __init__(self) -> None:
         self.processing = ProcessorConfig()
         self.prepare = PrepareForTriton()
         self.logging = LoggingHelper()
-        self.queue = Queue()
-        self.heavy = HeavyLogic()
         self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
+        self.contexts: dict[str, StreamContext] = {}
+
+    def _create_context(self) -> StreamContext:
+        return StreamContext(
+            queue=Queue(), heavy=HeavyLogic(), stop_event=asyncio.Event()
+        )
 
     def infer_fn(self, video_arr):
         inputs = grpcclient.InferInput("video", video_arr.shape, "FP32")
@@ -94,11 +105,13 @@ class StreamProcessor(IKlinStream):
         return result.as_numpy("logits")[0]
 
     async def _quick_x3d_check_for_streaming(
-        self, frames: list[np.ndarray]
+        self, frames: list[np.ndarray], context: StreamContext
     ) -> dict[str, float] | None:
         video = self.prepare.prepare_x3d_for_triton(frames)
 
-        logits = await self._triton_infer_with_retry(self.infer_fn, video)
+        logits = await self._triton_infer_with_retry(
+            self.infer_fn, video, context=context
+        )
         if logits is None:
             return None
 
@@ -108,19 +121,17 @@ class StreamProcessor(IKlinStream):
         return {str(bool(pred)): confidence}
 
     async def _triton_infer_with_retry(
-        self,
-        infer_fn,
-        *args,
-        timeout: float = 10,
-        retries: int = 4,
+        self, infer_fn, *args, context: StreamContext, timeout=10, retries=4
     ):
         loop = asyncio.get_running_loop()
 
-        async with self.queue.infer_semaphore:
+        async with context.queue.infer_semaphore:
             for attempt in range(retries + 1):
                 try:
                     return await asyncio.wait_for(
-                        loop.run_in_executor(self.queue.executor, infer_fn, *args),
+                        loop.run_in_executor(
+                            context.queue.executor, lambda: infer_fn(*args)
+                        ),
                         timeout=timeout,
                     )
 
@@ -249,9 +260,9 @@ class StreamProcessor(IKlinStream):
             resized = cv2.resize(frame_rgb, self.processing.frame_size)
 
             try:
-                await frame_queue.put((resized, frame_idx, time.time()))
+                frame_queue.put_nowait((resized, frame_idx, time.time()))
             except asyncio.QueueFull:
-                logger.debug("Очередь переполнена — кадр пропущен")
+                logger.debug("source_queue full — кадр пропущен")
 
             frame_idx += 1
 
@@ -263,21 +274,20 @@ class StreamProcessor(IKlinStream):
 
     async def _yolo_stream_pipeline(
         self,
-        frame_queue: asyncio.Queue,
-        stop_event: asyncio.Event,
+        context: StreamContext,
         camera_id: str,
     ) -> None:
         buffer: list[tuple[int, np.ndarray, float]] = []
         last_send = -999.0
-
-        while not stop_event.is_set():
+        frame_queue = context.queue.yolo_queue
+        while not context.stop_event.is_set():
             try:
                 frame, idx, ts = await asyncio.wait_for(frame_queue.get(), timeout=0.08)
             except asyncio.TimeoutError:
                 continue
 
             # Ключевое условие: тяжёлый анализ включён?
-            if not self.heavy.heavy_active.is_set():
+            if not context.heavy.heavy_active.is_set():
                 frame_queue.task_done()
                 continue
 
@@ -295,10 +305,13 @@ class StreamProcessor(IKlinStream):
                     axis=0,
                 )
                 preds_list = await self._triton_infer_with_retry(
-                    self._infer_yolo_batch,
-                    batch_imgs,
+                    self._infer_yolo_batch, batch_imgs, context=context
                 )
                 if preds_list is None:
+                    logger.warning("YOLO inference failed — dropping batch")
+                    buffer.clear()
+                    last_send = ts
+                    await asyncio.sleep(0.05)
                     continue
 
                 detections = []
@@ -338,16 +351,15 @@ class StreamProcessor(IKlinStream):
 
     async def _mae_stream_pipeline(
         self,
-        frame_queue: asyncio.Queue,
-        stop_event: asyncio.Event,
-        x3d_window: list[np.ndarray],
+        context: StreamContext,
         camera_id: str,
     ) -> None:
         window: list[np.ndarray] = []
         window_ts: list[float] = []
         last_inference = -999.0
-
-        while not stop_event.is_set():
+        frame_queue = context.queue.mae_queue
+        x3d_window = context.queue.x3d_window
+        while not context.stop_event.is_set():
             try:
                 frame, _, ts = await asyncio.wait_for(frame_queue.get(), 0.08)
             except asyncio.TimeoutError:
@@ -358,7 +370,7 @@ class StreamProcessor(IKlinStream):
                 x3d_window.pop(0)
 
             # Ключевое условие: тяжёлый анализ включён?
-            if not self.heavy.heavy_active.is_set():
+            if not context.heavy.heavy_active.is_set():
                 frame_queue.task_done()
                 continue
 
@@ -371,8 +383,7 @@ class StreamProcessor(IKlinStream):
 
             if len(window) == self.processing.chunk_size and ts - last_inference > 2.0:
                 probs = await self._triton_infer_with_retry(
-                    self._infer_mae_probs,
-                    window[:],
+                    self._infer_mae_probs, window[:], context=context
                 )
                 if probs is None:
                     continue
@@ -398,26 +409,26 @@ class StreamProcessor(IKlinStream):
 
     async def _periodic_x3d_checker(
         self,
-        x3d_window: list[np.ndarray],
-        stop_event: asyncio.Event,
+        context: StreamContext,
         camera_id: str,
         interval: float = 3.0,
     ) -> None:
+        x3d_window = context.queue.x3d_window
         """Лёгкий постоянный чекер X3D. При триггере включает тяжёлый анализ."""
-        while not stop_event.is_set():
+        while not context.stop_event.is_set():
             await asyncio.sleep(interval)
             if len(x3d_window) < 16:
                 continue
 
             clip = x3d_window[-16:]
-            result = await self._quick_x3d_check_for_streaming(clip)
+            result = await self._quick_x3d_check_for_streaming(clip, context=context)
             now = time.time()
             violence_prob = result.get("True", 0.0) if result is not None else 0.0
 
             if violence_prob > self.processing.x3d_conf:
                 logger.info("X3D TRIGGER → heavy ON (prob=%.3f)", violence_prob)
-                self.heavy.heavy_active.set()
-                self.heavy.last_trigger_time = now
+                context.heavy.heavy_active.set()
+                context.heavy.last_trigger_time = now
 
                 event = {
                     "type": "X3D_VIOLENCE",
@@ -431,60 +442,57 @@ class StreamProcessor(IKlinStream):
 
             # Авто-выключение тяжёлого режима
             elif (
-                self.heavy.heavy_active.is_set()
-                and now - self.heavy.last_trigger_time > self.heavy.HEAVY_COOLDOWN
+                context.heavy.heavy_active.is_set()
+                and now - context.heavy.last_trigger_time > context.heavy.HEAVY_COOLDOWN
             ):
                 logger.info("X3D stable normal → heavy OFF")
-                self.heavy.heavy_active.clear()
+                context.heavy.heavy_active.clear()
 
     # Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
-    async def broadcast_frames(self):
+    async def broadcast_frames(self, context: StreamContext):
         """
         Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
         """
-        while not self.queue.stop_event.is_set():
-            frame_tuple = await self.queue.source_queue.get()
+        while not context.stop_event.is_set():
+            frame_tuple = await context.queue.source_queue.get()
 
-            for q in (self.queue.yolo_queue, self.queue.mae_queue):
+            for q in (context.queue.yolo_queue, context.queue.mae_queue):
                 try:
                     q.put_nowait(frame_tuple)
                 except asyncio.QueueFull:
                     logger.debug("Очередь переполнена — кадр пропущен")
 
-            self.queue.source_queue.task_done()
+            context.queue.source_queue.task_done()
 
     async def streaming_analyze(self, model: KlinStreamingModel) -> None:
         assert model.camera_url is not None
         assert model.camera_id is not None
 
-        self.queue.x3d_window = []
-
+        context = self._create_context()
+        self.contexts[model.camera_id] = context
         tasks = [
             asyncio.create_task(
                 self._frame_reader(
-                    model.camera_url, self.queue.source_queue, self.queue.stop_event
+                    model.camera_url, context.queue.source_queue, context.stop_event
                 )
             ),
-            asyncio.create_task(self.broadcast_frames()),
+            asyncio.create_task(self.broadcast_frames(context)),
             asyncio.create_task(
                 self._periodic_x3d_checker(
-                    self.queue.x3d_window,
-                    self.queue.stop_event,
-                    model.camera_id,
-                    interval=3.0,
+                    context=context,
+                    camera_id=model.camera_id,
                 )
             ),
             asyncio.create_task(
                 self._yolo_stream_pipeline(
-                    self.queue.yolo_queue, self.queue.stop_event, model.camera_id
+                    context=context,
+                    camera_id=model.camera_id,
                 )
             ),
             asyncio.create_task(
                 self._mae_stream_pipeline(
-                    self.queue.mae_queue,
-                    self.queue.stop_event,
-                    self.queue.x3d_window,
-                    model.camera_id,
+                    context=context,
+                    camera_id=model.camera_id,
                 )
             ),
         ]
@@ -497,12 +505,12 @@ class StreamProcessor(IKlinStream):
             await asyncio.gather(*tasks)
         except asyncio.CancelledError:
             logger.info("⛔ Стриминг отменён (id=%s)", model.camera_id)
-            self.queue.stop_event.set()
+            context.stop_event.set()
             # ждём завершения
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception:
             logger.exception("Критическая ошибка в стриминге (id=%s)", model.camera_id)
-            self.queue.stop_event.set()
+            context.stop_event.set()
             raise
         finally:
             logger.info("Стриминг завершён (id=%s)", model.camera_id)

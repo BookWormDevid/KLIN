@@ -8,7 +8,7 @@ import uuid
 from abc import abstractmethod
 from typing import Protocol
 
-from app.application.dto import KlinProcessDto, KlinResultDto
+from app.application.dto import KlinProcessDto, KlinResultDto, StreamProcessDto
 from app.models import KlinModel, KlinStreamingModel
 
 
@@ -41,7 +41,21 @@ class IKlinRepository(Protocol):
         """
 
     @abstractmethod
+    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamingModel:
+        """
+        Метод передачи данных из бд по id
+        """
+
+    @abstractmethod
     async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None:
+        """
+        Атомарно переводит задачу из PENDING в PROCESSING.
+        Возвращает модель, если захват выполнен, иначе None.
+        """
+
+    async def claim_for_processing_stream(
+        self, klin_id: uuid.UUID
+    ) -> KlinStreamingModel | None:
         """
         Атомарно переводит задачу из PENDING в PROCESSING.
         Возвращает модель, если захват выполнен, иначе None.
@@ -54,7 +68,19 @@ class IKlinRepository(Protocol):
         """
 
     @abstractmethod
+    async def create_stream(self, model: KlinStreamingModel) -> KlinStreamingModel:
+        """
+        Метод для создания запроса в бд
+        """
+
+    @abstractmethod
     async def update(self, model: KlinModel) -> None:
+        """
+        Метод для обновления запроса в бд
+        """
+
+    @abstractmethod
+    async def update_stream(self, model: KlinStreamingModel) -> None:
         """
         Метод для обновления запроса в бд
         """
@@ -73,6 +99,12 @@ class IKlinProcessProducer(Protocol):
 
     @abstractmethod
     async def send(self, data: KlinProcessDto) -> None:
+        """
+        Метод для отправки сообщений в брокер
+        """
+
+    @abstractmethod
+    async def send_stream(self, data: StreamProcessDto) -> None:
         """
         Метод для отправки сообщений в брокер
         """

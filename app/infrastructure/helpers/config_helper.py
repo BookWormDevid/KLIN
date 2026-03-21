@@ -88,17 +88,22 @@ class StreamProcessingContext:
 
 @dataclass
 class Queue:
-    executor: ThreadPoolExecutor = ThreadPoolExecutor(max_workers=4)
-    infer_semaphore: asyncio.Semaphore = asyncio.Semaphore(4)
-    yolo_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
-    mae_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
+    executor: ThreadPoolExecutor = field(
+        default_factory=lambda: ThreadPoolExecutor(max_workers=4)
+    )
+    infer_semaphore: asyncio.Semaphore = field(
+        default_factory=lambda: asyncio.Semaphore(4)
+    )
+    yolo_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=80))
+    mae_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=80))
+    source_queue: asyncio.Queue = field(
+        default_factory=lambda: asyncio.Queue(maxsize=80)
+    )
     x3d_window: list[np.ndarray] = field(default_factory=list)
-    source_queue: asyncio.Queue = asyncio.Queue(maxsize=80)
-    stop_event: asyncio.Event = asyncio.Event()
 
 
 @dataclass
 class HeavyLogic:
-    heavy_active = asyncio.Event()
-    last_trigger_time = 0.0
-    HEAVY_COOLDOWN = 10.0
+    heavy_active: asyncio.Event = field(default_factory=asyncio.Event)
+    last_trigger_time: float = 0.0
+    HEAVY_COOLDOWN: float = 10.0

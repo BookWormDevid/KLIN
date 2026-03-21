@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.exceptions import KlinNotFoundError
 from app.application.interfaces import IKlinRepository
-from app.models.klin import KlinModel, ProcessingState
+from app.models.klin import KlinModel, KlinStreamingModel, ProcessingState
 
 
 @dataclass
@@ -31,6 +31,21 @@ class KlinRepository(IKlinRepository):
             klin = await session.scalar(query)
             if not klin:
                 raise KlinNotFoundError(klin_id)
+            return klin
+
+    async def get_by_id_stream(self, stream_id: UUID) -> KlinStreamingModel:
+        """
+        Получение всех столбцов по конкретному id
+        """
+        async with self.session() as session:
+            query = (
+                select(KlinStreamingModel)
+                .where(KlinStreamingModel.id == stream_id)
+                .limit(1)
+            )
+            klin = await session.scalar(query)
+            if not klin:
+                raise KlinNotFoundError(stream_id)
             return klin
 
     async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
@@ -58,6 +73,37 @@ class KlinRepository(IKlinRepository):
             klin = await session.scalar(query)
             return cast(KlinModel | None, klin)
 
+    async def claim_for_processing_stream(
+        self, klin_id: UUID
+    ) -> KlinStreamingModel | None:
+        """
+        Атомарно захватывает задачу для обработки.
+        Переводит состояние из PENDING в PROCESSING.
+        """
+        async with self.session() as session:
+            async with session.begin():
+                claim_stmt = (
+                    update(KlinStreamingModel)
+                    .where(
+                        KlinStreamingModel.id == klin_id,
+                        KlinStreamingModel.state == ProcessingState.PENDING,
+                    )
+                    .values(state=ProcessingState.PROCESSING)
+                    .returning(KlinModel.id)
+                )
+                claimed_id = await session.scalar(claim_stmt)
+
+            if claimed_id is None:
+                return None
+
+            query = (
+                select(KlinStreamingModel)
+                .where(KlinStreamingModel.id == claimed_id)
+                .limit(1)
+            )
+            klin = await session.scalar(query)
+            return cast(KlinStreamingModel | None, klin)
+
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """
         Получить n количество последних строк в бд
@@ -80,7 +126,26 @@ class KlinRepository(IKlinRepository):
             await session.refresh(model)
             return model
 
+    async def create_stream(self, model: KlinStreamingModel) -> KlinStreamingModel:
+        """
+        Создать транзакцию к бд
+        """
+        async with self.session() as session:
+            async with session.begin():
+                session.add(model)
+            await session.refresh(model)
+            return model
+
     async def update(self, model: KlinModel) -> None:
+        """
+        Обновить поля в бд
+        """
+        async with self.session() as session:
+            async with session.begin():
+                await session.merge(model)
+            await session.commit()
+
+    async def update_stream(self, model: KlinStreamingModel) -> None:
         """
         Обновить поля в бд
         """

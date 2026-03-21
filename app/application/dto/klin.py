@@ -73,6 +73,14 @@ class KlinProcessDto(msgspec.Struct, frozen=True):
     klin_id: uuid.UUID
 
 
+class StreamProcessDto(msgspec.Struct, frozen=True):
+    """
+    DTO для передачи идентификатора задачи в очередь обработки.
+    """
+
+    stream_id: uuid.UUID
+
+
 class StreamUploadDto(msgspec.Struct, frozen=True):
     camera_url: str
     camera_id: str
