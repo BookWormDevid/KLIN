@@ -8,8 +8,18 @@ import uuid
 from abc import abstractmethod
 from typing import Protocol
 
-from app.application.dto import KlinProcessDto, KlinResultDto, StreamProcessDto
+from app.application.dto import (
+    KlinProcessDto,
+    KlinResultDto,
+    StreamEventDto,
+    StreamProcessDto,
+)
 from app.models import KlinModel, KlinStreamingModel
+
+
+class IKlinEventProducer(Protocol):
+    @abstractmethod
+    async def send_event(self, event: StreamEventDto) -> None: ...
 
 
 class IKlinStream(Protocol):
@@ -33,6 +43,15 @@ class IKlinRepository(Protocol):
     """
     Класс для взаимодействия с базой данных
     """
+
+    @abstractmethod
+    async def save_yolo(self, event: StreamEventDto) -> None: ...
+
+    @abstractmethod
+    async def save_mae(self, event: StreamEventDto) -> None: ...
+
+    @abstractmethod
+    async def save_x3d(self, event: StreamEventDto) -> None: ...
 
     @abstractmethod
     async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel:

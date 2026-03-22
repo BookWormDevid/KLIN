@@ -7,17 +7,18 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import cast
 
 import cv2
-import msgspec
 import numpy as np
 import torch
 import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
-from app.application.interfaces import IKlinStream
+from app.application.dto import StreamEventDto
+from app.application.interfaces import IKlinEventProducer, IKlinRepository, IKlinStream
 from app.infrastructure.helpers import (
     HeavyLogic,
     LoggingHelper,
@@ -83,12 +84,13 @@ class StreamContext:
 
 
 class StreamProcessor(IKlinStream):
-    def __init__(self) -> None:
+    def __init__(self, event_producer: IKlinEventProducer) -> None:
         self.processing = ProcessorConfig()
         self.prepare = PrepareForTriton()
         self.logging = LoggingHelper()
         self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
         self.contexts: dict[str, StreamContext] = {}
+        self.event_producer = event_producer
 
     def _create_context(self) -> StreamContext:
         return StreamContext(
@@ -276,6 +278,7 @@ class StreamProcessor(IKlinStream):
         self,
         context: StreamContext,
         camera_id: str,
+        stream_id: uuid.UUID,
     ) -> None:
         buffer: list[tuple[int, np.ndarray, float]] = []
         last_send = -999.0
@@ -333,17 +336,22 @@ class StreamProcessor(IKlinStream):
                             )
 
                 if detections:
-                    event = {
-                        "type": "YOLO",
-                        "camera_id": camera_id,
-                        "frame_idx": idx,
-                        "timestamp": ts,
-                        "detections": detections,
-                    }
-                    logger.info(
-                        "STREAM_EVENT: %s", msgspec.json.encode(event).decode("utf-8")
-                    )
-
+                    try:
+                        await self.event_producer.send_event(
+                            StreamEventDto(
+                                id=str(uuid.uuid4()),
+                                type="YOLO",
+                                camera_id=camera_id,
+                                stream_id=stream_id,
+                                payload={
+                                    "frame_idx": idx,
+                                    "timestamp": ts,
+                                    "detections": detections,
+                                },
+                            )
+                        )
+                    except Exception:
+                        logger.exception("Failed to send event")
                 buffer.clear()
                 last_send = ts
 
@@ -353,6 +361,7 @@ class StreamProcessor(IKlinStream):
         self,
         context: StreamContext,
         camera_id: str,
+        stream_id: uuid.UUID,
     ) -> None:
         window: list[np.ndarray] = []
         window_ts: list[float] = []
@@ -390,25 +399,30 @@ class StreamProcessor(IKlinStream):
                 pred_idx = int(np.argmax(probs))
                 confidence = float(probs[pred_idx])
                 label = self.processing.mae_classes.get(pred_idx, str(pred_idx))
-
-                event = {
-                    "type": "MAE",
-                    "camera_id": camera_id,
-                    "label": label,
-                    "confidence": confidence,
-                    "probs": probs.tolist(),
-                    "start_ts": window_ts[0],
-                    "end_ts": window_ts[-1],
-                }
-                logger.info(
-                    "STREAM_EVENT: %s", msgspec.json.encode(event).decode("utf-8")
-                )
+                try:
+                    await self.event_producer.send_event(
+                        StreamEventDto(
+                            id=str(uuid.uuid4()),
+                            type="MAE",
+                            camera_id=camera_id,
+                            stream_id=stream_id,
+                            payload={
+                                "label": label,
+                                "confidence": confidence,
+                                "start_ts": window_ts[0],
+                                "end_ts": window_ts[-1],
+                            },
+                        )
+                    )
+                except Exception:
+                    logger.exception("Failed to send event")
                 last_inference = ts
 
             frame_queue.task_done()
 
     async def _periodic_x3d_checker(
         self,
+        stream_id: uuid.UUID,
         context: StreamContext,
         camera_id: str,
         interval: float = 3.0,
@@ -426,19 +440,24 @@ class StreamProcessor(IKlinStream):
             violence_prob = result.get("True", 0.0) if result is not None else 0.0
 
             if violence_prob > self.processing.x3d_conf:
-                logger.info("X3D TRIGGER → heavy ON (prob=%.3f)", violence_prob)
+                try:
+                    await self.event_producer.send_event(
+                        StreamEventDto(
+                            id=str(uuid.uuid4()),
+                            stream_id=stream_id,
+                            camera_id=camera_id,
+                            type="X3D_VIOLENCE",
+                            payload={
+                                "prob": violence_prob,
+                                "timestamp": now,
+                            },
+                        )
+                    )
+                except Exception:
+                    logger.exception("Failed to send event")
+
                 context.heavy.heavy_active.set()
                 context.heavy.last_trigger_time = now
-
-                event = {
-                    "type": "X3D_VIOLENCE",
-                    "camera_id": camera_id,
-                    "prob": violence_prob,
-                    "timestamp": now,
-                }
-                logger.info(
-                    "STREAM_EVENT: %s", msgspec.json.encode(event).decode("utf-8")
-                )
 
             # Авто-выключение тяжёлого режима
             elif (
@@ -454,7 +473,12 @@ class StreamProcessor(IKlinStream):
         Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
         """
         while not context.stop_event.is_set():
-            frame_tuple = await context.queue.source_queue.get()
+            try:
+                frame_tuple = await asyncio.wait_for(
+                    context.queue.source_queue.get(), timeout=0.1
+                )
+            except asyncio.TimeoutError:
+                continue
 
             for q in (context.queue.yolo_queue, context.queue.mae_queue):
                 try:
@@ -463,6 +487,17 @@ class StreamProcessor(IKlinStream):
                     logger.debug("Очередь переполнена — кадр пропущен")
 
             context.queue.source_queue.task_done()
+
+    def stop(self, camera_id: str) -> None:
+        context = self.contexts.get(camera_id)
+
+        if not context:
+            logger.warning("Stop requested but context not found: %s", camera_id)
+            return
+
+        logger.info("Stopping stream processor for camera_id=%s", camera_id)
+
+        context.stop_event.set()
 
     async def streaming_analyze(self, model: KlinStreamingModel) -> None:
         assert model.camera_url is not None
@@ -481,18 +516,21 @@ class StreamProcessor(IKlinStream):
                 self._periodic_x3d_checker(
                     context=context,
                     camera_id=model.camera_id,
+                    stream_id=model.id,
                 )
             ),
             asyncio.create_task(
                 self._yolo_stream_pipeline(
                     context=context,
                     camera_id=model.camera_id,
+                    stream_id=model.id,
                 )
             ),
             asyncio.create_task(
                 self._mae_stream_pipeline(
                     context=context,
                     camera_id=model.camera_id,
+                    stream_id=model.id,
                 )
             ),
         ]
@@ -514,3 +552,31 @@ class StreamProcessor(IKlinStream):
             raise
         finally:
             logger.info("Стриминг завершён (id=%s)", model.camera_id)
+            self.contexts.pop(model.camera_id, None)
+
+
+class StreamEventConsumer:
+    def __init__(self, repository: IKlinRepository):
+        self.repository = repository
+
+    async def handle(self, event: StreamEventDto):
+        if event.type == "YOLO":
+            try:
+                await self.repository.save_yolo(event)
+            except Exception:
+                logger.exception("Failed to save YOLO")
+                raise
+
+        elif event.type == "MAE":
+            try:
+                await self.repository.save_mae(event)
+            except Exception:
+                logger.exception("Failed to save MAE")
+                raise
+
+        elif event.type == "X3D_VIOLENCE":
+            try:
+                await self.repository.save_x3d(event)
+            except Exception:
+                logger.exception("Failed to save x3d")
+                raise

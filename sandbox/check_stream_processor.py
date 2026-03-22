@@ -1,47 +1,60 @@
+from __future__ import annotations
+
 import asyncio
 import logging
-from dataclasses import dataclass
+import uuid
 
-from app.infrastructure.services.target import StreamProcessor  # ваш путь
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)-5s | %(message)s",
-    datefmt="%H:%M:%S",
-)
+from app.application.dto import StreamEventDto
+from app.application.interfaces import IKlinEventProducer
+from app.infrastructure.services import StreamProcessor
+from app.models.klin import KlinStreamingModel
 
 
-@dataclass
-class FakeModel:
-    """Заглушка вместо KlinStreamingModel, чтобы быстро протестировать"""
-
-    camera_url: str
-    camera_id: str = "TEST_CAM_001"
+logger = logging.getLogger(__name__)
 
 
-async def test_stream():
-    processor = StreamProcessor()
+class DummyEventProducer(IKlinEventProducer):
+    """Просто логирует события — идеально для теста с видео-файлом."""
 
-    # Вариант 1 — локальный видеофайл (самый надёжный для отладки)
+    async def send_event(self, event: StreamEventDto) -> None:
+        logger.info(
+            "📨 EVENT [%s] camera=%s stream=%s | %s",
+            event.type,
+            event.camera_id,
+            event.stream_id,
+            event.payload,
+        )
+
+
+async def test():
+    producer = DummyEventProducer()
+    processor = StreamProcessor(event_producer=producer)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
+    )
+
     test_file = r"C:\Users\meksi\Documents\GitHub\fi004.mp4"
-
-    # test_file = "short_test.mp4"   # положите короткий клип рядом со скриптом
-
-    model = FakeModel(camera_url=test_file, camera_id="LOCAL_TEST_001")
+    model = KlinStreamingModel(
+        id=uuid.uuid4(),
+        camera_url=test_file,
+        camera_id="LOCAL_TEST_001",
+        state="PENDING",
+    )
 
     logging.info("Запуск тестового стриминга с файлом: %s", test_file)
 
     try:
         await processor.streaming_analyze(model)
     except KeyboardInterrupt:
-        logging.info("Остановка по Ctrl+C — нормальное завершение")
+        logging.info("Остановка по Ctrl+C")
+        processor.stop("LOCAL_TEST_001")
     except Exception:
         logging.exception("Критическая ошибка во время теста")
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(test_stream())
+        asyncio.run(test())
     except KeyboardInterrupt:
         print("\nОстановлено пользователем")
