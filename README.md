@@ -220,6 +220,7 @@ uv run helpers/yolo_pt_to_onnx.py
 
 - ML system design: `docs/ML_System_Design_Doc.md`
 - Docker compose files: `docker/docker-compose.yml`, `docker/docker-compose.infra.yml`
+- TODO's: `docs/todos.md`
 
 ## License
 
