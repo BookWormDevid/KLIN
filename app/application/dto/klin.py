@@ -4,6 +4,7 @@ DTO для работы с проектом.
 """
 
 import uuid
+from dataclasses import dataclass
 
 import msgspec
 
@@ -114,3 +115,12 @@ class StreamReadDto(msgspec.Struct, frozen=True):
             all_classes=model.all_classes,
             state=model.state,
         )
+
+
+@dataclass
+class StreamEventDto:
+    id: str
+    stream_id: uuid.UUID
+    camera_id: str
+    type: str
+    payload: dict

@@ -4,6 +4,7 @@
 
 from .klin import (
     IKlinCallbackSender,
+    IKlinEventProducer,
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
@@ -17,4 +18,5 @@ __all__ = (
     "IKlinProcessProducer",
     "IKlinCallbackSender",
     "IKlinStream",
+    "IKlinEventProducer",
 )

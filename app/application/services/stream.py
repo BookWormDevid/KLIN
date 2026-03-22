@@ -96,9 +96,11 @@ class StreamService:
         if not stream:
             return
 
-        # ❗ важно: сам processor должен слушать stop_event
-        stream.state = ProcessingState.FINISHED
+        # 🔴 ВАЖНО: сначала остановить processor
+        # self._klin_stream.stop(stream.camera_id)
 
+        # затем обновить состояние
+        stream.state = ProcessingState.FINISHED
         await self._klin_repository.update_stream(stream)
 
     async def get_stream_status(self, stream_id: uuid.UUID) -> StreamReadDto:
