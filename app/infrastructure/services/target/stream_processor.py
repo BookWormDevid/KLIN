@@ -9,11 +9,9 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import cast
 
 import cv2
 import numpy as np
-import torch
 import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
@@ -29,6 +27,11 @@ from app.infrastructure.helpers import (
     YoloConfig,
 )
 from app.models.klin import KlinStreamingModel
+
+from .business_processor import BusinessProcessor
+from .mae_processor import MaeProcessor
+from .x3d_processor import X3DProcessor
+from .yolo_processor import YoloProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,15 @@ class StreamProcessor(IKlinStream):
         self.prepare = PrepareForTriton()
         self.logging = LoggingHelper()
         self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
+        self.x3d_processor = X3DProcessor(self.triton, self.prepare)
+        self.mae_processor = MaeProcessor(self.triton, self.prepare)
+        self.yolo_processor = YoloProcessor(self.triton)
+        self.business_processor = BusinessProcessor(
+            mae_classes=self.processing.mae_classes,
+            yolo_classes=self.processing.yolo_classes,
+            allowed_classes=self.processing.allowed_classes,
+            yolo_conf=self.processing.yolo_conf,
+        )
         self.contexts: dict[str, StreamContext] = {}
         self.event_producer = event_producer
 
@@ -97,30 +109,16 @@ class StreamProcessor(IKlinStream):
             queue=Queue(), heavy=HeavyLogic(), stop_event=asyncio.Event()
         )
 
-    def infer_fn(self, video_arr):
-        inputs = grpcclient.InferInput("video", video_arr.shape, "FP32")
-        inputs.set_data_from_numpy(video_arr)
-        outputs = grpcclient.InferRequestedOutput("logits")
-        result = self.triton.infer(
-            model_name="x3d_violence", inputs=[inputs], outputs=[outputs]
-        )
-        return result.as_numpy("logits")[0]
-
     async def _quick_x3d_check_for_streaming(
         self, frames: list[np.ndarray], context: StreamContext
     ) -> dict[str, float] | None:
-        video = self.prepare.prepare_x3d_for_triton(frames)
-
         logits = await self._triton_infer_with_retry(
-            self.infer_fn, video, context=context
+            self.x3d_processor.infer_clip, frames, context=context
         )
         if logits is None:
             return None
 
-        probs = torch.softmax(torch.tensor(logits), dim=0).numpy()
-        pred = int(np.argmax(probs))
-        confidence = float(probs[pred])
-        return {str(bool(pred)): confidence}
+        return self.business_processor.classify_x3d_logits(logits)
 
     async def _triton_infer_with_retry(
         self, infer_fn, *args, context: StreamContext, timeout=10, retries=4
@@ -154,48 +152,13 @@ class StreamProcessor(IKlinStream):
         return None
 
     def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
-        inputs = grpcclient.InferInput("images", batch_imgs.shape, "FP32")
-        inputs.set_data_from_numpy(batch_imgs)
-        outputs = grpcclient.InferRequestedOutput("output0")
-        result = self.triton.infer(
-            model_name="yolo_person", inputs=[inputs], outputs=[outputs]
-        )
-        raw_output: NDArray[np.float32] = result.as_numpy("output0")
-        return [raw_output[b].transpose(1, 0) for b in range(raw_output.shape[0])]
+        return self.yolo_processor.infer_batch(batch_imgs)
 
     def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        img = self.prepare.prepare_mae_chunk_for_triton(chunk_frames)
-        inputs = grpcclient.InferInput("pixel_values", img.shape, "FP32")
-        inputs.set_data_from_numpy(img)
-        outputs = grpcclient.InferRequestedOutput("logits")
-
-        result = self.triton.infer(
-            model_name="videomae_crime", inputs=[inputs], outputs=[outputs]
-        )
-
-        logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
-        exp = np.exp(logits - np.max(logits))
-
-        probs = exp / np.sum(exp)
-        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
+        return self.mae_processor.infer_probs(chunk_frames)
 
     def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
-        scores = pred[4:]
-        class_id = int(np.argmax(scores))
-        conf = scores[class_id]
-        if (
-            conf < self.processing.yolo_conf
-            or class_id not in self.processing.allowed_classes
-        ):
-            return None
-        x, y, w, h = pred[:4]
-        bbox = [
-            float(x - w / 2),
-            float(y - h / 2),
-            float(x + w / 2),
-            float(y + h / 2),
-        ]
-        return class_id, bbox
+        return self.business_processor.parse_yolo_detection(pred)
 
     async def _frame_reader(
         self,

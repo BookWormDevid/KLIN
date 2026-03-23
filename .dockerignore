@@ -16,12 +16,11 @@ node_modules
 # project-specific
 sandbox/
 monitoring/
-mlruns/
 mlflow/
 helpers/
 data/
-tests/
 docs/
 models/
+model_repository/
 start.bat
 README.md

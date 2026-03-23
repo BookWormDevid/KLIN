@@ -17,7 +17,6 @@ import async_timeout
 import cv2
 import msgspec
 import numpy as np
-import torch
 import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
@@ -34,6 +33,11 @@ from app.infrastructure.helpers import (
     YoloConfig,
 )
 from app.models.klin import KlinModel
+
+from .business_processor import BusinessProcessor
+from .mae_processor import MaeProcessor
+from .x3d_processor import X3DProcessor
+from .yolo_processor import YoloProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +98,15 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         self.video_data = VideoStreamState()
         self.stream_context = StreamConfig()
         self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
+        self.x3d_processor = X3DProcessor(self.triton, self.prepare)
+        self.mae_processor = MaeProcessor(self.triton, self.prepare)
+        self.yolo_processor = YoloProcessor(self.triton)
+        self.business_processor = BusinessProcessor(
+            mae_classes=self.processing.mae_classes,
+            yolo_classes=self.processing.yolo_classes,
+            allowed_classes=self.processing.allowed_classes,
+            yolo_conf=self.processing.yolo_conf,
+        )
 
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
         cap = cv2.VideoCapture(video_path)
@@ -117,25 +130,8 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
                 f"Получено {len(frames_list)}, требуется 16"
             )
 
-        video = self.prepare.prepare_x3d_for_triton(frames_list)
-
-        inputs = grpcclient.InferInput("video", video.shape, "FP32")
-        inputs.set_data_from_numpy(video)
-        outputs = grpcclient.InferRequestedOutput("logits")
-
-        result = self.triton.infer(
-            model_name="x3d_violence",
-            inputs=[inputs],
-            outputs=[outputs],
-        )
-
-        logits = result.as_numpy("logits")[0]
-        probs = torch.softmax(torch.tensor(logits), dim=0).numpy()
-
-        pred = int(np.argmax(probs))
-        confidence = float(probs[pred])
-
-        return {str(bool(pred)): confidence}
+        logits = self.x3d_processor.infer_clip(frames_list)
+        return self.business_processor.classify_x3d_logits(logits)
 
     async def _infer_yolo_batch_async(
         self, batch_imgs: np.ndarray
@@ -150,23 +146,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         return await loop.run_in_executor(None, self._infer_mae_probs, chunk_frames)
 
     def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
-        inputs = grpcclient.InferInput("images", batch_imgs.shape, "FP32")
-        inputs.set_data_from_numpy(batch_imgs)
-        outputs = grpcclient.InferRequestedOutput("output0")
-
-        result = self.triton.infer(
-            model_name="yolo_person",
-            inputs=[inputs],
-            outputs=[outputs],
-        )
-
-        raw_output: NDArray[np.float32] = result.as_numpy("output0")
-        batch_preds: list[NDArray[np.float32]] = []
-        for b in range(raw_output.shape[0]):
-            per_image = raw_output[b]
-            preds = per_image.transpose(1, 0)
-            batch_preds.append(preds)
-        return batch_preds
+        return self.yolo_processor.infer_batch(batch_imgs)
 
     async def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
         if not state.yolo_buffer:
@@ -180,21 +160,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             self._store_yolo_detections(state, preds, timesteps)
 
     def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        img = self.prepare.prepare_mae_chunk_for_triton(chunk_frames)
-        inputs = grpcclient.InferInput("pixel_values", img.shape, "FP32")
-        inputs.set_data_from_numpy(img)
-        outputs = grpcclient.InferRequestedOutput("logits")
-
-        result = self.triton.infer(
-            model_name="videomae_crime",
-            inputs=[inputs],
-            outputs=[outputs],
-        )
-
-        logits = np.asarray(result.as_numpy("logits")[0], dtype=np.float32)
-        exp = np.exp(logits - np.max(logits))
-        probs = exp / np.sum(exp)
-        return cast(NDArray[np.float32], probs.astype(np.float32, copy=False))
+        return self.mae_processor.infer_probs(chunk_frames)
 
     async def _predict_mae_chunk(
         self,
@@ -205,15 +171,13 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         fps: float,
     ) -> dict[str, Any]:
         probs = await self._infer_mae_probs_async(chunk_frames)
-        pred_idx = int(np.argmax(probs))
-        confidence = float(probs[pred_idx])
-        answer = self.processing.mae_classes.get(pred_idx, str(pred_idx))
-
-        return {
-            "time": self.timerange.build_time_range(start_frame, end_frame, fps),
-            "answer": answer,
-            "confident": confidence,
-        }
+        return self.business_processor.build_mae_result(
+            probs,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            fps=fps,
+            timerange=self.timerange,
+        )
 
     async def _run_predict_mae_chunk(self, **kwargs: Any) -> dict[str, Any]:
         predict_mae_chunk = cast(Any, self._predict_mae_chunk)
@@ -304,23 +268,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         return np.stack(batch_imgs, axis=0), frame_indices
 
     def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
-        scores = pred[4:]
-        class_id = int(np.argmax(scores))
-        conf = scores[class_id]
-
-        if conf < self.processing.yolo_conf:
-            return None
-        if class_id not in self.processing.allowed_classes:
-            return None
-
-        x, y, w, h = pred[:4]
-        bbox = [
-            float(x - w / 2),
-            float(y - h / 2),
-            float(x + w / 2),
-            float(y + h / 2),
-        ]
-        return class_id, bbox
+        return self.business_processor.parse_yolo_detection(pred)
 
     def _store_yolo_detections(
         self, state: VideoStreamState, preds: np.ndarray, timesteps: float
@@ -334,11 +282,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             state.detected_class_ids.add(class_id)
 
     def _resolve_detected_objects(self, detected_class_ids: set[int]) -> list[str]:
-        return [
-            self.processing.yolo_classes[c]
-            for c in detected_class_ids
-            if c in self.processing.yolo_classes
-        ]
+        return self.business_processor.resolve_detected_objects(detected_class_ids)
 
     # pylint: disable=too-many-locals
     async def _process_video_stream(
