@@ -38,6 +38,18 @@ class Settings(BaseSettings):
 
     Klin_queue = "Klin-queue"
 
+    @staticmethod
+    def parse_bool_env(value: str) -> bool:
+        normalized = value.strip().lower()
+
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+
+        raise ValueError(f"Unsupported boolean value: {value}")
+
     @property
     def videomae_path(self) -> str:
         """
@@ -103,7 +115,9 @@ class Settings(BaseSettings):
         """
         Режим отладки
         """
-        return bool(self.resolve_env_property("DEBUG", int, default_value=0))
+        return self.resolve_env_property(
+            "DEBUG", self.parse_bool_env, default_value=False
+        )
 
     @property
     def cors_allowed_origins(self) -> list[str]:

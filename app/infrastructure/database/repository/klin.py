@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
+import msgspec
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.application.dto import StreamEventDto
 from app.application.exceptions import KlinNotFoundError
 from app.application.interfaces import IKlinRepository
 from app.models.klin import KlinModel, KlinStreamingModel, ProcessingState
@@ -21,6 +23,77 @@ class KlinRepository(IKlinRepository):
     """
 
     session: async_sessionmaker[AsyncSession]
+
+    @staticmethod
+    def _encode_payload(payload: dict) -> str:
+        return msgspec.json.encode(payload).decode("utf-8")
+
+    @staticmethod
+    def _merge_unique(
+        existing: list[str] | None, additions: list[str] | tuple[str, ...]
+    ) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+
+        for value in [*(existing or []), *additions]:
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            merged.append(value)
+
+        return merged
+
+    async def save_yolo(self, event: StreamEventDto) -> None:
+        async with self.session() as session:
+            async with session.begin():
+                query = (
+                    select(KlinStreamingModel)
+                    .where(KlinStreamingModel.id == event.stream_id)
+                    .limit(1)
+                )
+                stream = await session.scalar(query)
+                if stream is None:
+                    raise KlinNotFoundError(event.stream_id)
+
+                detections = event.payload.get("detections", [])
+                classes = [
+                    detection["class_name"]
+                    for detection in detections
+                    if detection.get("class_name")
+                ]
+                stream.yolo = self._encode_payload(event.payload)
+                stream.objects = self._merge_unique(stream.objects, classes)
+
+    async def save_mae(self, event: StreamEventDto) -> None:
+        async with self.session() as session:
+            async with session.begin():
+                query = (
+                    select(KlinStreamingModel)
+                    .where(KlinStreamingModel.id == event.stream_id)
+                    .limit(1)
+                )
+                stream = await session.scalar(query)
+                if stream is None:
+                    raise KlinNotFoundError(event.stream_id)
+
+                label = event.payload.get("label")
+                additions = [label] if isinstance(label, str) and label else []
+                stream.mae = self._encode_payload(event.payload)
+                stream.all_classes = self._merge_unique(stream.all_classes, additions)
+
+    async def save_x3d(self, event: StreamEventDto) -> None:
+        async with self.session() as session:
+            async with session.begin():
+                query = (
+                    select(KlinStreamingModel)
+                    .where(KlinStreamingModel.id == event.stream_id)
+                    .limit(1)
+                )
+                stream = await session.scalar(query)
+                if stream is None:
+                    raise KlinNotFoundError(event.stream_id)
+
+                stream.x3d = self._encode_payload(event.payload)
 
     async def get_by_id(self, klin_id: UUID) -> KlinModel:
         """

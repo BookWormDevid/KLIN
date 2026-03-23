@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.application.interfaces import (
     IKlinCallbackSender,
+    IKlinEventProducer,
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
@@ -25,7 +26,7 @@ from app.application.interfaces import (
 from app.application.services import KlinService, StreamService
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
-from app.infrastructure.producers import KlinProcessProducer
+from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
 from app.infrastructure.services import (
     InferenceProcessor,
     KlinCallbackSender,
@@ -80,6 +81,7 @@ class InfrastructureProvider(Provider):
         return async_sessionmaker(bind=engine, expire_on_commit=True, autoflush=False)
 
     KLIN_repository = provide(KlinRepository, provides=IKlinRepository)
+    KLIN_event_producer = provide(KlinEventProducer, provides=IKlinEventProducer)
     KLIN_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
     KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
 

@@ -27,10 +27,10 @@ help:
 
 init-env:
 ifeq ($(OS),Windows_NT)
-	@powershell -NoProfile -Command "if (Test-Path 'docker/.env') { Write-Host 'docker/.env already exists' } else { Copy-Item 'docker/example.env' 'docker/.env'; Write-Host 'created docker/.env from docker/example.env' }"
+	@powershell -NoProfile -Command "if (Test-Path '.env') { Write-Host '.env already exists' } else { Copy-Item 'example.env' '.env'; Write-Host 'created .env from example.env' }"
 else
-	@if [ ! -f docker/.env ]; then \
-		cp docker/example.env docker/.env; \
+	@if [ ! -f .env ]; then \
+		cp example.env .env; \
 		echo "Создан .env из example.env"; \
 	else \
 		echo ".env уже существует"; \
