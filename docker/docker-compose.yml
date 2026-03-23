@@ -2,31 +2,41 @@ services:
   klin_api_development:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.api
     networks:
       - web
     environment:
       DATABASE_URL: ${DATABASE_URL}
       RABBIT_URL: ${RABBIT_URL}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"
       - "traefik.http.routers.teamtasker_its_api_development.rule=Host(`localhost`)  && PathPrefix(`/api`)"
       - "traefik.http.services.teamtasker_its_api_development.loadbalancer.server.port=8008"
-    command:
-      [ "/code/.venv/bin/python", "-m", "granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8008", "app.presentation.litestar.run:app" ]
 
   klin_processor_worker_development:
     build:
       context: ..
-      dockerfile: docker/Dockerfile
+      dockerfile: docker/Dockerfile.queue
     networks:
       - web
     environment:
       DATABASE_URL: ${DATABASE_URL}
       RABBIT_URL: ${RABBIT_URL}
-    command:
-      [ "/code/.venv/bin/python", "-m", "faststream", "run", "app.presentation.faststream.app:app" ]
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
 networks:
   web:
     name: klin-web

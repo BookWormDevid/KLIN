@@ -1,12 +1,17 @@
 """
-Бизнес логика сервиса
+Бизнес-логика жизненного цикла задач Klin.
 """
+
+from __future__ import annotations
 
 import asyncio
 import logging
 import os
+import tempfile
 import uuid
 from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlparse
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
 from app.application.exceptions import KlinEnqueueError
@@ -15,6 +20,7 @@ from app.application.interfaces import (
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
+    IKlinVideoStorage,
 )
 from app.config import app_settings
 from app.models import KlinModel, ProcessingState
@@ -26,18 +32,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class KlinService:
     """
-    Класс бизнес логики
+    Координирует постановку в очередь, обработку, callback и очистку артефактов.
     """
 
     _klin_repository: IKlinRepository
     _klin_inference_service: IKlinInference
     _klin_process_producer: IKlinProcessProducer
     _klin_callback_sender: IKlinCallbackSender
+    _klin_video_storage: IKlinVideoStorage
 
     async def _publish_klin_task(self, klin_id: uuid.UUID) -> None:
         """
-        Публикация задачи в очередь с повторными попытками.
+        Публикует задачу на обработку с повторными попытками.
         """
+
         max_attempts = app_settings.max_retry_attempts
         payload = KlinProcessDto(klin_id=klin_id)
 
@@ -55,8 +63,10 @@ class KlinService:
 
     async def _persist_enqueue_failure(self, klin: KlinModel, error: Exception) -> None:
         """
-        Компенсирующее обновление статуса, если задача не попала в очередь.
+        Сохраняет финальное состояние ошибки,
+        если задачу не удалось поставить в очередь.
         """
+
         klin.state = ProcessingState.ERROR
         klin.mae = str(error)
         try:
@@ -77,11 +87,82 @@ class KlinService:
                 callback_exc,
             )
 
+    @staticmethod
+    def _is_s3_uri(video_path: str) -> bool:
+        return video_path.startswith("s3://")
+
+    @staticmethod
+    def _build_temp_suffix(video_path: str) -> str:
+        parsed_path = (
+            urlparse(video_path).path if video_path.startswith("s3://") else video_path
+        )
+        suffix = Path(parsed_path).suffix
+        return suffix or ".mp4"
+
+    async def _prepare_processing_video(
+        self,
+        video_path: str,
+    ) -> tuple[str, str | None]:
+        if not self._is_s3_uri(video_path):
+            return video_path, None
+
+        fd, local_path = tempfile.mkstemp(suffix=self._build_temp_suffix(video_path))
+        os.close(fd)
+
+        try:
+            await self._klin_video_storage.download_to_path(
+                source_uri=video_path,
+                destination_path=local_path,
+            )
+        except Exception:
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            raise
+
+        return local_path, local_path
+
+    async def _cleanup_video_artifacts(
+        self,
+        *,
+        source_video_path: str,
+        local_video_path: str | None,
+    ) -> None:
+        if self._is_s3_uri(source_video_path):
+            try:
+                await self._klin_video_storage.delete(source_video_path)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning(
+                    "Failed to delete S3 object. uri=%s error=%s",
+                    source_video_path,
+                    exc,
+                )
+
+            if local_video_path and os.path.exists(local_video_path):
+                try:
+                    os.remove(local_video_path)
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to delete temp file. path=%s error=%s",
+                        local_video_path,
+                        exc,
+                    )
+            return
+
+        if source_video_path and os.path.exists(source_video_path):
+            try:
+                os.remove(source_video_path)
+            except OSError as exc:
+                logger.warning(
+                    "Failed to delete temp file. path=%s error=%s",
+                    source_video_path,
+                    exc,
+                )
+
     async def klin_image(self, data: KlinUploadDto) -> KlinModel:
         """
-        Принимает ссылку для отправки результатов, путь видео.
-        Создаёт подключение к бд, отправляет запрос к брокеру.
+        Создает задачу в БД и ставит ее в очередь фоновой обработки.
         """
+
         klin = KlinModel(
             response_url=data.response_url,
             video_path=data.video_path,
@@ -100,9 +181,9 @@ class KlinService:
 
     async def perform_klin(self, klin_id: uuid.UUID) -> None:
         """
-        Запускает процессор по id задачи.
-        В конце удаляет файл который обработался.
+        Захватывает задачу, выполняет инференс, сохраняет статус и очищает хранилище.
         """
+
         klin: KlinModel | None = await self._klin_repository.claim_for_processing(
             klin_id
         )
@@ -113,8 +194,25 @@ class KlinService:
             )
             return
 
+        source_video_path = klin.video_path
+        local_video_path: str | None = None
+
         try:
+            (
+                processing_video_path,
+                local_video_path,
+            ) = await self._prepare_processing_video(source_video_path)
+            logger.info(
+                "Prepared video for processing. klin_id=%s"
+                " source_video_path=%s processing_video_path=%s",
+                klin_id,
+                source_video_path,
+                processing_video_path,
+            )
+            klin.video_path = processing_video_path
+
             process = await self._klin_inference_service.analyze(klin)
+            klin.video_path = source_video_path
             klin.x3d = process.x3d
             klin.mae = process.mae
             klin.yolo = process.yolo
@@ -128,7 +226,8 @@ class KlinService:
             logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
         except Exception as exc:  # pylint: disable=broad-except
-            klin.x3d = "Execution error. View mae."
+            klin.video_path = source_video_path
+            klin.x3d = "Execution error. View mae column."
             klin.mae = str(exc)
             klin.state = ProcessingState.ERROR
             await self._klin_callback_sender.post_consumer(klin)
@@ -139,6 +238,7 @@ class KlinService:
             )
 
         finally:
+            klin.video_path = source_video_path
             try:
                 await self._klin_repository.update(klin)
             except Exception as exc:  # pylint: disable=broad-except
@@ -148,26 +248,22 @@ class KlinService:
                     exc,
                 )
 
-            if klin.video_path and os.path.exists(klin.video_path):
-                try:
-                    os.remove(klin.video_path)
-                except OSError as exc:
-                    logger.warning(
-                        "Failed to delete temp file. path=%s error=%s",
-                        klin.video_path,
-                        exc,
-                    )
+            await self._cleanup_video_artifacts(
+                source_video_path=source_video_path,
+                local_video_path=local_video_path,
+            )
 
     async def get_inference_status(self, klin_id: uuid.UUID) -> KlinReadDto:
         """
-        Получение вывода по id
+        Возвращает статус задачи по идентификатору.
         """
+
         klin = await self._klin_repository.get_by_id(klin_id)
         return KlinReadDto.from_model(klin)
 
     async def get_n_imferences(self, count: int) -> list[KlinModel]:
         """
-        Получение вывода последних n-количества строк в бд.
+        Возвращает последние N задач.
         """
-        imfer_list = await self._klin_repository.get_first_n(count)
-        return imfer_list
+
+        return await self._klin_repository.get_first_n(count)

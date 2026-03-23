@@ -35,6 +35,9 @@ class Settings(BaseSettings):
         "http://localhost,http://127.0.0.1,http://localhost:3000,http://127.0.0.1:3000"
     )
     default_max_retry_attemps: int = 1
+    default_s3_region: str = "us-east-1"
+    default_s3_addressing_style: str = "path"
+    default_s3_key_prefix: str = "klin/uploads"
 
     Klin_queue = "Klin-queue"
 
@@ -113,6 +116,74 @@ class Settings(BaseSettings):
         Ссылка на rabbit
         """
         return self.resolve_env_property("RABBIT_URL", str)
+
+    @property
+    def s3_endpoint_url(self) -> str:
+        """
+        URL S3-совместимого endpoint'а.
+        """
+        return self.resolve_env_property("S3_ENDPOINT_URL", str)
+
+    @property
+    def s3_bucket_name(self) -> str:
+        """
+        Имя bucket'а для загруженных видео.
+        """
+        return self.resolve_env_property("S3_BUCKET_NAME", str)
+
+    @property
+    def s3_access_key_id(self) -> str:
+        """
+        Идентификатор access key для S3.
+        """
+        return self.resolve_env_property("S3_ACCESS_KEY_ID", str)
+
+    @property
+    def s3_secret_access_key(self) -> str:
+        """
+        Секретный ключ доступа для S3.
+        """
+        return self.resolve_env_property("S3_SECRET_ACCESS_KEY", str)
+
+    @property
+    def s3_region(self) -> str:
+        """
+        Регион S3 по умолчанию.
+        """
+        return self.resolve_env_property(
+            "S3_REGION",
+            str,
+            default_value=self.default_s3_region,
+        )
+
+    @property
+    def s3_addressing_style(self) -> str:
+        """
+        Стиль адресации S3 для boto3.
+        """
+        style = self.resolve_env_property(
+            "S3_ADDRESSING_STYLE",
+            str,
+            default_value=self.default_s3_addressing_style,
+        ).strip()
+        if style not in {"path", "virtual"}:
+            raise ValueError("S3_ADDRESSING_STYLE must be 'path' or 'virtual'")
+        return style
+
+    @property
+    def s3_key_prefix(self) -> str:
+        """
+        Префикс для ключей загруженных объектов.
+        """
+        return (
+            self.resolve_env_property(
+                "S3_KEY_PREFIX",
+                str,
+                default_value=self.default_s3_key_prefix,
+            )
+            .strip()
+            .strip("/")
+        )
 
     @property
     def debug(self) -> bool:

@@ -1,0 +1,41 @@
+FROM python:3.10.6-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /build
+ENV UV_LINK_MODE=copy
+
+RUN python -m venv /opt/venv
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+    "aiohttp>=3.13.3" \
+    "async-timeout>=4.0.3" \
+    "asyncpg>=0.31.0" \
+    "boto3>=1.42.73" \
+    "dishka>=1.8.0" \
+    "faststream[cli,rabbit]>=0.6.6" \
+    "msgspec>=0.20.0" \
+    "numpy>=2.2.6" \
+    "opencv-python-headless>=4.13.0.92" \
+    "prometheus-client>=0.23.1" \
+    "python-dotenv>=1.2.1" \
+    "sqlalchemy[asyncio]>=2.0.46" \
+    "tritonclient[grpc,http]>=2.66.0"
+
+FROM python:3.10.6-slim AS final
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /code
+
+COPY --from=builder /opt/venv /opt/venv
+COPY app /code/app
+
+CMD [
+    "python",
+    "-m",
+    "faststream",
+    "run",
+    "app.presentation.faststream.app:app"
+]

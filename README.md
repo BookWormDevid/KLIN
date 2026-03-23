@@ -19,10 +19,13 @@ KLIN - сервис асинхронной обработки видео для 
 ```text
 Клиент
   -> POST /api/v1/Klin/upload (multipart)
+  -> API uploads the source video to external S3 storage and persists its URI
   -> API сохраняет задачу в PostgreSQL (state=PENDING)
   -> API публикует сообщение в RabbitMQ
+  -> Worker downloads the video from S3 for inference
   -> Worker читает очередь и запускает инференс (x3d -> VideoMAE -> YOLO)
   -> Worker обновляет запись в PostgreSQL (FINISHED/ERROR)
+  -> Worker deletes the S3 object after processing
   -> Worker отправляет callback на response_url
   -> Клиент читает статус по GET /api/v1/Klin/{id}
 ```
@@ -135,6 +138,7 @@ make start-queue-local  # В отдельном терминале
 
 - API docs: `http://localhost/api/docs`
 - RabbitMQ UI: `http://localhost:15672`
+- External S3 settings: `S3_ENDPOINT_URL`, `S3_BUCKET_NAME`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
 - Traefik: `http://traefik.localhost`
 - Prometheus: `http://prometheus.localhost`
 - Grafana: `http://grafana.localhost`

@@ -12,18 +12,14 @@ from prometheus_client import Counter, Histogram, start_http_server
 from app.application.dto import KlinProcessDto
 from app.application.services import KlinService
 from app.config import app_settings
-from app.ioc import ApplicationProvider, InfrastructureProvider, VideoProvider
+from app.ioc import get_worker_providers
 
 
-# Контейнер зависимостей
-container = make_container(
-    InfrastructureProvider(), ApplicationProvider(), VideoProvider()
-)
+container = make_container(*get_worker_providers())
 broker = container.get(RabbitBroker)
 app = FastStream(broker)
 Klin_service = container.get(KlinService)
 
-# Prometheus метрики
 KLIN_PROCESSED = Counter(
     "klin_processed_total", "Общее количество обработанных задач Klin"
 )
@@ -47,9 +43,7 @@ async def base_handler(message: RabbitMessage) -> None:
 
     data = msgspec.json.decode(message.body, type=KlinProcessDto)
 
-    # Измеряем время обработки задачи
     with KLIN_PROCESSING_TIME.time():
         await Klin_service.perform_klin(klin_id=data.klin_id)
 
-    # Увеличиваем счетчик обработанных задач
     KLIN_PROCESSED.inc()

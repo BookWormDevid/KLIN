@@ -6,7 +6,7 @@
 
 import uuid
 from abc import abstractmethod
-from typing import Protocol
+from typing import BinaryIO, Protocol
 
 from app.application.dto import (
     KlinProcessDto,
@@ -36,6 +36,37 @@ class IKlinInference(Protocol):
     async def analyze(self, model: KlinModel) -> KlinResultDto:
         """
         Метод передачи данных процессора и запуска анализа
+        """
+
+
+class IKlinVideoStorage(Protocol):
+    """
+    Контракт объектного хранилища для загруженных видео.
+    """
+
+    @abstractmethod
+    async def upload_fileobj(
+        self,
+        *,
+        fileobj: BinaryIO,
+        object_key: str,
+        content_type: str | None = None,
+        max_size_bytes: int | None = None,
+    ) -> str:
+        """
+        Сохраняет в s3 хранилище и сохраняет URI
+        """
+
+    @abstractmethod
+    async def download_to_path(self, *, source_uri: str, destination_path: str) -> None:
+        """
+        Загружает из s3 на локальный путь
+        """
+
+    @abstractmethod
+    async def delete(self, source_uri: str) -> None:
+        """
+        Удаляет хранящийся объект
         """
 
 

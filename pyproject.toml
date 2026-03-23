@@ -19,26 +19,11 @@ dependencies = [
     "tritonclient[grpc,http]>=2.66.0",
     "faststream[cli,rabbit]>=0.6.6",
     "opencv-python-headless>=4.13.0.92",
+    "boto3>=1.42.73",
 ]
 
 
 [dependency-groups]
-app_docker = [
-    "aiofiles>=25.1.0",
-    "aiohttp>=3.13.3",
-    "alembic>=1.18.4",
-    "asyncpg>=0.31.0",
-    "dishka>=1.8.0",
-    "faststream[cli,prometheus,rabbit]>=0.6.6",
-    "granian>=2.7.2",
-    "litestar[prometheus,structlog]>=2.21.0",
-    "msgspec>=0.20.0",
-    "numpy>=2.2.6",
-    "opencv-python-headless>=4.13.0.92",
-    "python-dotenv>=1.2.1",
-    "sqlalchemy[asyncio]>=2.0.46",
-    "tritonclient[grpc,http]>=2.66.0",
-]
 
 ml = [
     "torch>=2.10.0",
@@ -67,6 +52,7 @@ dev = [
     # general ML DEPENDENCIES LOWER
     "ultralytics==8.4.14",
     "transformers>=4.57.3",
+    "boto3-stubs[s3]>=1.42.73",
 ]
 
 ci = [

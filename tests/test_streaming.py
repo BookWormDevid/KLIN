@@ -14,11 +14,11 @@ from app.infrastructure.services.target import InferenceProcessor
 class FakeVideoCapture:
     """Фейковый класс, имитирующий cv2.VideoCapture для тестов."""
 
-    def __init__(self, frame_count: int = 10, fps: float = 30.0):
+    def __init__(self, frame_count: int = 10, fps: float = 30.0, opened: bool = True):
         self.count = 0
         self.frame_count = frame_count
         self.fps = fps
-        self._opened = True
+        self._opened = opened
 
     def is_opened(self) -> bool:
         """Проверяет, открыто ли видео."""
@@ -61,6 +61,10 @@ class InferenceProcessorTestAdapter(InferenceProcessor):
     async def process_video_stream(self, video_path: str):
         """Публичная обертка над потоковой обработкой видео."""
         return await self._process_video_stream(video_path)
+
+    def quick_x3d_check(self, video_path: str):
+        """Публичная обертка над быстрым X3D-пробингом."""
+        return self._quick_x3d_check(video_path)
 
 
 @pytest.mark.asyncio
@@ -143,3 +147,31 @@ async def test_process_video_stream_mocked(monkeypatch):
     # Проверяем, что при пустых детекциях YOLO возвращает ожидаемые пустые значения
     assert yolo_bbox == {}
     assert detected_objects == []
+
+
+def test_quick_x3d_check_retries_until_frames_are_available(monkeypatch):
+    """
+    Первый неудачный probe не должен ломать обработку,
+    если файл становится читаемым сразу после этого.
+    """
+
+    processor = InferenceProcessorTestAdapter()
+    flaky_captures = [
+        FakeVideoCapture(frame_count=0, fps=30.0, opened=False),
+        FakeVideoCapture(frame_count=16, fps=30.0),
+    ]
+
+    monkeypatch.setattr(cv2, "VideoCapture", lambda _path: flaky_captures.pop(0))
+    monkeypatch.setattr(
+        processor.runtime.x3d_processor,
+        "infer_clip",
+        lambda _frames: np.array([0.1, 2.1], dtype=np.float32),
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.services.target.video_processor.time.sleep",
+        lambda _delay: None,
+    )
+
+    result = processor.quick_x3d_check("fake.mp4")
+
+    assert list(result.keys()) == ["True"]

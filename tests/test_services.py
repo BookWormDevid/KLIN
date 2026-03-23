@@ -3,6 +3,7 @@
 """
 
 import os
+import tempfile
 import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -15,7 +16,14 @@ from app.application.services.klin import KlinService
 from app.models import KlinModel, ProcessingState
 
 
-PerformKlinContext = tuple[KlinService, AsyncMock, AsyncMock, AsyncMock, KlinModel]
+PerformKlinContext = tuple[
+    KlinService,
+    AsyncMock,
+    AsyncMock,
+    AsyncMock,
+    AsyncMock,
+    KlinModel,
+]
 
 
 # Фикстуры — общие заготовки для всех тестов
@@ -43,12 +51,19 @@ def fixture_mock_callback_sender() -> AsyncMock:
     return AsyncMock()
 
 
+@pytest.fixture(name="mock_video_storage")
+def fixture_mock_video_storage() -> AsyncMock:
+    """РњРѕРє S3-compatible storage for uploaded videos."""
+    return AsyncMock()
+
+
 @pytest.fixture(name="klin_service")
 def fixture_klin_service(
     mock_repository: AsyncMock,
     mock_inference_service: AsyncMock,
     mock_process_producer: AsyncMock,
     mock_callback_sender: AsyncMock,
+    mock_video_storage: AsyncMock,
 ) -> KlinService:
     """
     Фикстура основного сервиса KlinService.
@@ -59,6 +74,7 @@ def fixture_klin_service(
         _klin_inference_service=mock_inference_service,
         _klin_process_producer=mock_process_producer,
         _klin_callback_sender=mock_callback_sender,
+        _klin_video_storage=mock_video_storage,
     )
 
 
@@ -87,6 +103,7 @@ def fixture_perform_klin_context(
     mock_repository: AsyncMock,
     mock_inference_service: AsyncMock,
     mock_callback_sender: AsyncMock,
+    mock_video_storage: AsyncMock,
     sample_klin_model: KlinModel,
 ) -> PerformKlinContext:
     """Общий набор зависимостей для тестов perform_klin."""
@@ -97,6 +114,7 @@ def fixture_perform_klin_context(
         mock_repository,
         mock_inference_service,
         mock_callback_sender,
+        mock_video_storage,
         sample_klin_model,
     )
 
@@ -216,6 +234,7 @@ class TestPerformKlin:
             mock_repository,
             mock_inference_service,
             mock_callback_sender,
+            _,
             sample_klin_model,
         ) = perform_klin_context
         mock_repository.claim_for_processing.return_value = None
@@ -244,6 +263,7 @@ class TestPerformKlin:
             mock_repository,
             mock_inference_service,
             mock_callback_sender,
+            _,
             sample_klin_model,
         ) = perform_klin_context
 
@@ -280,6 +300,7 @@ class TestPerformKlin:
             _,
             mock_inference_service,
             _,
+            _,
             sample_klin_model,
         ) = perform_klin_context
 
@@ -313,6 +334,7 @@ class TestPerformKlin:
             mock_repository,
             mock_inference_service,
             mock_callback_sender,
+            _,
             sample_klin_model,
         ) = perform_klin_context
         mock_inference_service.analyze.side_effect = ValueError("Inference failed")
@@ -336,6 +358,7 @@ class TestPerformKlin:
             klin_service,
             _,
             mock_inference_service,
+            _,
             _,
             sample_klin_model,
         ) = perform_klin_context
@@ -368,6 +391,7 @@ class TestPerformKlin:
             _,
             mock_inference_service,
             _,
+            _,
             sample_klin_model,
         ) = perform_klin_context
         mock_inference_service.analyze.return_value = AsyncMock()
@@ -381,6 +405,58 @@ class TestPerformKlin:
         await klin_service.perform_klin(sample_klin_model.id)
 
         assert "Failed to delete temp file" in caplog.text
+
+    async def test_perform_klin_downloads_and_deletes_s3_artifact(
+        self,
+        perform_klin_context: PerformKlinContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        РџСЂРѕРІРµСЂСЏРµС‚ S3 workflow: download before inference and cleanup after.
+        """
+
+        (
+            klin_service,
+            _,
+            mock_inference_service,
+            _,
+            mock_video_storage,
+            sample_klin_model,
+        ) = perform_klin_context
+        sample_klin_model.video_path = "s3://klin-videos/klin/uploads/test-video.mp4"
+
+        expected_local_path = "C:\\temp\\downloaded-video.mp4"
+        seen_video_path: dict[str, str] = {}
+
+        async def analyze_side_effect(model: KlinModel) -> AsyncMock:
+            seen_video_path["value"] = model.video_path
+            result = AsyncMock()
+            result.x3d = "x3d"
+            result.mae = "mae"
+            result.yolo = "yolo"
+            result.objects = []
+            result.all_classes = []
+            return result
+
+        mock_inference_service.analyze.side_effect = analyze_side_effect
+
+        monkeypatch.setattr(
+            tempfile, "mkstemp", lambda suffix: (123, expected_local_path)
+        )
+        monkeypatch.setattr(os, "close", MagicMock())
+        monkeypatch.setattr(os.path, "exists", lambda _path: True)
+        mock_remove = MagicMock()
+        monkeypatch.setattr(os, "remove", mock_remove)
+
+        await klin_service.perform_klin(sample_klin_model.id)
+
+        mock_video_storage.download_to_path.assert_awaited_once_with(
+            source_uri=sample_klin_model.video_path,
+            destination_path=expected_local_path,
+        )
+        mock_video_storage.delete.assert_awaited_once_with(sample_klin_model.video_path)
+        assert seen_video_path["value"] == expected_local_path
+        mock_remove.assert_called_once_with(expected_local_path)
 
     async def test_perform_klin_update_error(
         self,
@@ -396,6 +472,7 @@ class TestPerformKlin:
             klin_service,
             mock_repository,
             mock_inference_service,
+            _,
             _,
             sample_klin_model,
         ) = perform_klin_context

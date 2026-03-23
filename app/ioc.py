@@ -5,6 +5,8 @@
 """
 
 from collections.abc import Iterator
+from importlib import import_module
+from typing import cast
 
 from dishka import Provider, Scope, provide
 from faststream.rabbit import RabbitBroker
@@ -21,17 +23,15 @@ from app.application.interfaces import (
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
-    IKlinStream,
+    IKlinVideoStorage,
 )
-from app.application.services import KlinService, StreamService
+from app.application.services import KlinService
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
-from app.infrastructure.services import (
-    InferenceProcessor,
-    KlinCallbackSender,
-    StreamProcessor,
-)
+from app.infrastructure.services.callback_sender import KlinCallbackSender
+from app.infrastructure.services.inference_stub import ApiInferenceStub
+from app.infrastructure.services.s3_storage import S3ObjectStorage
 
 
 class InfrastructureProvider(Provider):
@@ -69,9 +69,7 @@ class InfrastructureProvider(Provider):
         """
         Создает и возвращает брокера сообщений RabbitMQ.
         """
-        return RabbitBroker(
-            app_settings.rabbit_url,
-        )
+        return RabbitBroker(app_settings.rabbit_url)
 
     @provide
     def session(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -84,24 +82,60 @@ class InfrastructureProvider(Provider):
     KLIN_event_producer = provide(KlinEventProducer, provides=IKlinEventProducer)
     KLIN_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
     KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
+    KLIN_video_storage = provide(S3ObjectStorage, provides=IKlinVideoStorage)
 
 
-class ApplicationProvider(Provider):
-    """
-    Провайдер сервисов приложения.
-    """
+class ApiApplicationProvider(Provider):
+    """Провайдер сервисов API-процесса."""
 
     scope = Scope.APP
     KLIN_service = provide(KlinService)
-    STREAM_service = provide(StreamService)
 
 
-class VideoProvider(Provider):
-    """
-    Провайдер для обработки видео и инференса MAE и Yolo.
-    """
+class ApiVideoProvider(Provider):
+    """Провайдеры-заглушки для API, который не запускает инференс локально."""
 
     scope = Scope.APP
-    InferenceProcessor = provide(InferenceProcessor, provides=IKlinInference)
+    InferenceProcessor = provide(ApiInferenceStub, provides=IKlinInference)
 
-    StreamProcessor = provide(StreamProcessor, provides=IKlinStream)
+
+class WorkerApplicationProvider(Provider):
+    """Провайдер сервисов queue-worker процесса."""
+
+    scope = Scope.APP
+    KLIN_service = provide(KlinService)
+
+
+class WorkerVideoProvider(Provider):
+    """Провайдеры реальных инференс-сервисов для queue-worker процесса."""
+
+    scope = Scope.APP
+
+    @provide(provides=IKlinInference)
+    def inference_processor(self) -> IKlinInference:
+        """Создает инференс-процессор только в worker-контейнере."""
+
+        processor_module = import_module(
+            "app.infrastructure.services.target.video_processor"
+        )
+        return cast(IKlinInference, processor_module.InferenceProcessor())
+
+
+def get_api_providers() -> tuple[Provider, ...]:
+    """Возвращает набор провайдеров для API-контейнера."""
+
+    return (
+        InfrastructureProvider(),
+        ApiApplicationProvider(),
+        ApiVideoProvider(),
+    )
+
+
+def get_worker_providers() -> tuple[Provider, ...]:
+    """Возвращает набор провайдеров для queue-worker контейнера."""
+
+    return (
+        InfrastructureProvider(),
+        WorkerApplicationProvider(),
+        WorkerVideoProvider(),
+    )

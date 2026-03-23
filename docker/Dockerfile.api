@@ -1,0 +1,45 @@
+FROM python:3.10.6-slim AS builder
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /build
+ENV UV_LINK_MODE=copy
+
+RUN python -m venv /opt/venv
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /opt/venv/bin/python \
+    "aiofiles>=25.1.0" \
+    "aiohttp>=3.13.3" \
+    "async-timeout>=4.0.3" \
+    "asyncpg>=0.31.0" \
+    "boto3>=1.42.73" \
+    "dishka>=1.8.0" \
+    "faststream[rabbit]>=0.6.6" \
+    "granian>=2.7.2" \
+    "litestar[prometheus,structlog]>=2.21.0" \
+    "msgspec>=0.20.0" \
+    "python-dotenv>=1.2.1" \
+    "sqlalchemy[asyncio]>=2.0.46"
+
+FROM python:3.10.6-slim AS final
+ENV PATH="/opt/venv/bin:${PATH}"
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /code
+
+COPY --from=builder /opt/venv /opt/venv
+COPY app /code/app
+
+CMD [
+    "python",
+    "-m",
+    "granian",
+    "--interface",
+    "asgi",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8008",
+    "app.presentation.litestar.run:app"
+]

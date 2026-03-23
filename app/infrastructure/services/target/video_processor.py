@@ -11,15 +11,13 @@ import os
 import time
 from typing import Any, cast
 
-import aiohttp
-import async_timeout
 import cv2
 import msgspec
 import numpy as np
 from numpy.typing import NDArray
 
 from app.application.dto import KlinResultDto
-from app.application.interfaces import IKlinCallbackSender, IKlinInference
+from app.application.interfaces import IKlinInference
 from app.infrastructure.helpers import (
     LoggingHelper,
     PipelineQueues,
@@ -46,22 +44,53 @@ class InferenceProcessor(IKlinInference):
         self.logging = LoggingHelper()
         self.runtime = build_processor_runtime(self.processing)
 
+    def _read_probe_frames(
+        self,
+        video_path: str,
+        *,
+        max_frames: int = 16,
+        retries: int = 3,
+        retry_delay: float = 0.1,
+    ) -> list[np.ndarray]:
+        """
+        Читает первые кадры видео с коротким retry для только что сохраненных файлов.
+        """
+
+        last_error = f"Невозможно открыть видео: {video_path}"
+
+        for attempt in range(retries + 1):
+            cap = cv2.VideoCapture(video_path)
+            frames_list: list[np.ndarray] = []
+            capture_opened = False
+
+            try:
+                capture_opened = cap.isOpened()
+                if not capture_opened:
+                    last_error = f"Невозможно открыть видео: {video_path}"
+                else:
+                    while len(frames_list) < max_frames:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        frame = cv2.resize(frame, (224, 224))
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        frames_list.append(frame)
+            finally:
+                cap.release()
+
+            if frames_list:
+                return frames_list
+
+            if capture_opened:
+                last_error = f"Видео не содержит кадров: {video_path}"
+            if attempt < retries:
+                time.sleep(retry_delay * (attempt + 1))
+
+        raise ValueError(last_error)
+
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
-        cap = cv2.VideoCapture(video_path)
-        frames_list: list[np.ndarray] = []
+        frames_list = self._read_probe_frames(video_path)
 
-        while len(frames_list) < 16:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.resize(frame, (224, 224))
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frames_list.append(frame)
-
-        cap.release()
-
-        if len(frames_list) == 0:
-            raise ValueError(f"Видео не содержит кадров: {video_path}")
         if len(frames_list) < 16:
             raise ValueError(
                 f"Недостаточно кадров для X3D. "
@@ -394,65 +423,3 @@ class InferenceProcessor(IKlinInference):
         except Exception as exc:
             logger.exception("Ошибка обработки видео %s: %s", video_name, exc)
             raise
-
-
-class KlinCallbackSender(IKlinCallbackSender):
-    """
-    Класс для отправки вывода результата
-    """
-
-    def build_payload(self, model: KlinModel) -> dict[str, Any]:
-        """
-        Builds the callback payload for the processed model.
-        """
-
-        return {
-            "klin_id": str(model.id),
-            "x3d": model.x3d,
-            "mae": model.mae,
-            "yolo": model.yolo,
-            "objects": model.objects,
-            "all_classes": model.all_classes,
-            "state": model.state,
-        }
-
-    async def post_consumer(self, model: KlinModel) -> None:
-        """
-        Отправляет вывод результата в виде json.
-        Если попыток больше чем 3 выдаёт ошибку и выдаёт ошибку.
-        """
-
-        if not model.response_url:
-            return
-
-        data = msgspec.json.encode(self.build_payload(model))
-
-        max_attempts = 3
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                async with async_timeout.timeout(30):  # 30 секунд таймаут
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            model.response_url,
-                            data=data,
-                            headers={"Content-Type": "application/json"},
-                            timeout=aiohttp.ClientTimeout(total=30),
-                        ) as resp:
-                            if 200 <= resp.status < 300:
-                                return
-
-                            body = await resp.text()
-                            raise RuntimeError(f"HTTP {resp.status}, body={body}")
-
-            except Exception as exc:
-                if attempt == max_attempts:
-                    logger.error(
-                        "Callback failed after %d attempts. "
-                        "model.id=%s response_url=%s error=%s",
-                        max_attempts,
-                        model.id,
-                        model.response_url,
-                        exc,
-                    )
-                    return
