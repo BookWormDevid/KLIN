@@ -40,6 +40,10 @@ class Settings(BaseSettings):
 
     @staticmethod
     def parse_bool_env(value: str) -> bool:
+        """
+        Парсит бред в bool
+        """
+
         normalized = value.strip().lower()
 
         if normalized in {"1", "true", "yes", "on"}:

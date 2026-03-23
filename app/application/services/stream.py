@@ -1,3 +1,7 @@
+"""
+Бизнес-логика для запуска и сопровождения потоковой обработки.
+"""
+
 import asyncio
 import logging
 import uuid
@@ -19,11 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 class StreamService:
+    """
+    Сервис управления жизненным циклом видеопотоков.
+    """
+
     _klin_stream: IKlinStream
     _klin_repository: IKlinRepository
     _klin_process_producer: IKlinProcessProducer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamingModel:
+        """
+        Создает задачу потока и отправляет ее в очередь.
+        """
         stream = KlinStreamingModel(
             camera_url=data.camera_url,
             camera_id=data.camera_id,
@@ -63,6 +74,9 @@ class StreamService:
             logger.exception("Failed to persist stream error state")
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
+        """
+        Запускает обработку уже созданного потока.
+        """
         stream: (
             KlinStreamingModel | None
         ) = await self._klin_repository.claim_for_processing_stream(stream_id)
@@ -73,8 +87,6 @@ class StreamService:
         await self._klin_repository.update_stream(stream)
         try:
             await self._klin_stream.streaming_analyze(stream)
-            # ❗ ВАЖНО:
-            # стрим не "завершается", но если вышли — считаем FINISHED
             stream.state = ProcessingState.FINISHED
 
         except asyncio.CancelledError:
@@ -92,17 +104,19 @@ class StreamService:
                 logger.exception("Failed to update stream state")
 
     async def stop_stream(self, stream_id: uuid.UUID) -> None:
+        """
+        Останавливает поток и фиксирует итоговый статус.
+        """
         stream = await self._klin_repository.get_by_id_stream(stream_id)
         if not stream:
             return
 
-        # 🔴 ВАЖНО: сначала остановить processor
-        # self._klin_stream.stop(stream.camera_id)
-
-        # затем обновить состояние
         stream.state = ProcessingState.FINISHED
         await self._klin_repository.update_stream(stream)
 
     async def get_stream_status(self, stream_id: uuid.UUID) -> StreamReadDto:
+        """
+        Возвращает текущее состояние потоковой обработки.
+        """
         stream = await self._klin_repository.get_by_id_stream(stream_id)
         return StreamReadDto.from_streaming_model(stream)

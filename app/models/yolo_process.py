@@ -9,6 +9,10 @@ from app.models.process_base import BaseAsyncProcessModel
 
 
 class YoloProcessModel(BaseAsyncProcessModel):
+    """
+    Состояние асинхронной стадии YOLO.
+    """
+
     __tablename__ = "yolo_process"
 
     detected_objects: Mapped[str | None] = mapped_column(String(), nullable=True)

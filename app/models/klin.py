@@ -51,6 +51,10 @@ class KlinModel(BaseModel):
 
 
 class KlinStreamingModel(BaseModel):
+    """
+    Streaming task state and aggregated inference results for one camera source.
+    """
+
     __tablename__ = "klin_stream"
 
     camera_id: Mapped[str | None] = mapped_column(String(), nullable=True)

@@ -30,7 +30,9 @@ class VideoStreamState:
 
 @dataclass
 class StreamConfig:
-    """Настройки потоковой обработки."""
+    """
+    Настройки потоковой обработки.
+    """
 
     chunk_size: int = 16
     frame_size: tuple[int, int] = (224, 224)
@@ -38,7 +40,9 @@ class StreamConfig:
 
 @dataclass
 class YoloConfig:
-    """Настройки инференса YOLO."""
+    """
+    Настройки инференса YOLO.
+    """
 
     yolo_stride: int = 2
     yolo_batch_size: int = 32
@@ -49,7 +53,9 @@ class YoloConfig:
 
 @dataclass
 class MaeConfig:
-    """Настройки классификации VideoMAE."""
+    """
+    Настройки классификации VideoMAE.
+    """
 
     mae_classes: dict[int, str] = field(
         default_factory=lambda: {
@@ -73,13 +79,31 @@ class MaeConfig:
 
 @dataclass
 class StreamProcessingContext:
-    """Временный контекст обработки одного видео"""
+    """
+    Временный контекст обработки одного видео
+    """
+
+    pipeline: "PipelineQueues"
+    state: VideoStreamState
+    stats: "VideoProcessingStats"
+
+
+@dataclass
+class PipelineQueues:
+    """
+    Очереди и фоновые задачи пайплайна обработки одного видео.
+    """
 
     yolo_queue: asyncio.Queue
     mae_queue: asyncio.Queue
     yolo_task: asyncio.Task
     mae_task: asyncio.Task
-    state: VideoStreamState
+
+
+@dataclass
+class VideoProcessingStats:
+    """Счетчики и временные метаданные текущей обработки видео."""
+
     total_frames: int
     fps: float
     duration: float
@@ -88,6 +112,10 @@ class StreamProcessingContext:
 
 @dataclass
 class Queue:
+    """
+    Очереди и примитивы конкурентности для потокового инференса.
+    """
+
     executor: ThreadPoolExecutor = field(
         default_factory=lambda: ThreadPoolExecutor(max_workers=4)
     )
@@ -104,6 +132,26 @@ class Queue:
 
 @dataclass
 class HeavyLogic:
+    """
+    Состояние активации тяжелых стадий потокового анализа.
+    """
+
     heavy_active: asyncio.Event = field(default_factory=asyncio.Event)
     last_trigger_time: float = 0.0
-    HEAVY_COOLDOWN: float = 10.0
+    heavy_cooldown: float = 10.0
+
+    def activate(self, now: float) -> None:
+        """
+        Включает тяжелый режим и сохраняет время триггера.
+        """
+        self.heavy_active.set()
+        self.last_trigger_time = now
+
+    def should_disable(self, now: float) -> bool:
+        """
+        Проверяет, истек ли cooldown для тяжелого режима.
+        """
+        return (
+            self.heavy_active.is_set()
+            and now - self.last_trigger_time > self.heavy_cooldown
+        )

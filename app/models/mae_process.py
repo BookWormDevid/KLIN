@@ -9,6 +9,10 @@ from app.models.process_base import BaseAsyncProcessModel
 
 
 class MaeProcessModel(BaseAsyncProcessModel):
+    """
+    Состояние асинхронной стадии VideoMAE.
+    """
+
     __tablename__ = "mae_process"
 
     predicted_class: Mapped[str | None] = mapped_column(String(), nullable=True)

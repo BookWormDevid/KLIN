@@ -8,99 +8,47 @@ import asyncio
 import logging
 import time
 import uuid
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import cv2
 import numpy as np
-import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
 from app.application.dto import StreamEventDto
 from app.application.interfaces import IKlinEventProducer, IKlinRepository, IKlinStream
 from app.infrastructure.helpers import (
     HeavyLogic,
-    LoggingHelper,
-    MaeConfig,
-    PrepareForTriton,
     Queue,
-    StreamConfig,
-    YoloConfig,
 )
 from app.models.klin import KlinStreamingModel
 
-from .business_processor import BusinessProcessor
-from .mae_processor import MaeProcessor
-from .x3d_processor import X3DProcessor
-from .yolo_processor import YoloProcessor
+from .runtime_processor import StreamProcessorConfig, build_processor_runtime
 
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class ProcessorConfig:
-    """Конфигурация процессора."""
-
-    stream: StreamConfig = field(default_factory=StreamConfig)
-    yolo: YoloConfig = field(default_factory=YoloConfig)
-    mae: MaeConfig = field(default_factory=MaeConfig)
-    x3d_conf: float = 0.68
-
-    @property
-    def chunk_size(self) -> int:
-        return self.stream.chunk_size
-
-    @property
-    def frame_size(self) -> tuple[int, int]:
-        return self.stream.frame_size
-
-    @property
-    def yolo_stride(self) -> int:
-        return self.yolo.yolo_stride
-
-    @property
-    def yolo_batch_size(self) -> int:
-        return self.yolo.yolo_batch_size
-
-    @property
-    def yolo_conf(self) -> float:
-        return self.yolo.yolo_conf
-
-    @property
-    def yolo_classes(self) -> dict[int, str]:
-        return self.yolo.yolo_classes
-
-    @property
-    def allowed_classes(self) -> set[int]:
-        return self.yolo.allowed_classes
-
-    @property
-    def mae_classes(self) -> dict[int, str]:
-        return self.mae.mae_classes
-
-
-@dataclass
 class StreamContext:
+    """
+    Runtime context for one active camera stream.
+    """
+
     queue: Queue
     heavy: HeavyLogic
     stop_event: asyncio.Event
 
 
 class StreamProcessor(IKlinStream):
+    """
+    Runs the streaming inference pipeline and emits stage events.
+    """
+
     def __init__(self, event_producer: IKlinEventProducer) -> None:
-        self.processing = ProcessorConfig()
-        self.prepare = PrepareForTriton()
-        self.logging = LoggingHelper()
-        self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
-        self.x3d_processor = X3DProcessor(self.triton, self.prepare)
-        self.mae_processor = MaeProcessor(self.triton, self.prepare)
-        self.yolo_processor = YoloProcessor(self.triton)
-        self.business_processor = BusinessProcessor(
-            mae_classes=self.processing.mae_classes,
-            yolo_classes=self.processing.yolo_classes,
-            allowed_classes=self.processing.allowed_classes,
-            yolo_conf=self.processing.yolo_conf,
-        )
+        self.processing = StreamProcessorConfig()
+        self.runtime = build_processor_runtime(self.processing)
         self.contexts: dict[str, StreamContext] = {}
         self.event_producer = event_producer
 
@@ -113,16 +61,21 @@ class StreamProcessor(IKlinStream):
         self, frames: list[np.ndarray], context: StreamContext
     ) -> dict[str, float] | None:
         logits = await self._triton_infer_with_retry(
-            self.x3d_processor.infer_clip, frames, context=context
+            self.runtime.x3d_processor.infer_clip, frames, context=context
         )
         if logits is None:
             return None
 
-        return self.business_processor.classify_x3d_logits(logits)
+        return self.runtime.business_processor.classify_x3d_logits(logits)
 
     async def _triton_infer_with_retry(
-        self, infer_fn, *args, context: StreamContext, timeout=10, retries=4
-    ):
+        self,
+        infer_fn: Callable[..., Any],
+        *args: Any,
+        context: StreamContext,
+        timeout: float = 10,
+        retries: int = 4,
+    ) -> Any:
         loop = asyncio.get_running_loop()
 
         async with context.queue.infer_semaphore:
@@ -150,15 +103,6 @@ class StreamProcessor(IKlinStream):
 
         logger.error("Triton failed after retries")
         return None
-
-    def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
-        return self.yolo_processor.infer_batch(batch_imgs)
-
-    def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        return self.mae_processor.infer_probs(chunk_frames)
-
-    def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
-        return self.business_processor.parse_yolo_detection(pred)
 
     async def _frame_reader(
         self,
@@ -237,6 +181,80 @@ class StreamProcessor(IKlinStream):
 
         cap.release()
 
+    def _should_flush_yolo_buffer(
+        self,
+        buffer: list[tuple[int, np.ndarray, float]],
+        timestamp: float,
+        last_send: float,
+    ) -> bool:
+        return len(buffer) >= self.processing.yolo_batch_size or (
+            bool(buffer) and timestamp - last_send > 0.8
+        )
+
+    def _build_stream_yolo_batch(
+        self, buffer: list[tuple[int, np.ndarray, float]]
+    ) -> np.ndarray:
+        return np.stack(
+            [
+                self.runtime.prepare.prepare_yolo_frame_for_triton(frame)[0]
+                for _, frame, _ in buffer
+            ],
+            axis=0,
+        )
+
+    def _build_frame_detections(
+        self,
+        preds: NDArray[np.float32],
+        timestamp: float,
+    ) -> list[dict[str, Any]]:
+        detections: list[dict[str, Any]] = []
+        for pred in preds:
+            detection = self.runtime.business_processor.parse_yolo_detection(pred)
+            if detection is None:
+                continue
+            class_id, bbox = detection
+            detections.append(
+                {
+                    "class_id": class_id,
+                    "class_name": self.processing.yolo_classes.get(class_id, "unknown"),
+                    "bbox": bbox,
+                    "confidence": float(pred[4 + class_id]),
+                    "timestamp": timestamp,
+                }
+            )
+        return detections
+
+    def _collect_yolo_detections(
+        self,
+        buffer: list[tuple[int, np.ndarray, float]],
+        preds_list: list[NDArray[np.float32]],
+    ) -> list[dict[str, Any]]:
+        detections: list[dict[str, Any]] = []
+        for (_, _, timestamp), preds in zip(buffer, preds_list, strict=True):
+            detections.extend(self._build_frame_detections(preds, timestamp))
+        return detections
+
+    async def _emit_event(
+        self,
+        *,
+        event_type: str,
+        camera_id: str,
+        stream_id: uuid.UUID,
+        payload: dict[str, Any],
+    ) -> None:
+        try:
+            await self.event_producer.send_event(
+                StreamEventDto(
+                    id=str(uuid.uuid4()),
+                    type=event_type,
+                    camera_id=camera_id,
+                    stream_id=stream_id,
+                    payload=payload,
+                )
+            )
+        except Exception:
+            logger.exception("Failed to send event")
+
     async def _yolo_stream_pipeline(
         self,
         context: StreamContext,
@@ -260,18 +278,12 @@ class StreamProcessor(IKlinStream):
             if idx % self.processing.yolo_stride == 0:
                 buffer.append((idx, frame, ts))
 
-            if len(buffer) >= self.processing.yolo_batch_size or (
-                buffer and ts - last_send > 0.8
-            ):
-                batch_imgs = np.stack(
-                    [
-                        self.prepare.prepare_yolo_frame_for_triton(f)[0]
-                        for _, f, _ in buffer
-                    ],
-                    axis=0,
-                )
+            if self._should_flush_yolo_buffer(buffer, ts, last_send):
+                batch_imgs = self._build_stream_yolo_batch(buffer)
                 preds_list = await self._triton_infer_with_retry(
-                    self._infer_yolo_batch, batch_imgs, context=context
+                    self.runtime.yolo_processor.infer_batch,
+                    batch_imgs,
+                    context=context,
                 )
                 if preds_list is None:
                     logger.warning("YOLO inference failed — dropping batch")
@@ -280,41 +292,19 @@ class StreamProcessor(IKlinStream):
                     await asyncio.sleep(0.05)
                     continue
 
-                detections = []
-                for (_idx, _, ts), preds in zip(buffer, preds_list, strict=True):
-                    for pred in preds:
-                        det = self._parse_yolo_detection(pred)
-                        if det:
-                            class_id, bbox = det
-                            detections.append(
-                                {
-                                    "class_id": class_id,
-                                    "class_name": self.processing.yolo_classes.get(
-                                        class_id, "unknown"
-                                    ),
-                                    "bbox": bbox,
-                                    "confidence": float(pred[4 + class_id]),
-                                    "timestamp": ts,
-                                }
-                            )
+                detections = self._collect_yolo_detections(buffer, preds_list)
 
                 if detections:
-                    try:
-                        await self.event_producer.send_event(
-                            StreamEventDto(
-                                id=str(uuid.uuid4()),
-                                type="YOLO",
-                                camera_id=camera_id,
-                                stream_id=stream_id,
-                                payload={
-                                    "frame_idx": idx,
-                                    "timestamp": ts,
-                                    "detections": detections,
-                                },
-                            )
-                        )
-                    except Exception:
-                        logger.exception("Failed to send event")
+                    await self._emit_event(
+                        event_type="YOLO",
+                        camera_id=camera_id,
+                        stream_id=stream_id,
+                        payload={
+                            "frame_idx": idx,
+                            "timestamp": ts,
+                            "detections": detections,
+                        },
+                    )
                 buffer.clear()
                 last_send = ts
 
@@ -355,30 +345,26 @@ class StreamProcessor(IKlinStream):
 
             if len(window) == self.processing.chunk_size and ts - last_inference > 2.0:
                 probs = await self._triton_infer_with_retry(
-                    self._infer_mae_probs, window[:], context=context
+                    self.runtime.mae_processor.infer_probs,
+                    window[:],
+                    context=context,
                 )
                 if probs is None:
                     continue
                 pred_idx = int(np.argmax(probs))
                 confidence = float(probs[pred_idx])
                 label = self.processing.mae_classes.get(pred_idx, str(pred_idx))
-                try:
-                    await self.event_producer.send_event(
-                        StreamEventDto(
-                            id=str(uuid.uuid4()),
-                            type="MAE",
-                            camera_id=camera_id,
-                            stream_id=stream_id,
-                            payload={
-                                "label": label,
-                                "confidence": confidence,
-                                "start_ts": window_ts[0],
-                                "end_ts": window_ts[-1],
-                            },
-                        )
-                    )
-                except Exception:
-                    logger.exception("Failed to send event")
+                await self._emit_event(
+                    event_type="MAE",
+                    camera_id=camera_id,
+                    stream_id=stream_id,
+                    payload={
+                        "label": label,
+                        "confidence": confidence,
+                        "start_ts": window_ts[0],
+                        "end_ts": window_ts[-1],
+                    },
+                )
                 last_inference = ts
 
             frame_queue.task_done()
@@ -390,8 +376,9 @@ class StreamProcessor(IKlinStream):
         camera_id: str,
         interval: float = 3.0,
     ) -> None:
-        x3d_window = context.queue.x3d_window
         """Лёгкий постоянный чекер X3D. При триггере включает тяжёлый анализ."""
+
+        x3d_window = context.queue.x3d_window
         while not context.stop_event.is_set():
             await asyncio.sleep(interval)
             if len(x3d_window) < 16:
@@ -403,35 +390,23 @@ class StreamProcessor(IKlinStream):
             violence_prob = result.get("True", 0.0) if result is not None else 0.0
 
             if violence_prob > self.processing.x3d_conf:
-                try:
-                    await self.event_producer.send_event(
-                        StreamEventDto(
-                            id=str(uuid.uuid4()),
-                            stream_id=stream_id,
-                            camera_id=camera_id,
-                            type="X3D_VIOLENCE",
-                            payload={
-                                "prob": violence_prob,
-                                "timestamp": now,
-                            },
-                        )
-                    )
-                except Exception:
-                    logger.exception("Failed to send event")
-
-                context.heavy.heavy_active.set()
-                context.heavy.last_trigger_time = now
+                await self._emit_event(
+                    event_type="X3D_VIOLENCE",
+                    camera_id=camera_id,
+                    stream_id=stream_id,
+                    payload={
+                        "prob": violence_prob,
+                        "timestamp": now,
+                    },
+                )
+                context.heavy.activate(now)
 
             # Авто-выключение тяжёлого режима
-            elif (
-                context.heavy.heavy_active.is_set()
-                and now - context.heavy.last_trigger_time > context.heavy.HEAVY_COOLDOWN
-            ):
+            elif context.heavy.should_disable(now):
                 logger.info("X3D stable normal → heavy OFF")
                 context.heavy.heavy_active.clear()
 
-    # Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
-    async def broadcast_frames(self, context: StreamContext):
+    async def broadcast_frames(self, context: StreamContext) -> None:
         """
         Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
         """
@@ -452,6 +427,8 @@ class StreamProcessor(IKlinStream):
             context.queue.source_queue.task_done()
 
     def stop(self, camera_id: str) -> None:
+        """Stops an active stream by camera id."""
+
         context = self.contexts.get(camera_id)
 
         if not context:
@@ -463,6 +440,8 @@ class StreamProcessor(IKlinStream):
         context.stop_event.set()
 
     async def streaming_analyze(self, model: KlinStreamingModel) -> None:
+        """Launches the background tasks for one camera stream."""
+
         assert model.camera_url is not None
         assert model.camera_id is not None
 
@@ -519,27 +498,36 @@ class StreamProcessor(IKlinStream):
 
 
 class StreamEventConsumer:
-    def __init__(self, repository: IKlinRepository):
+    """
+    Persists stream events in the repository layer.
+    """
+
+    def __init__(self, repository: IKlinRepository) -> None:
         self.repository = repository
 
-    async def handle(self, event: StreamEventDto):
-        if event.type == "YOLO":
-            try:
-                await self.repository.save_yolo(event)
-            except Exception:
-                logger.exception("Failed to save YOLO")
-                raise
+    async def handle(self, event: StreamEventDto) -> None:
+        """
+        Persists one stream event according to its stage type.
+        """
 
-        elif event.type == "MAE":
-            try:
-                await self.repository.save_mae(event)
-            except Exception:
-                logger.exception("Failed to save MAE")
-                raise
+        handlers = {
+            "YOLO": self.repository.save_yolo,
+            "MAE": self.repository.save_mae,
+            "X3D_VIOLENCE": self.repository.save_x3d,
+        }
+        handler = handlers.get(event.type)
+        if handler is None:
+            logger.warning("Unknown stream event type: %s", event.type)
+            return
 
-        elif event.type == "X3D_VIOLENCE":
-            try:
-                await self.repository.save_x3d(event)
-            except Exception:
-                logger.exception("Failed to save x3d")
-                raise
+        try:
+            await handler(event)
+        except Exception:
+            logger.exception("Failed to save %s", event.type)
+            raise
+
+    async def handle_many(self, events: list[StreamEventDto]) -> None:
+        """Persists a sequence of stream events one by one."""
+
+        for event in events:
+            await self.handle(event)

@@ -11,6 +11,10 @@ from app.models.process_base import BaseAsyncProcessModel
 
 
 class BusinessProcessModel(BaseAsyncProcessModel):
+    """
+    Состояние асинхронной бизнес-оркестрации пайплайна.
+    """
+
     __tablename__ = "business_process"
 
     decision: Mapped[str | None] = mapped_column(String(), nullable=True)

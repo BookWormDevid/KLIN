@@ -9,6 +9,10 @@ from app.models.process_base import BaseAsyncProcessModel
 
 
 class X3DProcessModel(BaseAsyncProcessModel):
+    """
+    Состояние асинхронной стадии X3D.
+    """
+
     __tablename__ = "x3d_process"
 
     prediction: Mapped[str | None] = mapped_column(String(), nullable=True)

@@ -53,7 +53,7 @@ class KlinReadDto(msgspec.Struct, frozen=True):
     @classmethod
     def from_model(cls, model: KlinModel) -> "KlinReadDto":
         """
-        Создает MAEReadDto из модели базы данных MAEModel.
+        Создает KlinReadDto из модели базы данных.
         """
         return KlinReadDto(
             id=model.id,
@@ -76,18 +76,26 @@ class KlinProcessDto(msgspec.Struct, frozen=True):
 
 class StreamProcessDto(msgspec.Struct, frozen=True):
     """
-    DTO для передачи идентификатора задачи в очередь обработки.
+    DTO для передачи идентификатора потоковой задачи в очередь обработки.
     """
 
     stream_id: uuid.UUID
 
 
 class StreamUploadDto(msgspec.Struct, frozen=True):
+    """
+    DTO для запуска обработки видеопотока.
+    """
+
     camera_url: str
     camera_id: str
 
 
 class StreamResultDto(msgspec.Struct, frozen=True):
+    """
+    DTO с результатами потоковой обработки.
+    """
+
     x3d: str | None
     mae: str | None
     yolo: str | None
@@ -96,6 +104,10 @@ class StreamResultDto(msgspec.Struct, frozen=True):
 
 
 class StreamReadDto(msgspec.Struct, frozen=True):
+    """
+    DTO для чтения состояния потоковой обработки.
+    """
+
     id: uuid.UUID
     x3d: str | None
     mae: str | None
@@ -106,6 +118,9 @@ class StreamReadDto(msgspec.Struct, frozen=True):
 
     @classmethod
     def from_streaming_model(cls, model: KlinStreamingModel) -> "StreamReadDto":
+        """
+        Создает DTO чтения из модели потоковой обработки.
+        """
         return StreamReadDto(
             id=model.id,
             x3d=model.x3d,
@@ -119,6 +134,10 @@ class StreamReadDto(msgspec.Struct, frozen=True):
 
 @dataclass
 class StreamEventDto:
+    """
+    Внутреннее событие потокового анализа.
+    """
+
     id: str
     stream_id: uuid.UUID
     camera_id: str

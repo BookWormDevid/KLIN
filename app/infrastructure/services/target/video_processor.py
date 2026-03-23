@@ -9,7 +9,6 @@ import inspect
 import logging
 import os
 import time
-from dataclasses import dataclass, field
 from typing import Any, cast
 
 import aiohttp
@@ -17,74 +16,26 @@ import async_timeout
 import cv2
 import msgspec
 import numpy as np
-import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 from numpy.typing import NDArray
 
 from app.application.dto import KlinResultDto
 from app.application.interfaces import IKlinCallbackSender, IKlinInference
 from app.infrastructure.helpers import (
     LoggingHelper,
-    MaeConfig,
-    PrepareForTriton,
-    StreamConfig,
+    PipelineQueues,
     StreamProcessingContext,
-    TimeRangeHelper,
+    VideoProcessingStats,
     VideoStreamState,
-    YoloConfig,
 )
 from app.models.klin import KlinModel
 
-from .business_processor import BusinessProcessor
-from .mae_processor import MaeProcessor
-from .x3d_processor import X3DProcessor
-from .yolo_processor import YoloProcessor
+from .runtime_processor import ProcessorConfig, build_processor_runtime
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ProcessorConfig:
-    """Конфигурация процессора."""
-
-    stream: StreamConfig = field(default_factory=StreamConfig)
-    yolo: YoloConfig = field(default_factory=YoloConfig)
-    mae: MaeConfig = field(default_factory=MaeConfig)
-
-    @property
-    def chunk_size(self) -> int:
-        return self.stream.chunk_size
-
-    @property
-    def frame_size(self) -> tuple[int, int]:
-        return self.stream.frame_size
-
-    @property
-    def yolo_stride(self) -> int:
-        return self.yolo.yolo_stride
-
-    @property
-    def yolo_batch_size(self) -> int:
-        return self.yolo.yolo_batch_size
-
-    @property
-    def yolo_conf(self) -> float:
-        return self.yolo.yolo_conf
-
-    @property
-    def yolo_classes(self) -> dict[int, str]:
-        return self.yolo.yolo_classes
-
-    @property
-    def allowed_classes(self) -> set[int]:
-        return self.yolo.allowed_classes
-
-    @property
-    def mae_classes(self) -> dict[int, str]:
-        return self.mae.mae_classes
-
-
-class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-methods
+class InferenceProcessor(IKlinInference):
     """
     Процессор. Содержит методы подключения моделей,
     обработки видео с помощью videomae, yolo, x3d.
@@ -92,21 +43,8 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
 
     def __init__(self) -> None:
         self.processing = ProcessorConfig()
-        self.prepare = PrepareForTriton()
-        self.timerange = TimeRangeHelper()
         self.logging = LoggingHelper()
-        self.video_data = VideoStreamState()
-        self.stream_context = StreamConfig()
-        self.triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
-        self.x3d_processor = X3DProcessor(self.triton, self.prepare)
-        self.mae_processor = MaeProcessor(self.triton, self.prepare)
-        self.yolo_processor = YoloProcessor(self.triton)
-        self.business_processor = BusinessProcessor(
-            mae_classes=self.processing.mae_classes,
-            yolo_classes=self.processing.yolo_classes,
-            allowed_classes=self.processing.allowed_classes,
-            yolo_conf=self.processing.yolo_conf,
-        )
+        self.runtime = build_processor_runtime(self.processing)
 
     def _quick_x3d_check(self, video_path: str) -> dict[str, float]:
         cap = cv2.VideoCapture(video_path)
@@ -130,8 +68,8 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
                 f"Получено {len(frames_list)}, требуется 16"
             )
 
-        logits = self.x3d_processor.infer_clip(frames_list)
-        return self.business_processor.classify_x3d_logits(logits)
+        logits = self.runtime.x3d_processor.infer_clip(frames_list)
+        return self.runtime.business_processor.classify_x3d_logits(logits)
 
     async def _infer_yolo_batch_async(
         self, batch_imgs: np.ndarray
@@ -146,7 +84,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         return await loop.run_in_executor(None, self._infer_mae_probs, chunk_frames)
 
     def _infer_yolo_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
-        return self.yolo_processor.infer_batch(batch_imgs)
+        return self.runtime.yolo_processor.infer_batch(batch_imgs)
 
     async def _process_yolo_batch(self, state: VideoStreamState, fps: float) -> None:
         if not state.yolo_buffer:
@@ -160,7 +98,7 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             self._store_yolo_detections(state, preds, timesteps)
 
     def _infer_mae_probs(self, chunk_frames: list[np.ndarray]) -> NDArray[np.float32]:
-        return self.mae_processor.infer_probs(chunk_frames)
+        return self.runtime.mae_processor.infer_probs(chunk_frames)
 
     async def _predict_mae_chunk(
         self,
@@ -171,17 +109,28 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         fps: float,
     ) -> dict[str, Any]:
         probs = await self._infer_mae_probs_async(chunk_frames)
-        return self.business_processor.build_mae_result(
+        return self.runtime.business_processor.build_mae_result(
             probs,
             start_frame=start_frame,
             end_frame=end_frame,
             fps=fps,
-            timerange=self.timerange,
         )
 
-    async def _run_predict_mae_chunk(self, **kwargs: Any) -> dict[str, Any]:
+    async def _run_predict_mae_chunk(
+        self,
+        *,
+        chunk_frames: list[np.ndarray],
+        start_frame: int,
+        end_frame: int,
+        fps: float,
+    ) -> dict[str, Any]:
         predict_mae_chunk = cast(Any, self._predict_mae_chunk)
-        result: Any = predict_mae_chunk(**kwargs)
+        result: Any = predict_mae_chunk(
+            chunk_frames=chunk_frames,
+            start_frame=start_frame,
+            end_frame=end_frame,
+            fps=fps,
+        )
         if inspect.isawaitable(result):
             return cast(dict[str, Any], await result)
         return cast(dict[str, Any], result)
@@ -262,13 +211,13 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
     ) -> tuple[np.ndarray, list[int]]:
         frame_indices = [frame_idx for frame_idx, _ in yolo_buffer]
         batch_imgs = [
-            self.prepare.prepare_yolo_frame_for_triton(frame)[0]
+            self.runtime.prepare.prepare_yolo_frame_for_triton(frame)[0]
             for _, frame in yolo_buffer
         ]
         return np.stack(batch_imgs, axis=0), frame_indices
 
     def _parse_yolo_detection(self, pred: np.ndarray) -> tuple[int, list[float]] | None:
-        return self.business_processor.parse_yolo_detection(pred)
+        return self.runtime.business_processor.parse_yolo_detection(pred)
 
     def _store_yolo_detections(
         self, state: VideoStreamState, preds: np.ndarray, timesteps: float
@@ -282,9 +231,86 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             state.detected_class_ids.add(class_id)
 
     def _resolve_detected_objects(self, detected_class_ids: set[int]) -> list[str]:
-        return self.business_processor.resolve_detected_objects(detected_class_ids)
+        return self.runtime.business_processor.resolve_detected_objects(
+            detected_class_ids
+        )
 
-    # pylint: disable=too-many-locals
+    def _create_stream_context(
+        self,
+        *,
+        total_frames: int,
+        fps: float,
+    ) -> StreamProcessingContext:
+        state = VideoStreamState()
+        yolo_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        mae_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
+        pipeline = PipelineQueues(
+            yolo_queue=yolo_queue,
+            mae_queue=mae_queue,
+            yolo_task=asyncio.create_task(self._yolo_pipeline(yolo_queue, state, fps)),
+            mae_task=asyncio.create_task(self._mae_pipeline(mae_queue, state, fps)),
+        )
+        stats = VideoProcessingStats(
+            total_frames=total_frames,
+            fps=fps,
+            duration=total_frames / fps if fps > 0 else 0.0,
+        )
+        return StreamProcessingContext(
+            pipeline=pipeline,
+            state=state,
+            stats=stats,
+        )
+
+    async def _queue_video_frame(
+        self,
+        context: StreamProcessingContext,
+        frame: np.ndarray,
+    ) -> None:
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
+        await context.pipeline.yolo_queue.put((frame_resized, context.stats.frame_idx))
+        await context.pipeline.mae_queue.put((frame_resized, context.stats.frame_idx))
+        context.stats.frame_idx += 1
+        context.state.frame_idx = context.stats.frame_idx
+
+    async def _close_stream_context(self, context: StreamProcessingContext) -> None:
+        await context.pipeline.yolo_queue.put(None)
+        await context.pipeline.mae_queue.put(None)
+
+    async def _finalize_stream_context(
+        self, context: StreamProcessingContext
+    ) -> tuple[
+        list[dict[str, Any]],
+        dict[float, list[list[float]]],
+        list[str],
+        dict[str, Any],
+    ]:
+        pipeline_results = await asyncio.gather(
+            context.pipeline.yolo_task,
+            context.pipeline.mae_task,
+            return_exceptions=True,
+        )
+        for result in pipeline_results:
+            if isinstance(result, BaseException):
+                raise result
+
+        await self._flush_partial_chunk(context.state, context.stats.fps)
+        await self._flush_yolo_batch(context.state, context.stats.fps)
+
+        objects = self._resolve_detected_objects(context.state.detected_class_ids)
+        video_info = self.logging.build_video_info(
+            total_frames=context.stats.total_frames,
+            fps=context.stats.fps,
+            duration=context.stats.duration,
+            frames_read=context.stats.frame_idx,
+        )
+        return (
+            context.state.mae_results,
+            dict(context.state.bbox_by_time),
+            objects,
+            video_info,
+        )
+
     async def _process_video_stream(
         self, video_path: str
     ) -> tuple[
@@ -297,23 +323,9 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
         if not cap.isOpened():
             raise ValueError(f"Невозможно открыть видео: {video_path}")
 
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = float(cap.get(cv2.CAP_PROP_FPS))
-        duration = total_frames / fps if fps > 0 else 0.0
-
-        state = VideoStreamState()
-        yolo_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
-        mae_queue: asyncio.Queue = asyncio.Queue(maxsize=128)
-
-        ctx = StreamProcessingContext(
-            yolo_queue=yolo_queue,
-            mae_queue=mae_queue,
-            state=state,
-            total_frames=total_frames,
-            fps=fps,
-            duration=duration,
-            yolo_task=asyncio.create_task(self._yolo_pipeline(yolo_queue, state, fps)),
-            mae_task=asyncio.create_task(self._mae_pipeline(mae_queue, state, fps)),
+        ctx = self._create_stream_context(
+            total_frames=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            fps=float(cap.get(cv2.CAP_PROP_FPS)),
         )
 
         try:
@@ -322,45 +334,26 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
                 if not ret:
                     break
 
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame_resized = cv2.resize(frame_rgb, self.processing.frame_size)
-                await ctx.yolo_queue.put((frame_resized, ctx.frame_idx))
-                await ctx.mae_queue.put((frame_resized, ctx.frame_idx))
-                ctx.frame_idx += 1
-                state.frame_idx = ctx.frame_idx
-
+                await self._queue_video_frame(ctx, frame)
         finally:
             cap.release()
-            await ctx.yolo_queue.put(None)
-            await ctx.mae_queue.put(None)
+            await self._close_stream_context(ctx)
 
-        # ожидание завершения пайплайнов
-        pipeline_results = await asyncio.gather(
-            ctx.yolo_task, ctx.mae_task, return_exceptions=True
-        )
-        for res in pipeline_results:
-            if isinstance(res, BaseException):
-                raise res
+        return await self._finalize_stream_context(ctx)
 
-        # финализация
-        await self._flush_partial_chunk(state, ctx.fps)
-        await self._flush_yolo_batch(state, ctx.fps)
+    async def process_video_stream(
+        self, video_path: str
+    ) -> tuple[
+        list[dict[str, Any]],
+        dict[float, list[list[float]]],
+        list[str],
+        dict[str, Any],
+    ]:
+        """
+        Public wrapper around the internal video stream pipeline.
+        """
 
-        objects = self._resolve_detected_objects(state.detected_class_ids)
-
-        video_info = self.logging.build_video_info(
-            total_frames=ctx.total_frames,
-            fps=ctx.fps,
-            duration=ctx.duration,
-            frames_read=ctx.frame_idx,
-        )
-
-        return (
-            state.mae_results,
-            dict(state.bbox_by_time),
-            objects,
-            video_info,
-        )
+        return await self._process_video_stream(video_path)
 
     async def analyze(self, model: KlinModel) -> KlinResultDto:
         start_ts = time.time()
@@ -403,10 +396,25 @@ class InferenceProcessor(IKlinInference):  # pylint: disable=too-few-public-meth
             raise
 
 
-class KlinCallbackSender(IKlinCallbackSender):  # pylint: disable=too-few-public-methods
+class KlinCallbackSender(IKlinCallbackSender):
     """
     Класс для отправки вывода результата
     """
+
+    def build_payload(self, model: KlinModel) -> dict[str, Any]:
+        """
+        Builds the callback payload for the processed model.
+        """
+
+        return {
+            "klin_id": str(model.id),
+            "x3d": model.x3d,
+            "mae": model.mae,
+            "yolo": model.yolo,
+            "objects": model.objects,
+            "all_classes": model.all_classes,
+            "state": model.state,
+        }
 
     async def post_consumer(self, model: KlinModel) -> None:
         """
@@ -417,17 +425,7 @@ class KlinCallbackSender(IKlinCallbackSender):  # pylint: disable=too-few-public
         if not model.response_url:
             return
 
-        payload: dict[str, Any] = {
-            "klin_id": str(model.id),
-            "x3d": model.x3d,
-            "mae": model.mae,
-            "yolo": model.yolo,
-            "objects": model.objects,
-            "all_classes": model.all_classes,
-            "state": model.state,
-        }
-
-        data = msgspec.json.encode(payload)
+        data = msgspec.json.encode(self.build_payload(model))
 
         max_attempts = 3
 

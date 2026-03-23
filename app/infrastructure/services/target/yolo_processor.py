@@ -1,3 +1,7 @@
+"""
+Triton-процессор для стадии YOLO.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,12 +13,17 @@ from numpy.typing import NDArray
 
 @dataclass
 class YoloProcessor:
-    """Triton-backed YOLO stage."""
+    """
+    Triton-backed YOLO.
+    """
 
     triton: grpcclient.InferenceServerClient
     model_name: str = "yolo_person"
 
     def infer_batch(self, batch_imgs: np.ndarray) -> list[NDArray[np.float32]]:
+        """
+        Выполняет батчевый YOLO-инференс и разворачивает выход по кадрам.
+        """
         inputs = grpcclient.InferInput("images", batch_imgs.shape, "FP32")
         inputs.set_data_from_numpy(batch_imgs)
         outputs = grpcclient.InferRequestedOutput("output0")

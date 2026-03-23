@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-from app.infrastructure.helpers import TimeRangeHelper
 from app.infrastructure.services.target import BusinessProcessor
 
 
@@ -31,7 +30,6 @@ def test_build_mae_result_maps_class_and_time_range() -> None:
         start_frame=0,
         end_frame=29,
         fps=30.0,
-        timerange=TimeRangeHelper(),
     )
 
     assert result["time"] == [0.0, 1.0]
