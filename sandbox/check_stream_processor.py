@@ -2,18 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 import uuid
+from pathlib import Path
+from typing import TYPE_CHECKING
 
-from app.application.dto import StreamEventDto
-from app.application.interfaces import IKlinEventProducer
-from app.infrastructure.services import StreamProcessor
-from app.models.klin import KlinStreamingModel
+
+if TYPE_CHECKING:
+    from app.application.dto import StreamEventDto
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 logger = logging.getLogger(__name__)
 
 
-class DummyEventProducer(IKlinEventProducer):
+class DummyEventProducer:
     """Просто логирует события — идеально для теста с видео-файлом."""
 
     async def send_event(self, event: StreamEventDto) -> None:
@@ -27,6 +34,9 @@ class DummyEventProducer(IKlinEventProducer):
 
 
 async def test():
+    from app.infrastructure.services import StreamProcessor
+    from app.models.klin import KlinStreamingModel
+
     producer = DummyEventProducer()
     processor = StreamProcessor(event_producer=producer)
     logging.basicConfig(
@@ -34,7 +44,7 @@ async def test():
         format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     )
 
-    test_file = r"C:\Users\meksi\Documents\GitHub\fi004.mp4"
+    test_file = "./tests/videos/svoi_hun_syn.avi"
     model = KlinStreamingModel(
         id=uuid.uuid4(),
         camera_url=test_file,
