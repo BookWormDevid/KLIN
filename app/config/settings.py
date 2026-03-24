@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     default_s3_key_prefix: str = "klin/uploads"
 
     Klin_queue = "Klin-queue"
+    Klin_stream_queue = "Klin-stream-queue"
 
     @staticmethod
     def parse_bool_env(value: str) -> bool:

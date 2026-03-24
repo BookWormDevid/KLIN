@@ -14,7 +14,13 @@ from app.application.dto import (
     StreamEventDto,
     StreamProcessDto,
 )
-from app.models import KlinModel, KlinStreamingModel
+from app.models import (
+    KlinMaeResult,
+    KlinModel,
+    KlinStreamState,
+    KlinX3DResult,
+    KlinYoloResult,
+)
 
 
 class IKlinEventProducer(Protocol):
@@ -24,7 +30,13 @@ class IKlinEventProducer(Protocol):
 
 class IKlinStream(Protocol):
     @abstractmethod
-    async def streaming_analyze(self, model: KlinStreamingModel) -> None: ...
+    async def streaming_analyze(self, model: KlinStreamState) -> None: ...
+
+    @abstractmethod
+    async def stop(self, camera_id: str) -> None: ...
+
+    @abstractmethod
+    async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool: ...
 
 
 class IKlinInference(Protocol):
@@ -76,13 +88,13 @@ class IKlinRepository(Protocol):
     """
 
     @abstractmethod
-    async def save_yolo(self, event: StreamEventDto) -> None: ...
+    async def save_yolo(self, event: KlinYoloResult) -> None: ...
 
     @abstractmethod
-    async def save_mae(self, event: StreamEventDto) -> None: ...
+    async def save_mae(self, event: KlinMaeResult) -> None: ...
 
     @abstractmethod
-    async def save_x3d(self, event: StreamEventDto) -> None: ...
+    async def save_x3d(self, event: KlinX3DResult) -> None: ...
 
     @abstractmethod
     async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel:
@@ -91,7 +103,7 @@ class IKlinRepository(Protocol):
         """
 
     @abstractmethod
-    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamingModel:
+    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState:
         """
         Метод передачи данных из бд по id
         """
@@ -105,32 +117,22 @@ class IKlinRepository(Protocol):
 
     async def claim_for_processing_stream(
         self, klin_id: uuid.UUID
-    ) -> KlinStreamingModel | None:
+    ) -> KlinStreamState | None:
         """
         Атомарно переводит задачу из PENDING в PROCESSING.
         Возвращает модель, если захват выполнен, иначе None.
         """
 
     @abstractmethod
-    async def create(self, model: KlinModel) -> KlinModel:
+    async def create(
+        self, model: KlinModel | KlinStreamState
+    ) -> KlinModel | KlinStreamState:
         """
         Метод для создания запроса в бд
         """
 
     @abstractmethod
-    async def create_stream(self, model: KlinStreamingModel) -> KlinStreamingModel:
-        """
-        Метод для создания запроса в бд
-        """
-
-    @abstractmethod
-    async def update(self, model: KlinModel) -> None:
-        """
-        Метод для обновления запроса в бд
-        """
-
-    @abstractmethod
-    async def update_stream(self, model: KlinStreamingModel) -> None:
+    async def update(self, model: KlinModel | KlinStreamState) -> None:
         """
         Метод для обновления запроса в бд
         """

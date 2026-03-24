@@ -52,26 +52,6 @@ class KlinModel(BaseModel):
     objects: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
 
-class KlinStreamingModel(BaseModel):
-    """
-    Streaming task state and aggregated inference results for one camera source.
-    """
-
-    __tablename__ = "klin_stream"
-
-    camera_id: Mapped[str | None] = mapped_column(String(), nullable=True)
-    camera_url: Mapped[str | None] = mapped_column()
-    state: Mapped[ProcessingState] = mapped_column(String())
-    x3d: Mapped[str | None] = mapped_column(String(), nullable=True)
-    mae: Mapped[str | None] = mapped_column(String(), nullable=True)
-    yolo: Mapped[str | None] = mapped_column(String(), nullable=True)
-    all_classes: Mapped[list[str] | None] = mapped_column(
-        ARRAY(String()),
-        nullable=True,
-    )
-    objects: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-
-
 class KlinStreamState(BaseModel):
     """
     Streaming task state and aggregated inference results for one camera source.
@@ -81,7 +61,7 @@ class KlinStreamState(BaseModel):
 
     camera_id: Mapped[str] = mapped_column(String(), index=True, unique=True)
     camera_url: Mapped[str | None] = mapped_column(nullable=True)
-    state: Mapped[str] = mapped_column(String(), index=True)
+    state: Mapped[ProcessingState] = mapped_column(String(), index=True)
 
     last_x3d_label: Mapped[str | None] = mapped_column(String(), nullable=True)
     last_x3d_confidence: Mapped[float | None] = mapped_column(nullable=True)
@@ -109,7 +89,6 @@ class KlinX3DResult(BaseModel):
     label: Mapped[str] = mapped_column(String())
     confidence: Mapped[float] = mapped_column()
     ts: Mapped[float] = mapped_column()
-    model_version: Mapped[str | None] = mapped_column(String(), nullable=True)
 
 
 class KlinMaeResult(BaseModel):
@@ -127,7 +106,7 @@ class KlinMaeResult(BaseModel):
     confidence: Mapped[float] = mapped_column()
     start_ts: Mapped[float] = mapped_column()
     end_ts: Mapped[float] = mapped_column()
-    model_version: Mapped[str | None] = mapped_column(String(), nullable=True)
+    probs: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class KlinYoloResult(BaseModel):
@@ -142,6 +121,5 @@ class KlinYoloResult(BaseModel):
     event_id: Mapped[str] = mapped_column(String(), unique=True, index=True)
 
     frame_idx: Mapped[int | None] = mapped_column(nullable=True)
-    # or a single frame??? Idkkkk
     ts: Mapped[float] = mapped_column()
-    detections: Mapped[dict] = mapped_column(JSONB)
+    detections: Mapped[list[dict]] = mapped_column(JSONB)

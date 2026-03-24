@@ -22,7 +22,7 @@ async def test_klin_process_producer_supports_send_stream() -> None:
 @pytest.mark.asyncio
 async def test_klin_event_producer_dispatches_yolo_event() -> None:
     repository = AsyncMock()
-    producer = KlinEventProducer(_repository=repository)
+    producer = KlinEventProducer(_rabbit_broker=repository)
 
     event = StreamEventDto(
         id="1",
@@ -40,7 +40,7 @@ async def test_klin_event_producer_dispatches_yolo_event() -> None:
 @pytest.mark.asyncio
 async def test_klin_event_producer_rejects_unknown_event() -> None:
     repository = AsyncMock()
-    producer = KlinEventProducer(_repository=repository)
+    producer = KlinEventProducer(_rabbit_broker=repository)
 
     event = StreamEventDto(
         id="1",

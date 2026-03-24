@@ -3,13 +3,23 @@ Init barrel for all the core models
 """
 
 from .base import BaseModel, Model
-from .klin import KlinModel, KlinStreamingModel, ProcessingState
+from .klin import (
+    KlinMaeResult,
+    KlinModel,
+    KlinStreamState,
+    KlinX3DResult,
+    KlinYoloResult,
+    ProcessingState,
+)
 
 
 __all__ = (
     "BaseModel",
     "KlinModel",
-    "KlinStreamingModel",
     "Model",
     "ProcessingState",
+    "KlinStreamState",
+    "KlinYoloResult",
+    "KlinMaeResult",
+    "KlinX3DResult",
 )

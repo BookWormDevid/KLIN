@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import msgspec
 
-from app.models import KlinModel, KlinStreamingModel, ProcessingState
+from app.models import KlinModel, KlinStreamState, ProcessingState
 
 
 class KlinUploadDto(msgspec.Struct, frozen=True):
@@ -67,79 +67,80 @@ class KlinReadDto(msgspec.Struct, frozen=True):
 
 
 class KlinProcessDto(msgspec.Struct, frozen=True):
-    """
-    DTO для передачи идентификатора задачи в очередь обработки.
-    """
-
     klin_id: uuid.UUID
 
 
 class StreamProcessDto(msgspec.Struct, frozen=True):
-    """
-    DTO для передачи идентификатора потоковой задачи в очередь обработки.
-    """
-
     stream_id: uuid.UUID
 
 
 class StreamUploadDto(msgspec.Struct, frozen=True):
-    """
-    DTO для запуска обработки видеопотока.
-    """
-
     camera_url: str
     camera_id: str
 
 
-class StreamResultDto(msgspec.Struct, frozen=True):
-    """
-    DTO с результатами потоковой обработки.
-    """
+# ===================== НОВЫЕ DTO ДЛЯ СТРИМИНГА =====================
 
-    x3d: str | None
-    mae: str | None
-    yolo: str | None
-    objects: list[str] | None
-    all_classes: list[str] | None
+
+class StreamResultDto(msgspec.Struct, frozen=True):
+    """Результаты потоковой обработки (можно использовать для API ответов)."""
+
+    x3d: str | None = None
+    x3d_confidence: float | None = None
+    mae: str | None = None
+    mae_confidence: float | None = None
+    objects: list[str] | None = None
+    all_classes: list[str] | None = None
 
 
 class StreamReadDto(msgspec.Struct, frozen=True):
     """
-    DTO для чтения состояния потоковой обработки.
+    DTO для чтения текущего состояния потоковой обработки.
+    Отражает реальную структуру KlinStreamState.
     """
 
     id: uuid.UUID
-    x3d: str | None
-    mae: str | None
-    yolo: str | None
-    objects: list[str] | None
-    all_classes: list[str] | None
+    camera_id: str
+    camera_url: str | None
     state: ProcessingState
 
+    # Последние известные результаты
+    last_x3d_label: str | None = None
+    last_x3d_confidence: float | None = None
+
+    last_mae_label: str | None = None
+    last_mae_confidence: float | None = None
+
+    objects: list[str] | None = None  # последние обнаруженные объекты (YOLO)
+    all_classes: list[str] | None = None  # если нужно хранить все классы
+
     @classmethod
-    def from_streaming_model(cls, model: KlinStreamingModel) -> "StreamReadDto":
+    def from_stream_state(cls, model: KlinStreamState) -> "StreamReadDto":
         """
-        Создает DTO чтения из модели потоковой обработки.
+        Создаёт StreamReadDto из KlinStreamState.
         """
         return StreamReadDto(
             id=model.id,
-            x3d=model.x3d,
-            mae=model.mae,
-            yolo=model.yolo,
+            camera_id=model.camera_id,
+            camera_url=model.camera_url,
+            state=model.state,
+            last_x3d_label=model.last_x3d_label,
+            last_x3d_confidence=model.last_x3d_confidence,
+            last_mae_label=model.last_mae_label,
+            last_mae_confidence=model.last_mae_confidence,
             objects=model.objects,
             all_classes=model.all_classes,
-            state=model.state,
         )
 
 
 @dataclass
 class StreamEventDto:
     """
-    Внутреннее событие потокового анализа.
+    Внутреннее событие, которое процессор отправляет в consumer.
     """
 
     id: str
     stream_id: uuid.UUID
     camera_id: str
-    type: str
-    payload: dict
+    type: str  # "YOLO", "MAE", "X3D_VIOLENCE"
+    payload: dict  # содержимое зависит от типа события

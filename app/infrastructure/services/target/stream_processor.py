@@ -22,7 +22,12 @@ from app.infrastructure.helpers import (
     HeavyLogic,
     Queue,
 )
-from app.models.klin import KlinStreamingModel
+from app.models.klin import (
+    KlinMaeResult,
+    KlinStreamState,
+    KlinX3DResult,
+    KlinYoloResult,
+)
 
 from .runtime_processor import StreamProcessorConfig, build_processor_runtime
 
@@ -39,6 +44,7 @@ class StreamContext:
     queue: Queue
     heavy: HeavyLogic
     stop_event: asyncio.Event
+    stopped_event: asyncio.Event
 
 
 class StreamProcessor(IKlinStream):
@@ -54,7 +60,10 @@ class StreamProcessor(IKlinStream):
 
     def _create_context(self) -> StreamContext:
         return StreamContext(
-            queue=Queue(), heavy=HeavyLogic(), stop_event=asyncio.Event()
+            queue=Queue(),
+            heavy=HeavyLogic(),
+            stop_event=asyncio.Event(),
+            stopped_event=asyncio.Event(),
         )
 
     async def _quick_x3d_check_for_streaming(
@@ -242,73 +251,92 @@ class StreamProcessor(IKlinStream):
         stream_id: uuid.UUID,
         payload: dict[str, Any],
     ) -> None:
-        try:
-            await self.event_producer.send_event(
-                StreamEventDto(
-                    id=str(uuid.uuid4()),
-                    type=event_type,
-                    camera_id=camera_id,
-                    stream_id=stream_id,
-                    payload=payload,
+        for attempt in range(3):
+            try:
+                await self.event_producer.send_event(
+                    StreamEventDto(
+                        id=str(uuid.uuid4()),
+                        type=event_type,
+                        camera_id=camera_id,
+                        stream_id=stream_id,
+                        payload=payload,
+                    )
                 )
-            )
-        except Exception:
-            logger.exception("Failed to send event")
+                return
+            except Exception:
+                logger.exception("Emit retry %d", attempt + 1)
+                await asyncio.sleep(0.2 * (attempt + 1))
+
+        logger.error("Event dropped after retries")
 
     async def _yolo_stream_pipeline(
-        self,
-        context: StreamContext,
-        camera_id: str,
-        stream_id: uuid.UUID,
+        self, context: StreamContext, camera_id: str, stream_id: uuid.UUID
     ) -> None:
         buffer: list[tuple[int, np.ndarray, float]] = []
         last_send = -999.0
         frame_queue = context.queue.yolo_queue
+        MAX_BATCH_RETRIES = 2
+        MAX_BUFFER_SIZE = self.processing.yolo_batch_size * 3
+
         while not context.stop_event.is_set():
             try:
-                frame, idx, ts = await asyncio.wait_for(frame_queue.get(), timeout=0.08)
+                frame, idx, ts = await asyncio.wait_for(frame_queue.get(), timeout=0.1)
             except asyncio.TimeoutError:
                 continue
 
-            # Ключевое условие: тяжёлый анализ включён?
             if not context.heavy.heavy_active.is_set():
                 frame_queue.task_done()
                 continue
 
-            if idx % self.processing.yolo_stride == 0:
-                buffer.append((idx, frame, ts))
+            try:
+                if idx % self.processing.yolo_stride == 0:
+                    buffer.append((idx, frame, ts))
 
-            if self._should_flush_yolo_buffer(buffer, ts, last_send):
-                batch_imgs = self._build_stream_yolo_batch(buffer)
-                preds_list = await self._triton_infer_with_retry(
-                    self.runtime.yolo_processor.infer_batch,
-                    batch_imgs,
-                    context=context,
-                )
-                if preds_list is None:
-                    logger.warning("YOLO inference failed — dropping batch")
-                    buffer.clear()
-                    last_send = ts
-                    await asyncio.sleep(0.05)
-                    continue
+                if len(buffer) > MAX_BUFFER_SIZE:
+                    logger.warning("YOLO buffer overflow → dropping oldest frames")
+                    buffer = buffer[-self.processing.yolo_batch_size :]
 
-                detections = self._collect_yolo_detections(buffer, preds_list)
+                if self._should_flush_yolo_buffer(buffer, ts, last_send):
+                    batch_size = min(len(buffer), self.processing.yolo_batch_size)
+                    batch = buffer[:batch_size]
+                    buffer = buffer[batch_size:]
+                    batch_imgs = self._build_stream_yolo_batch(batch)
 
-                if detections:
-                    await self._emit_event(
-                        event_type="YOLO",
-                        camera_id=camera_id,
-                        stream_id=stream_id,
-                        payload={
-                            "frame_idx": idx,
-                            "timestamp": ts,
-                            "detections": detections,
-                        },
-                    )
-                buffer.clear()
-                last_send = ts
+                    preds_list = None
+                    for attempt in range(MAX_BATCH_RETRIES + 1):
+                        preds_list = await self._triton_infer_with_retry(
+                            self.runtime.yolo_processor.infer_batch,
+                            batch_imgs,
+                            context=context,
+                        )
+                        if preds_list is not None:
+                            break
+                        logger.warning(
+                            "YOLO batch retry %d/%d", attempt + 1, MAX_BATCH_RETRIES + 1
+                        )
+                        await asyncio.sleep(0.1 * (attempt + 1))
 
-            frame_queue.task_done()
+                    if preds_list is None:
+                        logger.error("YOLO batch dropped after retries")
+                        buffer = buffer[self.processing.yolo_batch_size :]
+                        last_send = ts
+                    else:
+                        detections = self._collect_yolo_detections(batch, preds_list)
+                        if detections:
+                            await self._emit_event(
+                                event_type="YOLO",
+                                camera_id=camera_id,
+                                stream_id=stream_id,
+                                payload={
+                                    "frame_idx": batch[-1][0],
+                                    "timestamp": batch[-1][2],
+                                    "detections": detections,
+                                },
+                            )
+                        buffer = buffer[self.processing.yolo_batch_size :]
+                        last_send = ts
+            finally:
+                frame_queue.task_done()
 
     async def _mae_stream_pipeline(
         self,
@@ -331,7 +359,6 @@ class StreamProcessor(IKlinStream):
             if len(x3d_window) > 64:
                 x3d_window.pop(0)
 
-            # Ключевое условие: тяжёлый анализ включён?
             if not context.heavy.heavy_active.is_set():
                 frame_queue.task_done()
                 continue
@@ -377,8 +404,8 @@ class StreamProcessor(IKlinStream):
         interval: float = 3.0,
     ) -> None:
         """Лёгкий постоянный чекер X3D. При триггере включает тяжёлый анализ."""
-
         x3d_window = context.queue.x3d_window
+
         while not context.stop_event.is_set():
             await asyncio.sleep(interval)
             if len(x3d_window) < 16:
@@ -386,6 +413,7 @@ class StreamProcessor(IKlinStream):
 
             clip = x3d_window[-16:]
             result = await self._quick_x3d_check_for_streaming(clip, context=context)
+
             now = time.time()
             violence_prob = result.get("True", 0.0) if result is not None else 0.0
 
@@ -394,22 +422,30 @@ class StreamProcessor(IKlinStream):
                     event_type="X3D_VIOLENCE",
                     camera_id=camera_id,
                     stream_id=stream_id,
-                    payload={
-                        "prob": violence_prob,
-                        "timestamp": now,
-                    },
+                    payload={"prob": violence_prob, "timestamp": now},
                 )
-                context.heavy.activate(now)
+                context.heavy.activate(now)  # X3D True → heavy ON
 
-            # Авто-выключение тяжёлого режима
             elif context.heavy.should_disable(now):
                 logger.info("X3D stable normal → heavy OFF")
                 context.heavy.heavy_active.clear()
 
+                yolo_q = context.queue.yolo_queue
+                cleared = 0
+                while not yolo_q.empty():
+                    try:
+                        yolo_q.get_nowait()
+                        yolo_q.task_done()
+                        cleared += 1
+                    except asyncio.QueueEmpty:
+                        break
+                if cleared:
+                    logger.debug(
+                        "Cleared frames from yolo_queue on heavy disable", cleared
+                    )
+
     async def broadcast_frames(self, context: StreamContext) -> None:
-        """
-        Задача-бродкастер: раздаёт каждый кадр во все нужные очереди
-        """
+        """Задача-бродкастер: раздаёт каждый кадр во все нужные очереди"""
         while not context.stop_event.is_set():
             try:
                 frame_tuple = await asyncio.wait_for(
@@ -418,83 +454,133 @@ class StreamProcessor(IKlinStream):
             except asyncio.TimeoutError:
                 continue
 
-            for q in (context.queue.yolo_queue, context.queue.mae_queue):
+            # MAE всегда получает кадры (нужно для x3d_window)
+            try:
+                context.queue.mae_queue.put_nowait(frame_tuple)
+            except asyncio.QueueFull:
+                logger.debug("mae_queue full — кадр пропущен")
+
+            # YOLO получает кадры ТОЛЬКО когда heavy-режим активен
+            if context.heavy.heavy_active.is_set():
                 try:
-                    q.put_nowait(frame_tuple)
+                    context.queue.yolo_queue.put_nowait(frame_tuple)
                 except asyncio.QueueFull:
-                    logger.debug("Очередь переполнена — кадр пропущен")
+                    logger.debug("yolo_queue full — кадр пропущен")
 
             context.queue.source_queue.task_done()
 
-    def stop(self, camera_id: str) -> None:
+    async def stop(self, camera_id: str) -> None:
         """Stops an active stream by camera id."""
-
         context = self.contexts.get(camera_id)
-
         if not context:
             logger.warning("Stop requested but context not found: %s", camera_id)
             return
 
         logger.info("Stopping stream processor for camera_id=%s", camera_id)
-
         context.stop_event.set()
 
-    async def streaming_analyze(self, model: KlinStreamingModel) -> None:
-        """Launches the background tasks for one camera stream."""
+    async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
+        context = self.contexts.get(camera_id)
+        if not context:
+            return True  # уже нет → считаем остановленным
 
-        assert model.camera_url is not None
-        assert model.camera_id is not None
+        try:
+            await asyncio.wait_for(context.stopped_event.wait(), timeout=timeout)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def _watchdog(self, tasks, context):
+        while not context.stop_event.is_set():
+            for t in tasks:
+                if t is asyncio.current_task():
+                    continue
+
+                if t.done():
+                    if t.cancelled():
+                        continue
+
+                    exc = t.exception()
+                    if exc is not None:
+                        logger.error("Task crashed: %s", t, exc_info=exc)
+                        context.stop_event.set()
+                        return
+
+            await asyncio.sleep(1)
+
+    async def streaming_analyze(self, stream: KlinStreamState) -> None:
+        """Launches the background tasks for one camera stream.
+        Теперь принимает KlinStreamState вместо KlinStreamingModel.
+        """
+        assert stream.camera_url is not None
+        assert stream.camera_id is not None
 
         context = self._create_context()
-        self.contexts[model.camera_id] = context
+        self.contexts[stream.camera_id] = context
+
         tasks = [
             asyncio.create_task(
                 self._frame_reader(
-                    model.camera_url, context.queue.source_queue, context.stop_event
+                    stream.camera_url,
+                    context.queue.source_queue,
+                    context.stop_event,
                 )
             ),
             asyncio.create_task(self.broadcast_frames(context)),
             asyncio.create_task(
                 self._periodic_x3d_checker(
                     context=context,
-                    camera_id=model.camera_id,
-                    stream_id=model.id,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
                 )
             ),
             asyncio.create_task(
                 self._yolo_stream_pipeline(
                     context=context,
-                    camera_id=model.camera_id,
-                    stream_id=model.id,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
                 )
             ),
             asyncio.create_task(
                 self._mae_stream_pipeline(
                     context=context,
-                    camera_id=model.camera_id,
-                    stream_id=model.id,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
                 )
             ),
         ]
 
+        watchdog_task = asyncio.create_task(self._watchdog(tasks, context))
+        tasks.append(watchdog_task)
+
         logger.info(
-            "🚀 СТРИМИНГ ЗАПУЩЕН (id=%s, url=%s)", model.camera_id, model.camera_url
+            "🚀 СТРИМИНГ ЗАПУЩЕН (camera_id=%s, stream_id=%s, url=%s)",
+            stream.camera_id,
+            stream.id,
+            stream.camera_url,
         )
 
         try:
-            await asyncio.gather(*tasks)
+            try:
+                await asyncio.gather(*tasks)
+            finally:
+                for task in tasks:
+                    task.cancel()
+
+                await asyncio.gather(*tasks, return_exceptions=True)
+
         except asyncio.CancelledError:
-            logger.info("⛔ Стриминг отменён (id=%s)", model.camera_id)
+            logger.info("⛔ Стриминг отменён (stream_id=%s)", stream.id)
             context.stop_event.set()
-            # ждём завершения
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception:
-            logger.exception("Критическая ошибка в стриминге (id=%s)", model.camera_id)
+            logger.exception("Критическая ошибка в стриминге (stream_id=%s)", stream.id)
             context.stop_event.set()
             raise
         finally:
-            logger.info("Стриминг завершён (id=%s)", model.camera_id)
-            self.contexts.pop(model.camera_id, None)
+            logger.info("Стриминг завершён (stream_id=%s)", stream.id)
+            context.stopped_event.set()
+            self.contexts.pop(stream.camera_id, None)
 
 
 class StreamEventConsumer:
@@ -511,9 +597,9 @@ class StreamEventConsumer:
         """
 
         handlers = {
-            "YOLO": self.repository.save_yolo,
-            "MAE": self.repository.save_mae,
-            "X3D_VIOLENCE": self.repository.save_x3d,
+            "YOLO": self._handle_yolo,
+            "MAE": self._handle_mae,
+            "X3D_VIOLENCE": self._handle_x3d,
         }
         handler = handlers.get(event.type)
         if handler is None:
@@ -521,10 +607,64 @@ class StreamEventConsumer:
             return
 
         try:
-            await handler(event)
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    await handler(event)
+                    return
+                except Exception as e:
+                    logger.exception("Retry %d failed: %s", attempt + 1, str(e))
+                    if attempt == retries - 1:
+                        raise
+                    await asyncio.sleep(0.5 * (attempt + 1))
+
         except Exception:
-            logger.exception("Failed to save %s", event.type)
+            logger.exception("Failed to save %s event", event.type)
             raise
+
+    async def _handle_yolo(self, event: StreamEventDto) -> None:
+        """Convert StreamEventDto to KlinYoloResult and save."""
+        data = event.payload
+
+        yolo_result = KlinYoloResult(
+            event_id=event.id,
+            stream_id=event.stream_id,
+            camera_id=event.camera_id,
+            frame_idx=data.get("frame_idx"),
+            ts=data["timestamp"],
+            detections=data["detections"],
+        )
+        await self.repository.save_yolo(yolo_result)
+
+    async def _handle_mae(self, event: StreamEventDto) -> None:
+        """Convert StreamEventDto to KlinMaeResult and save."""
+        data = event.payload
+
+        mae_result = KlinMaeResult(
+            event_id=event.id,
+            stream_id=event.stream_id,
+            camera_id=event.camera_id,
+            label=data["label"],
+            confidence=data["confidence"],
+            probs=data.get("probs"),
+            start_ts=data["start_ts"],
+            end_ts=data["end_ts"],
+        )
+        await self.repository.save_mae(mae_result)
+
+    async def _handle_x3d(self, event: StreamEventDto) -> None:
+        """Convert StreamEventDto to KlinX3DResult and save."""
+        data = event.payload
+
+        x3d_result = KlinX3DResult(
+            event_id=event.id,
+            stream_id=event.stream_id,
+            camera_id=event.camera_id,
+            label="violence",  # или data.get("label", "violence")
+            confidence=data["prob"],
+            ts=data["timestamp"],
+        )
+        await self.repository.save_x3d(x3d_result)
 
     async def handle_many(self, events: list[StreamEventDto]) -> None:
         """Persists a sequence of stream events one by one."""

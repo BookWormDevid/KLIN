@@ -2,6 +2,7 @@
 Содержит методы для взаимодействия с базой данных
 """
 
+import uuid
 from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
@@ -10,10 +11,16 @@ import msgspec
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.application.dto import StreamEventDto
 from app.application.exceptions import KlinNotFoundError
 from app.application.interfaces import IKlinRepository
-from app.models.klin import KlinModel, KlinStreamingModel, ProcessingState
+from app.models.klin import (
+    KlinMaeResult,
+    KlinModel,
+    KlinStreamState,
+    KlinX3DResult,
+    KlinYoloResult,
+    ProcessingState,
+)
 
 
 @dataclass
@@ -43,57 +50,99 @@ class KlinRepository(IKlinRepository):
 
         return merged
 
-    async def save_yolo(self, event: StreamEventDto) -> None:
+    async def save_yolo(self, event: KlinYoloResult) -> None:
         async with self.session() as session:
             async with session.begin():
                 query = (
-                    select(KlinStreamingModel)
-                    .where(KlinStreamingModel.id == event.stream_id)
+                    select(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
                 stream = await session.scalar(query)
                 if stream is None:
                     raise KlinNotFoundError(event.stream_id)
 
-                detections = event.payload.get("detections", [])
+                # Формируем payload из полей модели
+                payload = {
+                    "detections": event.detections,
+                    "frame_idx": event.frame_idx,
+                    "ts": event.ts,
+                }
+
+                detections = event.detections or []
                 classes = [
                     detection["class_name"]
                     for detection in detections
                     if detection.get("class_name")
                 ]
-                stream.yolo = self._encode_payload(event.payload)
+
+                if hasattr(stream, "yolo"):
+                    stream.yolo = self._encode_payload(payload)
+                else:
+                    pass
+
                 stream.objects = self._merge_unique(stream.objects, classes)
 
-    async def save_mae(self, event: StreamEventDto) -> None:
+    async def save_mae(self, event: KlinMaeResult) -> None:
         async with self.session() as session:
             async with session.begin():
                 query = (
-                    select(KlinStreamingModel)
-                    .where(KlinStreamingModel.id == event.stream_id)
+                    select(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
                 stream = await session.scalar(query)
                 if stream is None:
                     raise KlinNotFoundError(event.stream_id)
 
-                label = event.payload.get("label")
+                # Формируем payload из полей модели
+                payload = {
+                    "label": event.label,
+                    "confidence": event.confidence,
+                    "start_ts": event.start_ts,
+                    "end_ts": event.end_ts,
+                    "probs": event.probs,
+                }
+
+                label = event.label
                 additions = [label] if isinstance(label, str) and label else []
-                stream.mae = self._encode_payload(event.payload)
+
+                # Обновляем последние значения MAE
+                stream.last_mae_label = event.label
+                stream.last_mae_confidence = event.confidence
+
+                # Если нужно сохранить полный payload, используем JSONB поле
+                if hasattr(stream, "mae"):
+                    stream.mae = self._encode_payload(payload)
+
                 stream.all_classes = self._merge_unique(stream.all_classes, additions)
 
-    async def save_x3d(self, event: StreamEventDto) -> None:
+    async def save_x3d(self, event: KlinX3DResult) -> None:
         async with self.session() as session:
             async with session.begin():
                 query = (
-                    select(KlinStreamingModel)
-                    .where(KlinStreamingModel.id == event.stream_id)
+                    select(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
                 stream = await session.scalar(query)
                 if stream is None:
                     raise KlinNotFoundError(event.stream_id)
 
-                stream.x3d = self._encode_payload(event.payload)
+                # Формируем payload из полей модели
+                payload = {
+                    "label": event.label,
+                    "confidence": event.confidence,
+                    "ts": event.ts,
+                }
+
+                # Обновляем последние значения X3D
+                stream.last_x3d_label = event.label
+                stream.last_x3d_confidence = event.confidence
+
+                # Если нужно сохранить полный payload, используем JSONB поле
+                if hasattr(stream, "x3d"):
+                    stream.x3d = self._encode_payload(payload)
 
     async def get_by_id(self, klin_id: UUID) -> KlinModel:
         """
@@ -106,15 +155,13 @@ class KlinRepository(IKlinRepository):
                 raise KlinNotFoundError(klin_id)
             return klin
 
-    async def get_by_id_stream(self, stream_id: UUID) -> KlinStreamingModel:
+    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState:
         """
         Получение всех столбцов по конкретному id
         """
         async with self.session() as session:
             query = (
-                select(KlinStreamingModel)
-                .where(KlinStreamingModel.id == stream_id)
-                .limit(1)
+                select(KlinStreamState).where(KlinStreamState.id == stream_id).limit(1)
             )
             klin = await session.scalar(query)
             if not klin:
@@ -148,7 +195,7 @@ class KlinRepository(IKlinRepository):
 
     async def claim_for_processing_stream(
         self, klin_id: UUID
-    ) -> KlinStreamingModel | None:
+    ) -> KlinStreamState | None:
         """
         Атомарно захватывает задачу для обработки.
         Переводит состояние из PENDING в PROCESSING.
@@ -156,10 +203,10 @@ class KlinRepository(IKlinRepository):
         async with self.session() as session:
             async with session.begin():
                 claim_stmt = (
-                    update(KlinStreamingModel)
+                    update(KlinStreamState)
                     .where(
-                        KlinStreamingModel.id == klin_id,
-                        KlinStreamingModel.state == ProcessingState.PENDING,
+                        KlinStreamState.id == klin_id,
+                        KlinStreamState.state == ProcessingState.PENDING,
                     )
                     .values(state=ProcessingState.PROCESSING)
                     .returning(KlinModel.id)
@@ -170,12 +217,10 @@ class KlinRepository(IKlinRepository):
                 return None
 
             query = (
-                select(KlinStreamingModel)
-                .where(KlinStreamingModel.id == claimed_id)
-                .limit(1)
+                select(KlinStreamState).where(KlinStreamState.id == claimed_id).limit(1)
             )
             klin = await session.scalar(query)
-            return cast(KlinStreamingModel | None, klin)
+            return cast(KlinStreamState | None, klin)
 
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """
@@ -189,7 +234,9 @@ class KlinRepository(IKlinRepository):
             imfer_list: list[KlinModel] = list(imfers.scalars().all())
             return imfer_list
 
-    async def create(self, model: KlinModel) -> KlinModel:
+    async def create(
+        self, model: KlinModel | KlinStreamState
+    ) -> KlinModel | KlinStreamState:
         """
         Создать транзакцию к бд
         """
@@ -199,26 +246,7 @@ class KlinRepository(IKlinRepository):
             await session.refresh(model)
             return model
 
-    async def create_stream(self, model: KlinStreamingModel) -> KlinStreamingModel:
-        """
-        Создать транзакцию к бд
-        """
-        async with self.session() as session:
-            async with session.begin():
-                session.add(model)
-            await session.refresh(model)
-            return model
-
-    async def update(self, model: KlinModel) -> None:
-        """
-        Обновить поля в бд
-        """
-        async with self.session() as session:
-            async with session.begin():
-                await session.merge(model)
-            await session.commit()
-
-    async def update_stream(self, model: KlinStreamingModel) -> None:
+    async def update(self, model: KlinModel | KlinStreamState) -> None:
         """
         Обновить поля в бд
         """

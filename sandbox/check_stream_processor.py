@@ -35,7 +35,7 @@ class DummyEventProducer:
 
 async def test():
     from app.infrastructure.services import StreamProcessor
-    from app.models.klin import KlinStreamingModel
+    from app.models.klin import KlinStreamState
 
     producer = DummyEventProducer()
     processor = StreamProcessor(event_producer=producer)
@@ -44,8 +44,9 @@ async def test():
         format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
     )
 
-    test_file = "./tests/videos/svoi_hun_syn.avi"
-    model = KlinStreamingModel(
+    test_file = r"C:\Users\meksi\Documents\GitHub\fi004.mp4"
+    # ./tests/videos/svoi_hun_syn.avi
+    model = KlinStreamState(
         id=uuid.uuid4(),
         camera_url=test_file,
         camera_id="LOCAL_TEST_001",

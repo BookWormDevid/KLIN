@@ -11,6 +11,7 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlparse
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
@@ -168,7 +169,7 @@ class KlinService:
             video_path=data.video_path,
             state=ProcessingState.PENDING,
         )
-        klin = await self._klin_repository.create(klin)
+        klin = cast(KlinModel, await self._klin_repository.create(klin))
 
         try:
             await self._publish_klin_task(klin.id)
