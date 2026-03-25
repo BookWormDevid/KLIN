@@ -9,6 +9,7 @@ from uuid import UUID
 
 import msgspec
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.application.exceptions import KlinNotFoundError
@@ -53,96 +54,112 @@ class KlinRepository(IKlinRepository):
     async def save_yolo(self, event: KlinYoloResult) -> None:
         async with self.session() as session:
             async with session.begin():
-                query = (
-                    select(KlinStreamState)
+                exists = await session.scalar(
+                    select(KlinStreamState.id)
                     .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
-                stream = await session.scalar(query)
-                if stream is None:
-                    raise KlinNotFoundError(event.stream_id)
+                if exists is None:
+                    raise ValueError(f"Stream not found: {event.stream_id}")
 
-                # Формируем payload из полей модели
-                payload = {
-                    "detections": event.detections,
-                    "frame_idx": event.frame_idx,
-                    "ts": event.ts,
-                }
+                stmt = (
+                    insert(KlinYoloResult)
+                    .values(
+                        stream_id=event.stream_id,
+                        camera_id=event.camera_id,
+                        event_id=event.event_id,
+                        frame_idx=event.frame_idx,
+                        ts=event.ts,
+                        detections=event.detections,
+                    )
+                    .on_conflict_do_nothing(index_elements=["event_id"])
+                )
 
-                detections = event.detections or []
-                classes = [
-                    detection["class_name"]
-                    for detection in detections
-                    if detection.get("class_name")
-                ]
+                await session.execute(stmt)
 
-                if hasattr(stream, "yolo"):
-                    stream.yolo = self._encode_payload(payload)
-                else:
-                    pass
+                objects = [d["label"] for d in event.detections]
 
-                stream.objects = self._merge_unique(stream.objects, classes)
+                await session.execute(
+                    update(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
+                    .values(
+                        objects=objects,
+                        all_classes=list(set(objects)),
+                    )
+                )
 
     async def save_mae(self, event: KlinMaeResult) -> None:
         async with self.session() as session:
             async with session.begin():
-                query = (
-                    select(KlinStreamState)
+                exists = await session.scalar(
+                    select(KlinStreamState.id)
                     .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
-                stream = await session.scalar(query)
-                if stream is None:
-                    raise KlinNotFoundError(event.stream_id)
+                if exists is None:
+                    raise ValueError(f"Stream not found: {event.stream_id}")
 
-                # Формируем payload из полей модели
-                payload = {
-                    "label": event.label,
-                    "confidence": event.confidence,
-                    "start_ts": event.start_ts,
-                    "end_ts": event.end_ts,
-                    "probs": event.probs,
-                }
+                stmt = (
+                    insert(KlinMaeResult)
+                    .values(
+                        stream_id=event.stream_id,
+                        camera_id=event.camera_id,
+                        event_id=event.event_id,
+                        label=event.label,
+                        confidence=event.confidence,
+                        start_ts=event.start_ts,
+                        end_ts=event.end_ts,
+                        probs=event.probs,
+                    )
+                    .on_conflict_do_nothing(index_elements=["event_id"])
+                )
 
-                label = event.label
-                additions = [label] if isinstance(label, str) and label else []
+                await session.execute(stmt)
 
-                # Обновляем последние значения MAE
-                stream.last_mae_label = event.label
-                stream.last_mae_confidence = event.confidence
-
-                # Если нужно сохранить полный payload, используем JSONB поле
-                if hasattr(stream, "mae"):
-                    stream.mae = self._encode_payload(payload)
-
-                stream.all_classes = self._merge_unique(stream.all_classes, additions)
+                # snapshot
+                await session.execute(
+                    update(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
+                    .values(
+                        last_mae_label=event.label,
+                        last_mae_confidence=event.confidence,
+                    )
+                )
 
     async def save_x3d(self, event: KlinX3DResult) -> None:
         async with self.session() as session:
             async with session.begin():
-                query = (
-                    select(KlinStreamState)
+                exists = await session.scalar(
+                    select(KlinStreamState.id)
                     .where(KlinStreamState.id == event.stream_id)
                     .limit(1)
                 )
-                stream = await session.scalar(query)
-                if stream is None:
-                    raise KlinNotFoundError(event.stream_id)
+                if exists is None:
+                    raise ValueError(f"Stream not found: {event.stream_id}")
 
-                # Формируем payload из полей модели
-                payload = {
-                    "label": event.label,
-                    "confidence": event.confidence,
-                    "ts": event.ts,
-                }
+                stmt = (
+                    insert(KlinX3DResult)
+                    .values(
+                        stream_id=event.stream_id,
+                        camera_id=event.camera_id,
+                        event_id=event.event_id,
+                        label=event.label,
+                        confidence=event.confidence,
+                        ts=event.ts,
+                    )
+                    .on_conflict_do_nothing(index_elements=["event_id"])
+                )
 
-                # Обновляем последние значения X3D
-                stream.last_x3d_label = event.label
-                stream.last_x3d_confidence = event.confidence
+                await session.execute(stmt)
 
-                # Если нужно сохранить полный payload, используем JSONB поле
-                if hasattr(stream, "x3d"):
-                    stream.x3d = self._encode_payload(payload)
+                await session.execute(
+                    update(KlinStreamState)
+                    .where(KlinStreamState.id == event.stream_id)
+                    .values(
+                        last_x3d_label=event.label,
+                        last_x3d_confidence=event.confidence,
+                    )
+                )
 
     async def get_by_id(self, klin_id: UUID) -> KlinModel:
         """
@@ -209,7 +226,7 @@ class KlinRepository(IKlinRepository):
                         KlinStreamState.state == ProcessingState.PENDING,
                     )
                     .values(state=ProcessingState.PROCESSING)
-                    .returning(KlinModel.id)
+                    .returning(KlinStreamState.id)
                 )
                 claimed_id = await session.scalar(claim_stmt)
 
@@ -254,3 +271,12 @@ class KlinRepository(IKlinRepository):
             async with session.begin():
                 await session.merge(model)
             await session.commit()
+
+    async def mark_stopped(self, stream_id: uuid.UUID) -> None:
+        async with self.session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(KlinStreamState)
+                    .where(KlinStreamState.id == stream_id)
+                    .values(state=ProcessingState.STOPPED)
+                )

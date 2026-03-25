@@ -9,6 +9,7 @@ from .klin import (
     IKlinProcessProducer,
     IKlinRepository,
     IKlinStream,
+    IKlinStreamEventConsumer,
     IKlinVideoStorage,
 )
 
@@ -21,4 +22,5 @@ __all__ = (
     "IKlinStream",
     "IKlinEventProducer",
     "IKlinVideoStorage",
+    "IKlinStreamEventConsumer",
 )

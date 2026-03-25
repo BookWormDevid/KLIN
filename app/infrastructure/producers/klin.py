@@ -36,9 +36,6 @@ class KlinProcessProducer(IKlinProcessProducer):
             msgspec.json.encode(data), queue=app_settings.Klin_queue
         )
 
-    async def send_streaming(self, data: StreamProcessDto) -> None:
-        await self.send_stream(data)
-
 
 @dataclass
 class KlinEventProducer(IKlinEventProducer):

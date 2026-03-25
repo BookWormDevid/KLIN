@@ -39,6 +39,16 @@ class IKlinStream(Protocol):
     async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool: ...
 
 
+class IKlinStreamEventConsumer(Protocol):
+    """Контракт потребителя событий стриминга (YOLO / MAE / X3D)."""
+
+    async def handle(self, event: StreamEventDto) -> None:
+        """Обработать одно событие."""
+
+    async def handle_many(self, events: list[StreamEventDto]) -> None:
+        """Обработать пачку событий (опционально)."""
+
+
 class IKlinInference(Protocol):
     """
     Класс для передачи данных процессора
@@ -115,6 +125,7 @@ class IKlinRepository(Protocol):
         Возвращает модель, если захват выполнен, иначе None.
         """
 
+    @abstractmethod
     async def claim_for_processing_stream(
         self, klin_id: uuid.UUID
     ) -> KlinStreamState | None:

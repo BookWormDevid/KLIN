@@ -5,14 +5,17 @@
 import asyncio
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import cast
 
 from app.application.dto import (
+    StreamEventDto,
     StreamProcessDto,
     StreamReadDto,
     StreamUploadDto,
 )
 from app.application.interfaces import (
+    IKlinEventProducer,
     IKlinProcessProducer,
     IKlinRepository,
     IKlinStream,
@@ -31,18 +34,16 @@ class StreamService:
     _klin_stream: IKlinStream
     _klin_repository: IKlinRepository
     _klin_process_producer: IKlinProcessProducer
+    _klin_event_producer: IKlinEventProducer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamState:
-        """
-        Создает задачу потока и отправляет ее в очередь.
-        """
         stream_state = KlinStreamState(
             camera_url=data.camera_url,
             camera_id=data.camera_id,
             state=ProcessingState.PENDING,
         )
         created = await self._klin_repository.create(stream_state)
-        stream_state = cast(KlinStreamState, created)  # ← вот исправление
+        stream_state = cast(KlinStreamState, created)
 
         try:
             await self._publish_stream_task(stream_state.id)
@@ -60,6 +61,7 @@ class StreamService:
     async def _publish_stream_task(self, stream_id: uuid.UUID) -> None:
         max_attempts = 3
         payload = StreamProcessDto(stream_id=stream_id)
+
         for attempt in range(1, max_attempts + 1):
             try:
                 await self._klin_process_producer.send_stream(payload)
@@ -73,14 +75,11 @@ class StreamService:
         self, stream_state: KlinStreamState, error: Exception
     ) -> None:
         stream_state.state = ProcessingState.ERROR
-        # Сохраняем ошибку в поле error_message (если такого поля нет, нужно добавить)
-        # Или используем существующее поле, например, last_mae_label для хранения ошибки
+
         if hasattr(stream_state, "error_message"):
             stream_state.error_message = str(error)
         else:
-            # Временно используем last_mae_label для хранения ошибки
-            # Рекомендуется добавить поле error_message в модель
-            stream_state.last_mae_label = str(error)[:255]  # Обрезаем до 255 символов
+            stream_state.last_mae_label = str(error)[:255]
 
         try:
             await self._klin_repository.update(stream_state)
@@ -88,34 +87,33 @@ class StreamService:
             logger.exception("Failed to persist stream error state")
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
-        """
-        Запускает обработку уже созданного потока.
-        """
-        stream_state: (
-            KlinStreamState | None
-        ) = await self._klin_repository.claim_for_processing_stream(stream_id)
+        stream_state = await self._klin_repository.claim_for_processing_stream(
+            stream_id
+        )
+
         if stream_state is None:
             logger.info("Stream skipped (already processing). id=%s", stream_id)
             return
+
         stream_state.state = ProcessingState.PROCESSING
         await self._klin_repository.update(stream_state)
+
         try:
             await self._klin_stream.streaming_analyze(stream_state)
-            stream_state.state = ProcessingState.FINISHED
 
         except asyncio.CancelledError:
             logger.info("Stream cancelled id=%s", stream_id)
-            stream_state.state = ProcessingState.FINISHED
+            stream_state.state = ProcessingState.STOPPED
 
         except Exception as exc:
             logger.exception("Stream failed id=%s error=%s", stream_id, exc)
             stream_state.state = ProcessingState.ERROR
-            # Сохраняем ошибку в поле error_message
+
             if hasattr(stream_state, "error_message"):
                 stream_state.error_message = str(exc)
             else:
-                # Временно используем last_mae_label для хранения ошибки
                 stream_state.last_mae_label = str(exc)[:255]
+
         finally:
             try:
                 await self._klin_repository.update(stream_state)
@@ -124,22 +122,43 @@ class StreamService:
 
     async def stop_stream(self, stream_id: uuid.UUID) -> None:
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
+
         if not stream_state:
+            logger.warning("Stream not found: %s", stream_id)
             return
 
         await self._klin_stream.stop(stream_state.camera_id)
 
         stopped = await self._klin_stream.wait_stopped(stream_state.camera_id)
 
-        if not stopped:
-            logger.warning("Processor did not stop in time")
+        if stopped:
+            try:
+                await self._klin_event_producer.send_event(
+                    StreamEventDto(
+                        id=str(uuid.uuid4()),
+                        type="STREAM_STOPPED",
+                        camera_id=stream_state.camera_id,
+                        stream_id=stream_id,
+                        payload={"timestamp": datetime.now(timezone.utc).isoformat()},
+                    )
+                )
+            except Exception:
+                logger.exception("Failed to publish STREAM_STOPPED event")
+        else:
+            logger.warning("Processor did not stop in time. stream_id=%s", stream_id)
 
-        stream_state.state = ProcessingState.STOPPED
-        await self._klin_repository.update(stream_state)
+        # защита от перезаписи состояния
+        if stream_state.state != ProcessingState.STOPPED:
+            stream_state.state = ProcessingState.STOPPED
+
+        try:
+            await self._klin_repository.update(stream_state)
+        except Exception:
+            logger.exception("Failed to update stream state")
 
     async def get_stream_status(self, stream_id: uuid.UUID) -> StreamReadDto:
-        """Возвращает актуальное состояние потока (агрегат)."""
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
+
         if not stream_state:
             raise ValueError(f"Stream not found: {stream_id}")
 

@@ -17,16 +17,13 @@ import numpy as np
 from numpy.typing import NDArray
 
 from app.application.dto import StreamEventDto
-from app.application.interfaces import IKlinEventProducer, IKlinRepository, IKlinStream
+from app.application.interfaces import IKlinEventProducer, IKlinStream
 from app.infrastructure.helpers import (
     HeavyLogic,
     Queue,
 )
 from app.models.klin import (
-    KlinMaeResult,
     KlinStreamState,
-    KlinX3DResult,
-    KlinYoloResult,
 )
 
 from .runtime_processor import StreamProcessorConfig, build_processor_runtime
@@ -581,93 +578,3 @@ class StreamProcessor(IKlinStream):
             logger.info("Стриминг завершён (stream_id=%s)", stream.id)
             context.stopped_event.set()
             self.contexts.pop(stream.camera_id, None)
-
-
-class StreamEventConsumer:
-    """
-    Persists stream events in the repository layer.
-    """
-
-    def __init__(self, repository: IKlinRepository) -> None:
-        self.repository = repository
-
-    async def handle(self, event: StreamEventDto) -> None:
-        """
-        Persists one stream event according to its stage type.
-        """
-
-        handlers = {
-            "YOLO": self._handle_yolo,
-            "MAE": self._handle_mae,
-            "X3D_VIOLENCE": self._handle_x3d,
-        }
-        handler = handlers.get(event.type)
-        if handler is None:
-            logger.warning("Unknown stream event type: %s", event.type)
-            return
-
-        try:
-            retries = 3
-            for attempt in range(retries):
-                try:
-                    await handler(event)
-                    return
-                except Exception as e:
-                    logger.exception("Retry %d failed: %s", attempt + 1, str(e))
-                    if attempt == retries - 1:
-                        raise
-                    await asyncio.sleep(0.5 * (attempt + 1))
-
-        except Exception:
-            logger.exception("Failed to save %s event", event.type)
-            raise
-
-    async def _handle_yolo(self, event: StreamEventDto) -> None:
-        """Convert StreamEventDto to KlinYoloResult and save."""
-        data = event.payload
-
-        yolo_result = KlinYoloResult(
-            event_id=event.id,
-            stream_id=event.stream_id,
-            camera_id=event.camera_id,
-            frame_idx=data.get("frame_idx"),
-            ts=data["timestamp"],
-            detections=data["detections"],
-        )
-        await self.repository.save_yolo(yolo_result)
-
-    async def _handle_mae(self, event: StreamEventDto) -> None:
-        """Convert StreamEventDto to KlinMaeResult and save."""
-        data = event.payload
-
-        mae_result = KlinMaeResult(
-            event_id=event.id,
-            stream_id=event.stream_id,
-            camera_id=event.camera_id,
-            label=data["label"],
-            confidence=data["confidence"],
-            probs=data.get("probs"),
-            start_ts=data["start_ts"],
-            end_ts=data["end_ts"],
-        )
-        await self.repository.save_mae(mae_result)
-
-    async def _handle_x3d(self, event: StreamEventDto) -> None:
-        """Convert StreamEventDto to KlinX3DResult and save."""
-        data = event.payload
-
-        x3d_result = KlinX3DResult(
-            event_id=event.id,
-            stream_id=event.stream_id,
-            camera_id=event.camera_id,
-            label="violence",  # или data.get("label", "violence")
-            confidence=data["prob"],
-            ts=data["timestamp"],
-        )
-        await self.repository.save_x3d(x3d_result)
-
-    async def handle_many(self, events: list[StreamEventDto]) -> None:
-        """Persists a sequence of stream events one by one."""
-
-        for event in events:
-            await self.handle(event)

@@ -1,7 +1,6 @@
 """
 Модуль конфигурации и провайдеров для приложения.
-Определяет подключение к базе данных, RabbitMQ и сервисы
-через систему инъекции зависимостей Dishka.
+Определяет подключение к базе данных, RabbitMQ и сервисы через Dishka.
 """
 
 from collections.abc import Iterator
@@ -17,39 +16,38 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.application.consumers.stream_event_consumer import StreamEventConsumer
 from app.application.interfaces import (
     IKlinCallbackSender,
     IKlinEventProducer,
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
+    IKlinStream,
+    IKlinStreamEventConsumer,
     IKlinVideoStorage,
 )
-from app.application.services import KlinService
+from app.application.services import (  # ← добавили StreamService
+    KlinService,
+    StreamService,
+)
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
+from app.infrastructure.services import StreamProcessor  # реализация IKlinStream
 from app.infrastructure.services.callback_sender import KlinCallbackSender
 from app.infrastructure.services.inference_stub import ApiInferenceStub
 from app.infrastructure.services.s3_storage import S3ObjectStorage
 
 
 class InfrastructureProvider(Provider):
-    """
-    Провайдер инфраструктуры приложения.
-    Создает движок базы данных, сессии, брокера сообщений
-    и инфраструктурные сервисы.
-    """
+    """Общие инфраструктурные зависимости (БД, Rabbit, репозитории, продюсеры)."""
 
     scope = Scope.APP
 
     @provide
     def engine(self) -> Iterator[AsyncEngine]:
-        """
-        Создает и возвращает асинхронный движок базы данных.
-        """
         db_idle_timeout = app_settings.db_idle_in_transaction_session_timeout
-
         engine = create_async_engine(
             app_settings.database_url,
             pool_size=app_settings.db_pool_size,
@@ -66,17 +64,15 @@ class InfrastructureProvider(Provider):
 
     @provide
     def rabbit_broker(self) -> RabbitBroker:
-        """
-        Создает и возвращает брокера сообщений RabbitMQ.
-        """
         return RabbitBroker(app_settings.rabbit_url)
 
     @provide
     def session(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-        """
-        Создает фабрику асинхронных сессий для работы с базой данных.
-        """
-        return async_sessionmaker(bind=engine, expire_on_commit=True, autoflush=False)
+        return async_sessionmaker(
+            bind=engine,
+            expire_on_commit=True,
+            autoflush=False,
+        )
 
     KLIN_repository = provide(KlinRepository, provides=IKlinRepository)
     KLIN_event_producer = provide(KlinEventProducer, provides=IKlinEventProducer)
@@ -84,46 +80,50 @@ class InfrastructureProvider(Provider):
     KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
     KLIN_video_storage = provide(S3ObjectStorage, provides=IKlinVideoStorage)
 
+    KLIN_stream = provide(StreamProcessor, provides=IKlinStream)
+    KLIN_stream_event_consumer = provide(
+        StreamEventConsumer, provides=IKlinStreamEventConsumer
+    )
+
 
 class ApiApplicationProvider(Provider):
-    """Провайдер сервисов API-процесса."""
+    """Сервисы для API-процесса."""
 
     scope = Scope.APP
     KLIN_service = provide(KlinService)
 
 
 class ApiVideoProvider(Provider):
-    """Провайдеры-заглушки для API, который не запускает инференс локально."""
+    """Заглушка инференса для API."""
 
     scope = Scope.APP
     InferenceProcessor = provide(ApiInferenceStub, provides=IKlinInference)
 
 
 class WorkerApplicationProvider(Provider):
-    """Провайдер сервисов queue-worker процесса."""
+    """Сервисы для queue-worker процесса."""
 
     scope = Scope.APP
     KLIN_service = provide(KlinService)
+    KLIN_stream_service = provide(StreamService)
 
 
 class WorkerVideoProvider(Provider):
-    """Провайдеры реальных инференс-сервисов для queue-worker процесса."""
+    """Реальный инференс только для worker."""
 
     scope = Scope.APP
 
     @provide(provides=IKlinInference)
     def inference_processor(self) -> IKlinInference:
-        """Создает инференс-процессор только в worker-контейнере."""
-
         processor_module = import_module(
             "app.infrastructure.services.target.video_processor"
         )
         return cast(IKlinInference, processor_module.InferenceProcessor())
 
 
+# ====================== ФАБРИКИ ПРОВАЙДЕРОВ ======================
 def get_api_providers() -> tuple[Provider, ...]:
-    """Возвращает набор провайдеров для API-контейнера."""
-
+    """Провайдеры для API-контейнера."""
     return (
         InfrastructureProvider(),
         ApiApplicationProvider(),
@@ -132,8 +132,7 @@ def get_api_providers() -> tuple[Provider, ...]:
 
 
 def get_worker_providers() -> tuple[Provider, ...]:
-    """Возвращает набор провайдеров для queue-worker контейнера."""
-
+    """Провайдеры для FastStream worker"""
     return (
         InfrastructureProvider(),
         WorkerApplicationProvider(),
