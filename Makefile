@@ -6,7 +6,7 @@ help:
 	@echo Avaliable commands:
 	@echo .
 	@echo General:
-	@echo make init-env            # creating .env from example.env (if .env doesn't exist)
+	@echo make init-env            # create .env from example.env and backfill new keys
 	@echo make migration           # create and auto-apply alembic migrations for the main database
 	@echo .
 	@echo For development:
@@ -26,16 +26,7 @@ help:
 
 
 init-env:
-ifeq ($(OS),Windows_NT)
-	@powershell -NoProfile -Command "if (Test-Path '.env') { Write-Host '.env already exists' } else { Copy-Item 'example.env' '.env'; Write-Host 'created .env from example.env' }"
-else
-	@if [ ! -f .env ]; then \
-		cp example.env .env; \
-		echo "Создан .env из example.env"; \
-	else \
-		echo ".env уже существует"; \
-	fi
-endif
+	python helpers/sync_env.py --template example.env --env .env
 
 migration:
 	alembic upgrade head

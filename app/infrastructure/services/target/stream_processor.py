@@ -10,7 +10,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import cv2
 import numpy as np
@@ -266,30 +266,81 @@ class StreamProcessor(IKlinStream):
 
         logger.error("Event dropped after retries")
 
+    async def _infer_yolo_batch_with_retry(
+        self,
+        context: StreamContext,
+        batch_imgs: np.ndarray,
+    ) -> list[NDArray[np.float32]] | None:
+        """Run YOLO inference with a short retry loop for transient failures."""
+
+        max_batch_retries = 2
+
+        for attempt in range(max_batch_retries + 1):
+            preds_list = cast(
+                list[NDArray[np.float32]] | None,
+                await self._triton_infer_with_retry(
+                    self.runtime.yolo_processor.infer_batch,
+                    batch_imgs,
+                    context=context,
+                ),
+            )
+            if preds_list is not None:
+                return preds_list
+
+            logger.warning("YOLO batch retry %d/%d", attempt + 1, max_batch_retries + 1)
+            await asyncio.sleep(0.1 * (attempt + 1))
+
+        return None
+
+    async def _emit_yolo_batch(
+        self,
+        batch: list[tuple[int, np.ndarray, float]],
+        preds_list: list[NDArray[np.float32]],
+        camera_id: str,
+        stream_id: uuid.UUID,
+    ) -> None:
+        """Publish a YOLO event for the processed batch when detections exist."""
+
+        detections = self._collect_yolo_detections(batch, preds_list)
+        if not detections:
+            return
+
+        await self._emit_event(
+            event_type="YOLO",
+            camera_id=camera_id,
+            stream_id=stream_id,
+            payload={
+                "frame_idx": batch[-1][0],
+                "timestamp": batch[-1][2],
+                "detections": detections,
+            },
+        )
+
     async def _yolo_stream_pipeline(
         self, context: StreamContext, camera_id: str, stream_id: uuid.UUID
     ) -> None:
+        """Buffer frames for YOLO and flush them in bounded batches."""
+
         buffer: list[tuple[int, np.ndarray, float]] = []
         last_send = -999.0
-        frame_queue = context.queue.yolo_queue
-        MAX_BATCH_RETRIES = 2
-        MAX_BUFFER_SIZE = self.processing.yolo_batch_size * 3
 
         while not context.stop_event.is_set():
             try:
-                frame, idx, ts = await asyncio.wait_for(frame_queue.get(), timeout=0.1)
+                frame, idx, ts = await asyncio.wait_for(
+                    context.queue.yolo_queue.get(), timeout=0.1
+                )
             except asyncio.TimeoutError:
                 continue
 
             if not context.heavy.heavy_active.is_set():
-                frame_queue.task_done()
+                context.queue.yolo_queue.task_done()
                 continue
 
             try:
                 if idx % self.processing.yolo_stride == 0:
                     buffer.append((idx, frame, ts))
 
-                if len(buffer) > MAX_BUFFER_SIZE:
+                if len(buffer) > self.processing.yolo_batch_size * 3:
                     logger.warning("YOLO buffer overflow → dropping oldest frames")
                     buffer = buffer[-self.processing.yolo_batch_size :]
 
@@ -299,41 +350,19 @@ class StreamProcessor(IKlinStream):
                     buffer = buffer[batch_size:]
                     batch_imgs = self._build_stream_yolo_batch(batch)
 
-                    preds_list = None
-                    for attempt in range(MAX_BATCH_RETRIES + 1):
-                        preds_list = await self._triton_infer_with_retry(
-                            self.runtime.yolo_processor.infer_batch,
-                            batch_imgs,
-                            context=context,
-                        )
-                        if preds_list is not None:
-                            break
-                        logger.warning(
-                            "YOLO batch retry %d/%d", attempt + 1, MAX_BATCH_RETRIES + 1
-                        )
-                        await asyncio.sleep(0.1 * (attempt + 1))
-
+                    preds_list = await self._infer_yolo_batch_with_retry(
+                        context, batch_imgs
+                    )
                     if preds_list is None:
                         logger.error("YOLO batch dropped after retries")
-                        buffer = buffer[self.processing.yolo_batch_size :]
                         last_send = ts
                     else:
-                        detections = self._collect_yolo_detections(batch, preds_list)
-                        if detections:
-                            await self._emit_event(
-                                event_type="YOLO",
-                                camera_id=camera_id,
-                                stream_id=stream_id,
-                                payload={
-                                    "frame_idx": batch[-1][0],
-                                    "timestamp": batch[-1][2],
-                                    "detections": detections,
-                                },
-                            )
-                        buffer = buffer[self.processing.yolo_batch_size :]
+                        await self._emit_yolo_batch(
+                            batch, preds_list, camera_id, stream_id
+                        )
                         last_send = ts
             finally:
-                frame_queue.task_done()
+                context.queue.yolo_queue.task_done()
 
     async def _mae_stream_pipeline(
         self,
@@ -438,7 +467,7 @@ class StreamProcessor(IKlinStream):
                         break
                 if cleared:
                     logger.debug(
-                        "Cleared frames from yolo_queue on heavy disable", cleared
+                        "Cleared %d frames from yolo_queue on heavy disable", cleared
                     )
 
     async def broadcast_frames(self, context: StreamContext) -> None:
@@ -477,6 +506,8 @@ class StreamProcessor(IKlinStream):
         context.stop_event.set()
 
     async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
+        """Wait until the stream context reports that shutdown has completed."""
+
         context = self.contexts.get(camera_id)
         if not context:
             return True  # уже нет → считаем остановленным
@@ -488,6 +519,8 @@ class StreamProcessor(IKlinStream):
             return False
 
     async def _watchdog(self, tasks, context):
+        """Stop the stream if any worker task exits with an unexpected error."""
+
         while not context.stop_event.is_set():
             for t in tasks:
                 if t is asyncio.current_task():

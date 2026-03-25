@@ -37,6 +37,7 @@ class StreamService:
     _klin_event_producer: IKlinEventProducer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamState:
+        """Create a stream state record and enqueue background processing."""
         stream_state = KlinStreamState(
             camera_url=data.camera_url,
             camera_id=data.camera_id,
@@ -87,6 +88,7 @@ class StreamService:
             logger.exception("Failed to persist stream error state")
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
+        """Claim a pending stream, run analysis, and persist the final state."""
         stream_state = await self._klin_repository.claim_for_processing_stream(
             stream_id
         )
@@ -121,6 +123,7 @@ class StreamService:
                 logger.exception("Failed to update stream state")
 
     async def stop_stream(self, stream_id: uuid.UUID) -> None:
+        """Request a graceful stop for the active stream and publish an event."""
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
 
         if not stream_state:
@@ -157,6 +160,8 @@ class StreamService:
             logger.exception("Failed to update stream state")
 
     async def get_stream_status(self, stream_id: uuid.UUID) -> StreamReadDto:
+        """Return the latest persisted status snapshot for the requested stream."""
+
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
 
         if not stream_state:

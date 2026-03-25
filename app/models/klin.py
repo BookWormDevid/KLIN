@@ -53,6 +53,8 @@ class KlinModel(BaseModel):
 
 
 class KlinStreamState(BaseModel):
+    """Current runtime state and last-known inference results for a camera stream."""
+
     __tablename__ = "klin_stream_state"
 
     id: Mapped[UUID]  # PK из BaseModel
@@ -77,6 +79,8 @@ class KlinStreamState(BaseModel):
 
 
 class KlinX3DResult(BaseModel):
+    """Persisted lightweight X3D event emitted during streaming analysis."""
+
     __tablename__ = "klin_x3d_result"
 
     id: Mapped[UUID]
@@ -96,6 +100,8 @@ class KlinX3DResult(BaseModel):
 
 
 class KlinMaeResult(BaseModel):
+    """Persisted VideoMAE window classification for a processed stream segment."""
+
     __tablename__ = "klin_mae_result"
 
     id: Mapped[UUID]
@@ -118,6 +124,8 @@ class KlinMaeResult(BaseModel):
 
 
 class KlinYoloResult(BaseModel):
+    """Persisted YOLO detections for individual frames in a stream."""
+
     __tablename__ = "klin_yolo_result"
 
     id: Mapped[UUID]

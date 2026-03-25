@@ -1,3 +1,7 @@
+"""
+consumer init file
+"""
+
 from .stream_event_consumer import StreamEventConsumer
 
 

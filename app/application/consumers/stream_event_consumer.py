@@ -1,3 +1,7 @@
+"""
+Literally all the consumers for application
+"""
+
 import asyncio
 import logging
 

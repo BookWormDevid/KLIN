@@ -24,19 +24,27 @@ from app.models import (
 
 
 class IKlinEventProducer(Protocol):
+    """event producer"""
+
     @abstractmethod
-    async def send_event(self, event: StreamEventDto) -> None: ...
+    async def send_event(self, event: StreamEventDto) -> None:
+        """Send the event with a specific data type"""
 
 
 class IKlinStream(Protocol):
-    @abstractmethod
-    async def streaming_analyze(self, model: KlinStreamState) -> None: ...
+    """Stream things"""
 
     @abstractmethod
-    async def stop(self, camera_id: str) -> None: ...
+    async def streaming_analyze(self, stream: KlinStreamState) -> None:
+        """Launch ai models"""
 
     @abstractmethod
-    async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool: ...
+    async def stop(self, camera_id: str) -> None:
+        """Stop whatever you are doing with that camera"""
+
+    @abstractmethod
+    async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
+        """Just wait before doing stupid"""
 
 
 class IKlinStreamEventConsumer(Protocol):

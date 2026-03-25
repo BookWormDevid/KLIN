@@ -32,7 +32,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U ${POSTGRES_USER} -d postgres
+        - PGPASSWORD=$$POSTGRES_PASSWORD psql -U "$$POSTGRES_USER" -d postgres -tAc 'SELECT 1' >/dev/null
       interval: 10s
       timeout: 5s
       retries: 5

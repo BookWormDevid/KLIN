@@ -27,6 +27,16 @@ until pg_isready -h postgresql -U "${admin_user}" -d postgres >/dev/null 2>&1; d
   sleep 2
 done
 
+if ! "${psql_base[@]}" -tAc "SELECT 1" >/dev/null 2>&1; then
+  cat >&2 <<EOF
+Postgres is reachable, but authentication failed for POSTGRES_USER='${admin_user}'.
+This usually means the existing postgres_data volume was initialized with older credentials.
+If you changed POSTGRES_USER or POSTGRES_PASSWORD in .env after the first successful start,
+recreate the Postgres data volume for a fresh local bootstrap, then run make infra-up again.
+EOF
+  exit 1
+fi
+
 ensure_role() {
   local role_name="$1"
   local role_password="$2"

@@ -84,6 +84,9 @@ make init-env
 make infra-up
 ```
 
+Если после первого успешного запуска вы меняли `POSTGRES_USER` или `POSTGRES_PASSWORD` в `.env`,
+пересоздайте volume `postgres_data`, иначе Postgres продолжит использовать старые credentials.
+
 ### 3) Применить миграции (один раз на БД)
 
 ```bash

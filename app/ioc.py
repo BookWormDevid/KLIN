@@ -41,12 +41,17 @@ from app.infrastructure.services.s3_storage import S3ObjectStorage
 
 
 class InfrastructureProvider(Provider):
-    """Общие инфраструктурные зависимости (БД, Rabbit, репозитории, продюсеры)."""
+    """
+    Общие инфраструктурные зависимости (БД, Rabbit, репозитории, продюсеры).
+    """
 
     scope = Scope.APP
 
     @provide
     def engine(self) -> Iterator[AsyncEngine]:
+        """
+        Основной async engine
+        """
         db_idle_timeout = app_settings.db_idle_in_transaction_session_timeout
         engine = create_async_engine(
             app_settings.database_url,
@@ -64,10 +69,16 @@ class InfrastructureProvider(Provider):
 
     @provide
     def rabbit_broker(self) -> RabbitBroker:
+        """
+        Literally just a oneline provider
+        """
         return RabbitBroker(app_settings.rabbit_url)
 
     @provide
     def session(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+        """
+        This one is 4 lines and makes a session with async engine...
+        """
         return async_sessionmaker(
             bind=engine,
             expire_on_commit=True,
@@ -115,6 +126,7 @@ class WorkerVideoProvider(Provider):
 
     @provide(provides=IKlinInference)
     def inference_processor(self) -> IKlinInference:
+        """Literally a shell"""
         processor_module = import_module(
             "app.infrastructure.services.target.video_processor"
         )
