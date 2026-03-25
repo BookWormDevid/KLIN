@@ -2,13 +2,16 @@
 Тесты логики стриминговой обработки видео
 """
 
-from unittest.mock import MagicMock
+import json
+import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import cv2
 import numpy as np
 import pytest
 
-from app.infrastructure.services.target import InferenceProcessor
+from app.infrastructure.services.target import InferenceProcessor, StreamProcessor
+from app.models import KlinModel, KlinStreamState, ProcessingState
 
 
 class FakeVideoCapture:
@@ -67,7 +70,7 @@ class InferenceProcessorTestAdapter(InferenceProcessor):
         return self._quick_x3d_check(video_path)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_process_video_stream_mocked(monkeypatch):
     """
     Тест стриминговой обработки видео с моками моделей и cv2.VideoCapture.
@@ -175,3 +178,85 @@ def test_quick_x3d_check_retries_until_frames_are_available(monkeypatch):
     result = processor.quick_x3d_check("fake.mp4")
 
     assert list(result.keys()) == ["True"]
+
+
+@pytest.mark.anyio
+async def test_analyze_skips_heavy_pipeline_when_x3d_gate_is_false(monkeypatch):
+    processor = InferenceProcessorTestAdapter()
+    model = KlinModel(
+        id=uuid.uuid4(),
+        video_path="fake.mp4",
+        state=ProcessingState.PROCESSING,
+    )
+
+    monkeypatch.setattr(processor, "_quick_x3d_check", lambda _path: {"False": 0.99})
+    process_video_stream_mock = AsyncMock()
+    monkeypatch.setattr(processor, "_process_video_stream", process_video_stream_mock)
+
+    result = await processor.analyze(model)
+
+    assert json.loads(result.x3d) == {"False": 0.99}
+    assert result.mae == "[]"
+    assert result.yolo == "{}"
+    assert result.objects == []
+    assert result.all_classes == []
+    process_video_stream_mock.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_analyze_runs_heavy_pipeline_when_x3d_gate_is_true(monkeypatch):
+    processor = InferenceProcessorTestAdapter()
+    model = KlinModel(
+        id=uuid.uuid4(),
+        video_path="fake.mp4",
+        state=ProcessingState.PROCESSING,
+    )
+
+    monkeypatch.setattr(processor, "_quick_x3d_check", lambda _path: {"True": 0.91})
+    monkeypatch.setattr(processor.logging, "log_processing", MagicMock())
+
+    async def fake_process_video_stream(_path: str):
+        return (
+            [{"time": [0.0, 1.0], "answer": "Fight", "confident": 0.88}],
+            {0.0: [[1.0, 2.0, 3.0, 4.0]]},
+            ["person"],
+            {
+                "total_frames": 16,
+                "fps": 30.0,
+                "duration": 0.53,
+                "frames_read": 16,
+            },
+        )
+
+    monkeypatch.setattr(processor, "_process_video_stream", fake_process_video_stream)
+
+    result = await processor.analyze(model)
+
+    assert json.loads(result.x3d) == {"True": 0.91}
+    assert json.loads(result.mae)[0]["answer"] == "Fight"
+    assert list(json.loads(result.yolo).values())[0] == [[1.0, 2.0, 3.0, 4.0]]
+    assert result.objects == ["person"]
+    assert set(result.all_classes or []) == {"Fight"}
+    processor.logging.log_processing.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_streaming_analyze_raises_when_camera_cannot_open(monkeypatch):
+    processor = StreamProcessor(event_producer=AsyncMock())
+    stream = KlinStreamState(
+        id=uuid.uuid4(),
+        camera_id="cam-1",
+        camera_url="rtsp://bad-camera",
+        state=ProcessingState.PENDING,
+    )
+
+    monkeypatch.setattr(
+        cv2,
+        "VideoCapture",
+        lambda _path: FakeVideoCapture(frame_count=0, fps=0.0, opened=False),
+    )
+
+    with pytest.raises(ValueError, match="Failed to open camera stream"):
+        await processor.streaming_analyze(stream)
+
+    assert stream.camera_id not in processor.contexts

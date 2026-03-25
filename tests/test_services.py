@@ -120,7 +120,7 @@ def fixture_perform_klin_context(
 
 
 # Тесты метода klin_image (создание записи + отправка в очередь)
-@pytest.mark.asyncio
+@pytest.mark.anyio
 class TestKlinImage:
     """Группа тестов для метода klin_image
     загрузка видео и постановка задачи в очередь.
@@ -214,9 +214,103 @@ class TestKlinImage:
         mock_repository.update.assert_called_once_with(created_klin)
         mock_callback_sender.post_consumer.assert_called_once_with(created_klin)
 
+    async def test_klin_image_queue_publish_error_persists_before_callback(
+        self,
+        klin_service: KlinService,
+        mock_repository: AsyncMock,
+        mock_process_producer: AsyncMock,
+        mock_callback_sender: AsyncMock,
+    ) -> None:
+        """
+        callback.
+        """
+        upload_dto = KlinUploadDto(video_path="/tmp/test_video.mp4")
+        created_klin = KlinModel(
+            id=uuid.uuid4(),
+            response_url="https://example.com/callback",
+            video_path=upload_dto.video_path,
+            state=ProcessingState.PENDING,
+        )
+        mock_repository.create.return_value = created_klin
+        mock_process_producer.send.side_effect = RuntimeError("broker down")
+
+        call_order: list[str] = []
+
+        async def update_side_effect(model: KlinModel) -> None:
+            assert model is created_klin
+            call_order.append("update")
+
+        async def callback_side_effect(model: KlinModel) -> None:
+            assert model is created_klin
+            call_order.append("callback")
+
+        mock_repository.update.side_effect = update_side_effect
+        mock_callback_sender.post_consumer.side_effect = callback_side_effect
+
+        with pytest.raises(KlinEnqueueError):
+            await klin_service.klin_image(upload_dto)
+
+        assert call_order == ["update", "callback"]
+
+
+@pytest.mark.anyio
+class TestS3Cleanup:
+    async def test_prepare_processing_video_removes_temp_file_when_download_fails(
+        self,
+        klin_service: KlinService,
+        mock_video_storage: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        source_uri = "s3://klin-videos/klin/uploads/broken-video.mp4"
+        expected_local_path = "/temp/broken-video.mp4"
+        mock_video_storage.download_to_path.side_effect = RuntimeError(
+            "download failed"
+        )
+
+        monkeypatch.setattr(
+            tempfile, "mkstemp", lambda suffix: (123, expected_local_path)
+        )
+        monkeypatch.setattr(os, "close", MagicMock())
+        monkeypatch.setattr(os.path, "exists", lambda path: path == expected_local_path)
+        mock_remove = MagicMock()
+        monkeypatch.setattr(os, "remove", mock_remove)
+
+        with pytest.raises(RuntimeError, match="download failed"):
+            await klin_service._prepare_processing_video(source_uri)
+
+        mock_video_storage.download_to_path.assert_awaited_once_with(
+            source_uri=source_uri,
+            destination_path=expected_local_path,
+        )
+        mock_remove.assert_called_once_with(expected_local_path)
+
+    async def test_cleanup_video_artifacts_keeps_local_cleanup_when_s3_delete_fails(
+        self,
+        klin_service: KlinService,
+        mock_video_storage: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        source_uri = "s3://klin-videos/klin/uploads/test-video.mp4"
+        local_video_path = "temp/downloaded-video.mp4"
+        mock_video_storage.delete.side_effect = RuntimeError("s3 delete failed")
+
+        monkeypatch.setattr(os.path, "exists", lambda path: path == local_video_path)
+        mock_remove = MagicMock()
+        monkeypatch.setattr(os, "remove", mock_remove)
+
+        await klin_service._cleanup_video_artifacts(
+            source_video_path=source_uri,
+            local_video_path=local_video_path,
+        )
+
+        mock_video_storage.delete.assert_awaited_once_with(source_uri)
+        mock_remove.assert_called_once_with(local_video_path)
+        assert "Failed to delete S3 object" in caplog.text
+
 
 # Тесты метода perform_klin — основной этап обработки видео
-@pytest.mark.asyncio
+@pytest.mark.anyio
 class TestPerformKlin:
     """
     Группа тестов для метода perform_klin — запуск инференса и обновление статуса.
@@ -286,6 +380,47 @@ class TestPerformKlin:
         mock_repository.update.assert_called_once_with(sample_klin_model)
         mock_callback_sender.post_consumer.assert_called_once_with(sample_klin_model)
 
+    async def test_perform_klin_persists_before_callback(
+        self,
+        perform_klin_context: PerformKlinContext,
+    ) -> None:
+        """
+        callback.
+        """
+        (
+            klin_service,
+            mock_repository,
+            mock_inference_service,
+            mock_callback_sender,
+            _,
+            sample_klin_model,
+        ) = perform_klin_context
+
+        process_result = AsyncMock()
+        process_result.x3d = "x3d"
+        process_result.mae = "mae"
+        process_result.yolo = "yolo"
+        process_result.objects = []
+        process_result.all_classes = []
+        mock_inference_service.analyze.return_value = process_result
+
+        call_order: list[str] = []
+
+        async def update_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("update")
+
+        async def callback_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("callback")
+
+        mock_repository.update.side_effect = update_side_effect
+        mock_callback_sender.post_consumer.side_effect = callback_side_effect
+
+        await klin_service.perform_klin(sample_klin_model.id)
+
+        assert call_order == ["update", "callback"]
+
     async def test_perform_klin_with_none_objects_after_claim(
         self,
         perform_klin_context: PerformKlinContext,
@@ -345,6 +480,38 @@ class TestPerformKlin:
         assert sample_klin_model.state == ProcessingState.ERROR
         mock_callback_sender.post_consumer.assert_called_once_with(sample_klin_model)
         mock_repository.update.assert_called_once_with(sample_klin_model)
+
+    async def test_perform_klin_error_persists_before_callback(
+        self,
+        perform_klin_context: PerformKlinContext,
+    ) -> None:
+        (
+            klin_service,
+            mock_repository,
+            mock_inference_service,
+            mock_callback_sender,
+            _,
+            sample_klin_model,
+        ) = perform_klin_context
+        mock_inference_service.analyze.side_effect = ValueError("Inference failed")
+
+        call_order: list[str] = []
+
+        async def update_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("update")
+
+        async def callback_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("callback")
+
+        mock_repository.update.side_effect = update_side_effect
+        mock_callback_sender.post_consumer.side_effect = callback_side_effect
+
+        await klin_service.perform_klin(sample_klin_model.id)
+
+        assert sample_klin_model.state == ProcessingState.ERROR
+        assert call_order == ["update", "callback"]
 
     async def test_perform_klin_file_deletion_success(
         self,
@@ -458,6 +625,45 @@ class TestPerformKlin:
         assert seen_video_path["value"] == expected_local_path
         mock_remove.assert_called_once_with(expected_local_path)
 
+    async def test_perform_klin_cleans_s3_artifacts_after_inference_error(
+        self,
+        perform_klin_context: PerformKlinContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """
+        finally.
+        """
+
+        (
+            klin_service,
+            _,
+            mock_inference_service,
+            _,
+            mock_video_storage,
+            sample_klin_model,
+        ) = perform_klin_context
+        sample_klin_model.video_path = "s3://klin-videos/klin/uploads/test-video.mp4"
+        mock_inference_service.analyze.side_effect = RuntimeError("Inference failed")
+
+        expected_local_path = "temp/failed-video.mp4"
+        monkeypatch.setattr(
+            tempfile, "mkstemp", lambda suffix: (123, expected_local_path)
+        )
+        monkeypatch.setattr(os, "close", MagicMock())
+        monkeypatch.setattr(os.path, "exists", lambda _path: True)
+        mock_remove = MagicMock()
+        monkeypatch.setattr(os, "remove", mock_remove)
+
+        await klin_service.perform_klin(sample_klin_model.id)
+
+        assert sample_klin_model.state == ProcessingState.ERROR
+        mock_video_storage.download_to_path.assert_awaited_once_with(
+            source_uri=sample_klin_model.video_path,
+            destination_path=expected_local_path,
+        )
+        mock_video_storage.delete.assert_awaited_once_with(sample_klin_model.video_path)
+        mock_remove.assert_called_once_with(expected_local_path)
+
     async def test_perform_klin_update_error(
         self,
         perform_klin_context: PerformKlinContext,
@@ -483,9 +689,50 @@ class TestPerformKlin:
 
         assert "Failed to persist klin state" in caplog.text
 
+    async def test_perform_klin_attempts_callback_after_update_failure(
+        self,
+        perform_klin_context: PerformKlinContext,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        (
+            klin_service,
+            mock_repository,
+            mock_inference_service,
+            mock_callback_sender,
+            _,
+            sample_klin_model,
+        ) = perform_klin_context
+
+        process_result = AsyncMock()
+        process_result.x3d = "x3d"
+        process_result.mae = "mae"
+        process_result.yolo = "yolo"
+        process_result.objects = []
+        process_result.all_classes = []
+        mock_inference_service.analyze.return_value = process_result
+
+        call_order: list[str] = []
+
+        async def update_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("update")
+            raise RuntimeError("Update failed")
+
+        async def callback_side_effect(model: KlinModel) -> None:
+            assert model is sample_klin_model
+            call_order.append("callback")
+
+        mock_repository.update.side_effect = update_side_effect
+        mock_callback_sender.post_consumer.side_effect = callback_side_effect
+
+        await klin_service.perform_klin(sample_klin_model.id)
+
+        assert call_order == ["update", "callback"]
+        assert "Failed to persist klin state" in caplog.text
+
 
 # Тесты метода get_inference_status
-@pytest.mark.asyncio
+@pytest.mark.anyio
 class TestGetInferenceStatus:
     """Тесты получения статуса обработки по ID."""
 
@@ -528,7 +775,7 @@ class TestGetInferenceStatus:
 
 
 # Тесты метода get_n_inferences
-@pytest.mark.asyncio
+@pytest.mark.anyio
 class TestGetNInferences:
     """Тесты получения списка последних N задач."""
 

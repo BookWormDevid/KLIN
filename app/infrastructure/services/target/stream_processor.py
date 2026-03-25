@@ -110,13 +110,21 @@ class StreamProcessor(IKlinStream):
         logger.error("Triton failed after retries")
         return None
 
+    @staticmethod
+    def _open_capture(camera_url: str) -> cv2.VideoCapture:
+        cap = cv2.VideoCapture(camera_url)
+        if not cap.isOpened():
+            cap.release()
+            raise ValueError(f"Failed to open camera stream: {camera_url}")
+        return cap
+
     async def _frame_reader(
         self,
         camera_url: str,
         frame_queue: asyncio.Queue,
         stop_event: asyncio.Event,
     ) -> None:
-        cap = cv2.VideoCapture(camera_url)
+        cap = self._open_capture(camera_url)
 
         if not cap.isOpened():
             logger.error("Не удалось открыть поток камеры: %s", camera_url)

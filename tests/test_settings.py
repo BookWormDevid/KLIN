@@ -97,6 +97,20 @@ class TestSettings(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _ = settings_invalid.db_pool_size
 
+    def test_db_connect_timeout(self) -> None:
+        settings_default = Settings()
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(settings_default.db_connect_timeout, 10.0)
+
+        settings_custom = Settings()
+        with patch.dict(os.environ, {"DB_CONNECT_TIMEOUT": "3.5"}, clear=True):
+            self.assertEqual(settings_custom.db_connect_timeout, 3.5)
+
+        settings_invalid = Settings()
+        with patch.dict(os.environ, {"DB_CONNECT_TIMEOUT": "0"}, clear=True):
+            with self.assertRaises(ValueError):
+                _ = settings_invalid.db_connect_timeout
+
     def test_klin_secret_missing(self) -> None:
         settings = Settings()
         with patch.dict(os.environ, {}, clear=True):

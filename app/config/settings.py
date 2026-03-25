@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     db_max_overflow: int = 30
     db_statement_timeout: int = 60000
     db_idle_in_transaction_session_timeout: int = 30000
+    default_db_connect_timeout: float = 10.0
 
     default_videomae_path: str = "models/videomae-ucf-crime"
     default_yolo_path: str = "models/yolov8x.pt"
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
 
     Klin_queue = "Klin-queue"
     Klin_stream_queue = "Klin-stream-queue"
+    Klin_stream_event_queue = "Klin-stream-event-queue"
 
     @staticmethod
     def parse_bool_env(value: str) -> bool:
@@ -101,6 +103,20 @@ class Settings(BaseSettings):
         if pool_size < 1:
             raise ValueError("DB_POOL_SIZE must be >= 1")
         return pool_size
+
+    @property
+    def db_connect_timeout(self) -> float:
+        """
+        Таймаут установки соединения с БД.
+        """
+        timeout = self.resolve_env_property(
+            "DB_CONNECT_TIMEOUT",
+            float,
+            default_value=self.default_db_connect_timeout,
+        )
+        if timeout <= 0:
+            raise ValueError("DB_CONNECT_TIMEOUT must be > 0")
+        return timeout
 
     @property
     def broker_max_consumers(self) -> int | None:

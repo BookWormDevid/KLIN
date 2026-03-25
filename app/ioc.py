@@ -59,10 +59,11 @@ class InfrastructureProvider(Provider):
             max_overflow=app_settings.db_max_overflow,
             pool_pre_ping=True,
             connect_args={
+                "timeout": app_settings.db_connect_timeout,
                 "server_settings": {
                     "idle_in_transaction_session_timeout": f"{db_idle_timeout}",
                     "statement_timeout": f"{app_settings.db_statement_timeout}",
-                }
+                },
             },
         )
         yield engine

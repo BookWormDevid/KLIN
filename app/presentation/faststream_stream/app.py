@@ -10,10 +10,12 @@ from dishka import make_container
 from faststream import FastStream
 from faststream.rabbit import RabbitBroker, RabbitMessage
 from prometheus_client import Counter, Histogram, start_http_server
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.application.dto import StreamProcessDto
 from app.application.services import StreamService
 from app.config import app_settings
+from app.infrastructure.database.health import ping_database
 from app.ioc import get_worker_providers
 
 
@@ -22,9 +24,24 @@ logger = logging.getLogger(__name__)
 # ====================== Dependency Injection ======================
 container = make_container(*get_worker_providers())
 broker: RabbitBroker = container.get(RabbitBroker)
-app = FastStream(broker)  # ← вот эта переменная должна быть!
+db_engine: AsyncEngine = container.get(AsyncEngine)
 
 stream_service: StreamService = container.get(StreamService)
+
+
+async def verify_worker_database() -> None:
+    """Fail startup early when Postgres is unavailable."""
+    logger.info(
+        "Checking stream worker database connectivity before consuming messages"
+    )
+    await ping_database(db_engine)
+    logger.info("Stream worker database connectivity check passed")
+
+
+app = FastStream(
+    broker,
+    on_startup=(verify_worker_database,),
+)  # ← вот эта переменная должна быть!
 
 # ====================== Prometheus метрики ======================
 STREAM_PROCESSED = Counter(

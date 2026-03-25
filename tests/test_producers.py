@@ -6,12 +6,26 @@ import msgspec
 import pytest
 
 from app.application.consumers.stream_event_consumer import StreamEventConsumer
-from app.application.dto import StreamEventDto, StreamProcessDto
+from app.application.dto import KlinProcessDto, StreamEventDto, StreamProcessDto
 from app.config import app_settings
 from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
 
 
-def test_klin_process_producer_supports_send_stream() -> None:
+def test_klin_process_producer_routes_offline_jobs_to_klin_queue() -> None:
+    broker = AsyncMock()
+    producer = KlinProcessProducer(_rabbit_broker=broker)
+
+    payload = KlinProcessDto(klin_id=uuid.UUID(int=0))
+
+    asyncio.run(producer.send(payload))
+
+    broker.publish.assert_awaited_once()
+    assert broker.publish.await_args.kwargs == {
+        "queue": app_settings.Klin_queue,
+    }
+
+
+def test_klin_process_producer_routes_stream_jobs_to_stream_queue() -> None:
     broker = AsyncMock()
     producer = KlinProcessProducer(_rabbit_broker=broker)
 
@@ -20,6 +34,13 @@ def test_klin_process_producer_supports_send_stream() -> None:
     asyncio.run(producer.send_stream(payload))
 
     broker.publish.assert_awaited_once()
+    assert broker.publish.await_args.kwargs == {
+        "queue": app_settings.Klin_stream_queue,
+    }
+
+
+def test_stream_commands_and_events_use_distinct_queues() -> None:
+    assert app_settings.Klin_stream_queue != app_settings.Klin_stream_event_queue
 
 
 def test_klin_event_producer_publishes_stream_event() -> None:
@@ -41,7 +62,7 @@ def test_klin_event_producer_publishes_stream_event() -> None:
 
     assert msgspec.json.decode(encoded_event, type=StreamEventDto) == event
     assert broker.publish.await_args.kwargs == {
-        "queue": app_settings.Klin_stream_queue,
+        "queue": app_settings.Klin_stream_event_queue,
     }
 
 

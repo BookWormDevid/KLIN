@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID
 
-import msgspec
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -31,25 +30,6 @@ class KlinRepository(IKlinRepository):
     """
 
     session: async_sessionmaker[AsyncSession]
-
-    @staticmethod
-    def _encode_payload(payload: dict) -> str:
-        return msgspec.json.encode(payload).decode("utf-8")
-
-    @staticmethod
-    def _merge_unique(
-        existing: list[str] | None, additions: list[str] | tuple[str, ...]
-    ) -> list[str]:
-        merged: list[str] = []
-        seen: set[str] = set()
-
-        for value in [*(existing or []), *additions]:
-            if not value or value in seen:
-                continue
-            seen.add(value)
-            merged.append(value)
-
-        return merged
 
     async def save_yolo(self, event: KlinYoloResult) -> None:
         async with self.session() as session:
@@ -78,13 +58,14 @@ class KlinRepository(IKlinRepository):
                 await session.execute(stmt)
 
                 objects = [d["label"] for d in event.detections]
+                all_classes = list(dict.fromkeys(objects))
 
                 await session.execute(
                     update(KlinStreamState)
                     .where(KlinStreamState.id == event.stream_id)
                     .values(
                         objects=objects,
-                        all_classes=list(set(objects)),
+                        all_classes=all_classes,
                     )
                 )
 
@@ -270,7 +251,6 @@ class KlinRepository(IKlinRepository):
         async with self.session() as session:
             async with session.begin():
                 await session.merge(model)
-            await session.commit()
 
     async def mark_stopped(self, stream_id: uuid.UUID) -> None:
         async with self.session() as session:

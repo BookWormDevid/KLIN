@@ -197,6 +197,7 @@ class KlinService:
 
         source_video_path = klin.video_path
         local_video_path: str | None = None
+        processing_succeeded = False
 
         try:
             (
@@ -222,16 +223,13 @@ class KlinService:
                 process.all_classes if process.all_classes is not None else []
             )
             klin.state = ProcessingState.FINISHED
-
-            await self._klin_callback_sender.post_consumer(klin)
-            logger.info("Klin processing succeeded. klin_id=%s", klin_id)
+            processing_succeeded = True
 
         except Exception as exc:  # pylint: disable=broad-except
             klin.video_path = source_video_path
             klin.x3d = "Execution error. View mae column."
             klin.mae = str(exc)
             klin.state = ProcessingState.ERROR
-            await self._klin_callback_sender.post_consumer(klin)
             logger.exception(
                 "Klin processing failed. klin_id=%s error=%s",
                 klin_id,
@@ -249,10 +247,22 @@ class KlinService:
                     exc,
                 )
 
+            try:
+                await self._klin_callback_sender.post_consumer(klin)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.exception(
+                    "Failed to send callback. klin_id=%s error=%s",
+                    klin_id,
+                    exc,
+                )
+
             await self._cleanup_video_artifacts(
                 source_video_path=source_video_path,
                 local_video_path=local_video_path,
             )
+
+        if processing_succeeded:
+            logger.info("Klin processing succeeded. klin_id=%s", klin_id)
 
     async def get_inference_status(self, klin_id: uuid.UUID) -> KlinReadDto:
         """
