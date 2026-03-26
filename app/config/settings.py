@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     default_s3_key_prefix: str = "klin/uploads"
 
     Klin_queue = "Klin-queue"
-    Klin_stream_queue = "Klin-stream-queue"
+    Klin_process_queue = "Klin-stream-queue"
     Klin_stream_event_queue = "Klin-stream-event-queue"
 
     @staticmethod

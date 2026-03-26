@@ -33,7 +33,7 @@ class KlinProcessProducer(IKlinProcessProducer):
 
     async def send_stream(self, data: StreamProcessDto) -> None:
         await self._rabbit_broker.publish(
-            msgspec.json.encode(data), queue=app_settings.Klin_stream_queue
+            msgspec.json.encode(data), queue=app_settings.Klin_process_queue
         )
 
 

@@ -35,12 +35,12 @@ def test_klin_process_producer_routes_stream_jobs_to_stream_queue() -> None:
 
     broker.publish.assert_awaited_once()
     assert broker.publish.await_args.kwargs == {
-        "queue": app_settings.Klin_stream_queue,
+        "queue": app_settings.Klin_process_queue,
     }
 
 
 def test_stream_commands_and_events_use_distinct_queues() -> None:
-    assert app_settings.Klin_stream_queue != app_settings.Klin_stream_event_queue
+    assert app_settings.Klin_process_queue != app_settings.Klin_stream_event_queue
 
 
 def test_klin_event_producer_publishes_stream_event() -> None:

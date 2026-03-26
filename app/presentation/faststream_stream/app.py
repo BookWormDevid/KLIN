@@ -1,6 +1,6 @@
 """
 FastStream Worker — обработка стриминговых задач (реал-тайм CV).
-Очередь: stream_process_queue
+Очередь: Klin_stream_queue
 """
 
 import logging
@@ -12,7 +12,8 @@ from faststream.rabbit import RabbitBroker, RabbitMessage
 from prometheus_client import Counter, Histogram, start_http_server
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.application.dto import StreamProcessDto
+from app.application.dto import StreamEventDto, StreamProcessDto
+from app.application.interfaces import IKlinStreamEventConsumer
 from app.application.services import StreamService
 from app.config import app_settings
 from app.infrastructure.database.health import ping_database
@@ -27,6 +28,10 @@ broker: RabbitBroker = container.get(RabbitBroker)
 db_engine: AsyncEngine = container.get(AsyncEngine)
 
 stream_service: StreamService = container.get(StreamService)
+
+stream_event_consumer: IKlinStreamEventConsumer = container.get(
+    IKlinStreamEventConsumer
+)
 
 
 async def verify_worker_database() -> None:
@@ -59,8 +64,14 @@ STREAM_PROCESSING_TIME = Histogram(
 start_http_server(8010)
 
 
+@broker.subscriber(app_settings.Klin_stream_event_queue)
+async def event_handler(message: RabbitMessage):
+    event = msgspec.json.decode(message.body, type=StreamEventDto)
+    await stream_event_consumer.handle(event=event)
+
+
 @broker.subscriber(
-    app_settings.Klin_stream_queue,
+    app_settings.Klin_process_queue,
     consume_args={"prefetch_count": 1},
 )
 async def stream_start_handler(message: RabbitMessage) -> None:
@@ -94,4 +105,4 @@ async def stream_start_handler(message: RabbitMessage) -> None:
                 "error": str(exc),
             },
         )
-        raise  # FastStream сделает NACK + dead letter (если настроен)
+        raise

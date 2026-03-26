@@ -230,7 +230,7 @@ class StreamProcessor(IKlinStream):
             detections.append(
                 {
                     "class_id": class_id,
-                    "class_name": self.processing.yolo_classes.get(class_id, "unknown"),
+                    "label": self.processing.yolo_classes.get(class_id, "unknown"),
                     "bbox": bbox,
                     "confidence": float(pred[4 + class_id]),
                     "timestamp": timestamp,
@@ -412,9 +412,22 @@ class StreamProcessor(IKlinStream):
                 )
                 if probs is None:
                     continue
+
                 pred_idx = int(np.argmax(probs))
                 confidence = float(probs[pred_idx])
                 label = self.processing.mae_classes.get(pred_idx, str(pred_idx))
+
+                top_indices = np.argsort(probs)[::-1][:3]
+                top_probs = []
+                for idx in top_indices:
+                    if idx in self.processing.mae_classes:
+                        top_probs.append(
+                            {
+                                "class_name": self.processing.mae_classes[idx],
+                                "probability": float(probs[idx]),
+                            }
+                        )
+
                 await self._emit_event(
                     event_type="MAE",
                     camera_id=camera_id,
@@ -424,6 +437,7 @@ class StreamProcessor(IKlinStream):
                         "confidence": confidence,
                         "start_ts": window_ts[0],
                         "end_ts": window_ts[-1],
+                        "probs": top_probs,
                     },
                 )
                 last_inference = ts

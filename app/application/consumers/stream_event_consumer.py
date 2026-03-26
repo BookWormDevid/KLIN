@@ -66,8 +66,8 @@ class StreamEventConsumer:
             stream_id=event.stream_id,
             camera_id=event.camera_id,
             frame_idx=data.get("frame_idx"),
-            ts=data["timestamp"],
-            detections=data["detections"],
+            ts=data.get("timestamp"),
+            detections=data.get("detections"),
         )
         await self.repository.save_yolo(yolo_result)
 
@@ -76,8 +76,6 @@ class StreamEventConsumer:
         if not stream:
             logger.warning("Stream not found: %s", event.stream_id)
             return
-
-        await self.repository.update(stream)
 
     async def _handle_mae(self, event: StreamEventDto) -> None:
         """Convert StreamEventDto to KlinMaeResult and save."""
@@ -104,19 +102,24 @@ class StreamEventConsumer:
         stream.last_mae_label = mae_result.label
         stream.last_mae_confidence = mae_result.confidence
 
-        await self.repository.update(stream)
-
     async def _handle_x3d(self, event: StreamEventDto) -> None:
         """Convert StreamEventDto to KlinX3DResult and save."""
         data = event.payload
+
+        # Защита от разных форматов timestamp
+        ts_raw = data.get("timestamp")
+        if ts_raw is None:
+            logger.error("Event %s missing timestamp payload", event.id)
+            return
+        ts = float(ts_raw)
 
         x3d_result = KlinX3DResult(
             event_id=event.id,
             stream_id=event.stream_id,
             camera_id=event.camera_id,
-            label=data.get("label", "violence"),  # или data.get("label", "violence")
-            confidence=data["prob"],
-            ts=data["timestamp"],
+            label=data.get("label", "violence"),
+            confidence=data.get("prob"),
+            ts=ts,
         )
         await self.repository.save_x3d(x3d_result)
 
@@ -128,8 +131,6 @@ class StreamEventConsumer:
 
         stream.last_x3d_label = x3d_result.label
         stream.last_x3d_confidence = x3d_result.confidence
-
-        await self.repository.update(stream)
 
     async def handle_many(self, events: list[StreamEventDto]) -> None:
         """Persists a sequence of stream events one by one."""

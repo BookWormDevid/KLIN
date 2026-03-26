@@ -31,10 +31,17 @@ class StreamService:
     Сервис управления жизненным циклом видеопотоков.
     """
 
-    _klin_stream: IKlinStream
-    _klin_repository: IKlinRepository
-    _klin_process_producer: IKlinProcessProducer
-    _klin_event_producer: IKlinEventProducer
+    def __init__(
+        self,
+        klin_repository: IKlinRepository,
+        klin_stream: IKlinStream,
+        klin_process_producer: IKlinProcessProducer,
+        klin_event_producer: IKlinEventProducer,
+    ):
+        self._klin_repository = klin_repository
+        self._klin_stream = klin_stream
+        self._klin_process_producer = klin_process_producer
+        self._klin_event_producer = klin_event_producer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamState:
         """Create a stream state record and enqueue background processing."""
