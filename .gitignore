@@ -8,7 +8,6 @@ model_repository/**/1/*.pt
 model_repository/**/1/*.data
 mlruns/*/**
 tmp
-*versions
 
 
 
