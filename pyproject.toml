@@ -94,6 +94,7 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = ["versions"]
 
 [tool.ruff.lint]
 select = [
@@ -104,6 +105,7 @@ select = [
     "UP", # pyupgrade
 ]
 isort.lines-after-imports = 2
+exclude = ["versions"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
