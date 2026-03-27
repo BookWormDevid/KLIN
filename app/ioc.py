@@ -23,18 +23,22 @@ from app.application.interfaces import (
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
+    IKlinRuntimeSettings,
     IKlinStream,
     IKlinStreamEventConsumer,
+    IKlinTaskRepository,
     IKlinVideoStorage,
+    IStreamEventRepository,
+    IStreamStateRepository,
 )
-from app.application.services import (  # ← добавили StreamService
+from app.application.services import (
     KlinService,
     StreamService,
 )
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
-from app.infrastructure.services import StreamProcessor  # реализация IKlinStream
+from app.infrastructure.services import StreamProcessor
 from app.infrastructure.services.callback_sender import KlinCallbackSender
 from app.infrastructure.services.inference_stub import ApiInferenceStub
 from app.infrastructure.services.s3_storage import S3ObjectStorage
@@ -87,6 +91,13 @@ class InfrastructureProvider(Provider):
         )
 
     KLIN_repository = provide(KlinRepository, provides=IKlinRepository)
+    KLIN_task_repository = provide(KlinRepository, provides=IKlinTaskRepository)
+    KLIN_stream_state_repository = provide(
+        KlinRepository, provides=IStreamStateRepository
+    )
+    KLIN_stream_event_repository = provide(
+        KlinRepository, provides=IStreamEventRepository
+    )
     KLIN_event_producer = provide(KlinEventProducer, provides=IKlinEventProducer)
     KLIN_producer = provide(KlinProcessProducer, provides=IKlinProcessProducer)
     KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
@@ -96,6 +107,12 @@ class InfrastructureProvider(Provider):
     KLIN_stream_event_consumer = provide(
         StreamEventConsumer, provides=IKlinStreamEventConsumer
     )
+
+    @provide(provides=IKlinRuntimeSettings)
+    def klin_runtime_settings(self) -> IKlinRuntimeSettings:
+        """Expose the small application-facing settings port."""
+
+        return cast(IKlinRuntimeSettings, app_settings)
 
 
 class ApiApplicationProvider(Provider):

@@ -10,7 +10,6 @@ from .klin import (
     StreamEventDto,
     StreamProcessDto,
     StreamReadDto,
-    StreamResultDto,
     StreamUploadDto,
 )
 
@@ -20,7 +19,6 @@ __all__ = (
     "KlinResultDto",
     "KlinReadDto",
     "KlinProcessDto",
-    "StreamResultDto",
     "StreamUploadDto",
     "StreamReadDto",
     "StreamProcessDto",

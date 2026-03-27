@@ -6,7 +6,7 @@ import asyncio
 import logging
 
 from app.application.dto import StreamEventDto
-from app.application.interfaces import IKlinRepository
+from app.application.interfaces import IStreamEventRepository
 from app.models import KlinMaeResult, KlinX3DResult, KlinYoloResult
 
 
@@ -18,7 +18,7 @@ class StreamEventConsumer:
     Persists stream events in the repository layer.
     """
 
-    def __init__(self, repository: IKlinRepository) -> None:
+    def __init__(self, repository: IStreamEventRepository) -> None:
         self.repository = repository
 
     async def handle(self, event: StreamEventDto) -> None:
@@ -71,12 +71,6 @@ class StreamEventConsumer:
         )
         await self.repository.save_yolo(yolo_result)
 
-        stream = await self.repository.get_by_id_stream(event.stream_id)
-
-        if not stream:
-            logger.warning("Stream not found: %s", event.stream_id)
-            return
-
     async def _handle_mae(self, event: StreamEventDto) -> None:
         """Convert StreamEventDto to KlinMaeResult and save."""
         data = event.payload
@@ -92,15 +86,6 @@ class StreamEventConsumer:
             end_ts=data["end_ts"],
         )
         await self.repository.save_mae(mae_result)
-
-        stream = await self.repository.get_by_id_stream(event.stream_id)
-
-        if not stream:
-            logger.warning("Stream not found: %s", event.stream_id)
-            return
-
-        stream.last_mae_label = mae_result.label
-        stream.last_mae_confidence = mae_result.confidence
 
     async def _handle_x3d(self, event: StreamEventDto) -> None:
         """Convert StreamEventDto to KlinX3DResult and save."""
@@ -122,15 +107,6 @@ class StreamEventConsumer:
             ts=ts,
         )
         await self.repository.save_x3d(x3d_result)
-
-        stream = await self.repository.get_by_id_stream(event.stream_id)
-
-        if not stream:
-            logger.warning("Stream not found: %s", event.stream_id)
-            return
-
-        stream.last_x3d_label = x3d_result.label
-        stream.last_x3d_confidence = x3d_result.confidence
 
     async def handle_many(self, events: list[StreamEventDto]) -> None:
         """Persists a sequence of stream events one by one."""

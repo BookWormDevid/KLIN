@@ -1,12 +1,10 @@
 # pylint: disable=too-few-public-methods
-"""
-Передача информации из инфраструктурного слоя.
-Содержит классы для взаимодействия инфраструктурного слоя со слоями выше.
-"""
+"""Application ports used by services, consumers, and adapters."""
+
+from __future__ import annotations
 
 import uuid
-from abc import abstractmethod
-from typing import BinaryIO, Protocol
+from typing import BinaryIO, Protocol, overload
 
 from app.application.dto import (
     KlinProcessDto,
@@ -24,57 +22,45 @@ from app.models import (
 
 
 class IKlinEventProducer(Protocol):
-    """event producer"""
+    """Publishes streaming events to the broker."""
 
-    @abstractmethod
     async def send_event(self, event: StreamEventDto) -> None:
-        """Send the event with a specific data type"""
+        """Send one stream event."""
 
 
 class IKlinStream(Protocol):
-    """Stream things"""
+    """Runs and stops streaming inference."""
 
-    @abstractmethod
     async def streaming_analyze(self, stream: KlinStreamState) -> None:
-        """Launch ai models"""
+        """Start the streaming inference loop for one stream."""
 
-    @abstractmethod
     async def stop(self, camera_id: str) -> None:
-        """Stop whatever you are doing with that camera"""
+        """Request a graceful stop for the active camera."""
 
-    @abstractmethod
     async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
-        """Just wait before doing stupid"""
+        """Wait until the stream has fully stopped."""
 
 
 class IKlinStreamEventConsumer(Protocol):
-    """Контракт потребителя событий стриминга (YOLO / MAE / X3D)."""
+    """Consumes stream events emitted by the processor."""
 
     async def handle(self, event: StreamEventDto) -> None:
-        """Обработать одно событие."""
+        """Handle one event."""
 
     async def handle_many(self, events: list[StreamEventDto]) -> None:
-        """Обработать пачку событий (опционально)."""
+        """Handle a batch of events."""
 
 
 class IKlinInference(Protocol):
-    """
-    Класс для передачи данных процессора
-    """
+    """Offline inference port."""
 
-    @abstractmethod
     async def analyze(self, model: KlinModel) -> KlinResultDto:
-        """
-        Метод передачи данных процессора и запуска анализа
-        """
+        """Analyze one offline task."""
 
 
 class IKlinVideoStorage(Protocol):
-    """
-    Контракт объектного хранилища для загруженных видео.
-    """
+    """Object storage used for uploaded videos."""
 
-    @abstractmethod
     async def upload_fileobj(
         self,
         *,
@@ -83,111 +69,124 @@ class IKlinVideoStorage(Protocol):
         content_type: str | None = None,
         max_size_bytes: int | None = None,
     ) -> str:
-        """
-        Сохраняет в s3 хранилище и сохраняет URI
-        """
+        """Upload content and return its storage URI."""
 
-    @abstractmethod
     async def download_to_path(self, *, source_uri: str, destination_path: str) -> None:
-        """
-        Загружает из s3 на локальный путь
-        """
+        """Download an object to a local path."""
 
-    @abstractmethod
     async def delete(self, source_uri: str) -> None:
-        """
-        Удаляет хранящийся объект
-        """
+        """Delete an object by URI."""
+
+
+class IKlinRuntimeSettings(Protocol):
+    """Small settings surface used by application services."""
+
+    @property
+    def max_retry_attempts(self) -> int:
+        """Number of enqueue retries for offline processing."""
+
+
+class IKlinTaskRepository(Protocol):
+    """Persistence port for offline klin tasks."""
+
+    async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel:
+        """Load one offline task by id."""
+
+    async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None:
+        """Atomically move a pending task into processing state."""
+
+    async def create(self, model: KlinModel) -> KlinModel:
+        """Persist a new offline task."""
+
+    async def update(self, model: KlinModel) -> None:
+        """Persist an updated offline task."""
+
+    async def get_first_n(self, count: int) -> list[KlinModel]:
+        """Return the latest offline tasks."""
+
+
+class IStreamStateRepository(Protocol):
+    """Persistence port for stream lifecycle state."""
+
+    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState | None:
+        """Load one stream state by id, if it exists."""
+
+    async def claim_for_processing_stream(
+        self, stream_id: uuid.UUID
+    ) -> KlinStreamState | None:
+        """Atomically move a pending stream into processing state."""
+
+    async def create(self, model: KlinStreamState) -> KlinStreamState:
+        """Persist a new stream state."""
+
+    async def update(self, model: KlinStreamState) -> None:
+        """Persist an updated stream state."""
+
+
+class IStreamEventRepository(Protocol):
+    """Persistence port for streaming stage results."""
+
+    async def save_yolo(self, event: KlinYoloResult) -> None: ...
+
+    async def save_mae(self, event: KlinMaeResult) -> None: ...
+
+    async def save_x3d(self, event: KlinX3DResult) -> None: ...
 
 
 class IKlinRepository(Protocol):
-    """
-    Класс для взаимодействия с базой данных
-    """
+    """Backward-compatible aggregate repository port."""
 
-    @abstractmethod
     async def save_yolo(self, event: KlinYoloResult) -> None: ...
 
-    @abstractmethod
     async def save_mae(self, event: KlinMaeResult) -> None: ...
 
-    @abstractmethod
     async def save_x3d(self, event: KlinX3DResult) -> None: ...
 
-    @abstractmethod
-    async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel:
-        """
-        Метод передачи данных из бд по id
-        """
+    async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel: ...
 
-    @abstractmethod
-    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState:
-        """
-        Метод передачи данных из бд по id
-        """
+    async def get_by_id_stream(
+        self, stream_id: uuid.UUID
+    ) -> KlinStreamState | None: ...
 
-    @abstractmethod
-    async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None:
-        """
-        Атомарно переводит задачу из PENDING в PROCESSING.
-        Возвращает модель, если захват выполнен, иначе None.
-        """
+    async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None: ...
 
-    @abstractmethod
     async def claim_for_processing_stream(
-        self, klin_id: uuid.UUID
-    ) -> KlinStreamState | None:
-        """
-        Атомарно переводит задачу из PENDING в PROCESSING.
-        Возвращает модель, если захват выполнен, иначе None.
-        """
+        self, stream_id: uuid.UUID
+    ) -> KlinStreamState | None: ...
 
-    @abstractmethod
+    @overload
+    async def create(self, model: KlinModel) -> KlinModel: ...
+
+    @overload
+    async def create(self, model: KlinStreamState) -> KlinStreamState: ...
+
     async def create(
         self, model: KlinModel | KlinStreamState
-    ) -> KlinModel | KlinStreamState:
-        """
-        Метод для создания запроса в бд
-        """
+    ) -> KlinModel | KlinStreamState: ...
 
-    @abstractmethod
-    async def update(self, model: KlinModel | KlinStreamState) -> None:
-        """
-        Метод для обновления запроса в бд
-        """
+    @overload
+    async def update(self, model: KlinModel) -> None: ...
 
-    @abstractmethod
-    async def get_first_n(self, count: int) -> list[KlinModel]:
-        """
-        Метод для получения запроса к бд - последние n строк по id
-        """
+    @overload
+    async def update(self, model: KlinStreamState) -> None: ...
+
+    async def update(self, model: KlinModel | KlinStreamState) -> None: ...
+
+    async def get_first_n(self, count: int) -> list[KlinModel]: ...
 
 
 class IKlinProcessProducer(Protocol):
-    """
-    Класс для взаимодействия с брокером
-    """
+    """Publishes offline and streaming jobs to the broker."""
 
-    @abstractmethod
     async def send(self, data: KlinProcessDto) -> None:
-        """
-        Метод для отправки сообщений в брокер
-        """
+        """Publish one offline processing job."""
 
-    @abstractmethod
     async def send_stream(self, data: StreamProcessDto) -> None:
-        """
-        Метод для отправки сообщений в брокер
-        """
+        """Publish one stream processing job."""
 
 
 class IKlinCallbackSender(Protocol):
-    """
-    Класс для взаимодействия с отправкой вывода процессора
-    """
+    """Sends final offline processing callbacks."""
 
-    @abstractmethod
     async def post_consumer(self, model: KlinModel) -> None:
-        """
-        Метод для отправки json с выводом процессора
-        """
+        """Send one callback payload."""

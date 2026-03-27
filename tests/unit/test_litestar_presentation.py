@@ -12,9 +12,9 @@ from litestar import Response, Router
 from litestar.datastructures import UploadFile
 from litestar.exceptions import HTTPException
 
-from app.application.dto import KlinReadDto
 from app.application.exceptions import KlinEnqueueError, KlinNotFoundError
 from app.application.interfaces import IKlinVideoStorage
+from app.application.mappers import to_klin_read_dto
 from app.application.services import KlinService
 from app.models import KlinModel, ProcessingState
 
@@ -163,7 +163,7 @@ async def test_file_upload_returns_dto_and_closes_file(
         request=request,
     )
 
-    assert result == KlinReadDto.from_model(klin_model)
+    assert result == to_klin_read_dto(klin_model)
     klin_video_storage.upload_fileobj.assert_awaited_once()
     assert klin_video_storage.upload_fileobj.await_args.kwargs["object_key"].endswith(
         ".mov"
@@ -274,7 +274,7 @@ async def test_status_and_listing_handlers_return_expected_payloads(
     get_status = get_handler_fn(controller_cls.get_inference_status)
     get_all = get_handler_fn(controller_cls.get_all)
 
-    klin_service.get_inference_status.return_value = KlinReadDto.from_model(klin_model)
+    klin_service.get_inference_status.return_value = to_klin_read_dto(klin_model)
     klin_service.get_n_imferences.return_value = [klin_model]
 
     status_response = await get_status(
