@@ -115,6 +115,7 @@ testpaths = ["tests/unit"]
 addopts = [
     "--import-mode=prepend",
     "--cov=app",
+    "--cov-report=term-missing",
     "--cov-report=xml",
 ]
 markers = [

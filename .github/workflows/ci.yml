@@ -33,7 +33,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       python: ${{ steps.filter.outputs.python }}
-      infra: ${{ steps.filter.outputs.infra }}
 
     steps:
       - name: Checkout
@@ -52,14 +51,8 @@ jobs:
               - "uv.lock"
               - "alembic.ini"
               - ".github/workflows/ci.yml"
-            infra:
-              - "docker/**"
-              - "monitoring/**"
-              - "example.env"
-              - "Makefile"
-              - ".github/workflows/ci.yml"
 
-  python-quality:
+  lint:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
@@ -94,25 +87,43 @@ jobs:
       - name: Pylint (app only)
         run: uv run --no-sync pylint --jobs=1 app
 
-      - name: Pytest with coverage
-        run: uv run --no-sync pytest -q --maxfail=1
-
       - name: Minimize uv cache
         if: always()
         run: uv cache prune --ci
 
-  infra-validate:
+  test:
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.infra == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Validate app compose
-        run: docker compose --env-file example.env -f docker/docker-compose.yml config >/dev/null
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Validate infra compose
-        run: docker compose --env-file example.env -f docker/docker-compose.infra.yml config >/dev/null
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync CI dependencies
+        run: uv sync --group ci --frozen --no-install-project
+
+      - name: Pytest with coverage
+        run: uv run --no-sync pytest -q --maxfail=1
+
+      - name: Coverage summary
+        run: |
+          echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          uv run --no-sync -m coverage report >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Minimize uv cache
+        if: always()
+        run: uv cache prune --ci

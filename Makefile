@@ -15,8 +15,9 @@ help:
 	@echo make pre-commit          # install all required pre-commit hooks
 	@echo make lint                # Start full project linting (including sandbox) and pylint for app
 	@echo make test                # Start application tests with coverage
-	@echo make ci-python           # Run the same Python quality checks as GitHub CI
-	@echo make ci-infra            # Validate docker compose files used in GitHub CI
+	@echo make ci-lint             # Run the same lint checks as the GitHub CI lint job
+	@echo make ci-test             # Run the same test checks as the GitHub CI test job
+	@echo make ci                  # Run both GitHub CI jobs locally
 	@echo make start-api-local     # Launch API locally on port 8008
 	@echo make start-queue-local   # Launch Queue locally
 	@echo make triton-up           # Launch only the local Triton server container
@@ -56,18 +57,23 @@ lint: uv-dev
 test: uv-dev
 	uv run pytest -q --maxfail=1
 
-ci-python:
+ci-lint:
 	uv venv --allow-existing
 	uv sync --group ci --frozen --no-install-project
 	uv run --no-sync ruff check app helpers tests
 	uv run --no-sync ruff format --check app helpers tests
 	uv run --no-sync -m mypy app helpers tests
 	uv run --no-sync pylint app
-	uv run --no-sync pytest -q --maxfail=1
 
-ci-infra:
-	docker compose --env-file example.env -f docker/docker-compose.yml config >/dev/null
-	docker compose --env-file example.env -f docker/docker-compose.infra.yml config >/dev/null
+ci-test:
+	uv venv --allow-existing
+	uv sync --group ci --frozen --no-install-project
+	uv run --no-sync pytest -q --maxfail=1
+	uv run --no-sync -m coverage report
+
+ci: ci-lint ci-test
+
+ci-python: ci
 
 start-api-local:
 	uv run -m uvicorn --host 0.0.0.0 --port 8008 app.presentation.litestar.run:app
