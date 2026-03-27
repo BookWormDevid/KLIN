@@ -3,107 +3,98 @@
 ```mermaid
 %%{init: {
   "theme": "base",
+  "flowchart": {
+    "curve": "basis",
+    "nodeSpacing": 40,
+    "rankSpacing": 48
+  },
   "themeVariables": {
     "fontFamily": "Georgia, Times New Roman, serif",
-    "fontSize": "16px",
-    "lineColor": "#6c6f73",
-    "primaryTextColor": "#1f2328",
-    "secondaryTextColor": "#1f2328",
-    "tertiaryTextColor": "#1f2328",
+    "fontSize": "17px",
+    "lineColor": "#5b6572",
+    "primaryTextColor": "#17202a",
+    "secondaryTextColor": "#17202a",
+    "tertiaryTextColor": "#17202a",
     "background": "#fffdf8"
   }
 }}%%
-flowchart TB
-    subgraph legend["Reading the map"]
-        l1["solid line<br/>main dependency direction"]
-        l2["dashed line<br/>architectural leak / coupling"]
+flowchart LR
+    subgraph view[" "]
+        direction TB
+
+        subgraph ring4["Ring 4  Infrastructure and Frameworks"]
+            direction TB
+            infra["app.infrastructure.*<br/>repositories / processors / storage / producers"]
+            config["app.config<br/>settings / env resolution"]
+            external["Postgres / RabbitMQ / S3 / Triton / OpenCV / SQLAlchemy"]
+
+            subgraph ring3["Ring 3  Interface Adapters"]
+                direction TB
+                adapters["app.presentation.* and app.ioc<br/>controllers / queue workers / composition root"]
+
+                subgraph ring2["Ring 2  Application"]
+                    direction TB
+                    application["app.application.*<br/>services / ports / DTOs / mappers / StreamEventConsumer"]
+
+                    subgraph ring1["Ring 1  Kernel-ish Core"]
+                        direction TB
+                        kernel["app.models and app.application.exceptions<br/>KlinModel / KlinStreamState / result models / ProcessingState / errors"]
+                    end
+                end
+            end
+        end
     end
 
-    subgraph R4["Outer Ring - Infrastructure / Frameworks / Drivers"]
-        infra["app.infrastructure.*<br/>database / repository<br/>producers / storage / processors"]
-        config["app.config<br/>Settings / env resolution"]
-        externals["External systems & frameworks<br/>Postgres / RabbitMQ / S3 / Triton<br/>aiohttp / boto3 / cv2 / SQLAlchemy"]
+    subgraph gaps["Current isolation gaps"]
+        direction TB
+        gap1["presentation -> config<br/>direct settings read"]
+        gap2["mappers -> models<br/>ORM shaped read mapping"]
+        gap3["consumer -> models<br/>persistence model creation"]
+        gap4["models -> SQLAlchemy semantics<br/>core is not persistence free"]
     end
 
-    subgraph R3["Ring 3 - Interface Adapters / Entry Points"]
-        presentation["app.presentation.*<br/>Litestar controllers<br/>FastStream workers"]
-        ioc["app.ioc<br/>composition root / DI wiring"]
-    end
+    external --> infra
+    config --> infra
+    infra --> adapters
+    adapters --> application
+    application --> kernel
 
-    subgraph R2["Ring 2 - Application / Use Cases / Ports"]
-        services["app.application.services<br/>KlinService / StreamService"]
-        ports["app.application.interfaces<br/>IKlinTaskRepository / IStreamStateRepository / IStreamEventRepository<br/>IKlinRuntimeSettings / IKlinInference / IKlinStream / ..."]
-        dto["app.application.dto<br/>request / queue / response contracts"]
-        mappers["app.application.mappers<br/>to_klin_read_dto / to_stream_read_dto"]
-        consumers["app.application.consumers<br/>StreamEventConsumer"]
-    end
+    gap1 -.-> adapters
+    gap1 -.-> config
+    gap2 -.-> application
+    gap2 -.-> kernel
+    gap3 -.-> application
+    gap3 -.-> kernel
+    gap4 -.-> kernel
+    gap4 -.-> external
 
-    subgraph R1["Inner Ring - Kernel-ish Core"]
-        models["app.models<br/>KlinModel / KlinStreamState<br/>KlinYoloResult / KlinMaeResult / KlinX3DResult<br/>ProcessingState"]
-        exceptions["app.application.exceptions<br/>KlinNotFoundError / KlinEnqueueError"]
-    end
+    classDef outerLayer fill:#f6ece4,stroke:#8b6b53,stroke-width:3px,color:#2f241d;
+    classDef adapterLayer fill:#e9f1fb,stroke:#5c7ea5,stroke-width:3px,color:#1d2b3d;
+    classDef appLayer fill:#e9f5ee,stroke:#5d8a72,stroke-width:3px,color:#1d3025;
+    classDef kernelLayer fill:#f8f1d9,stroke:#a78538,stroke-width:3px,color:#35280e;
+    classDef leak fill:#fff4ef,stroke:#b85f45,stroke-width:2px,color:#48261d;
 
-    presentation --> services
-    presentation --> dto
-    presentation --> ports
-    presentation --> mappers
+    class infra,config,external outerLayer;
+    class adapters adapterLayer;
+    class application appLayer;
+    class kernel kernelLayer;
+    class gap1,gap2,gap3,gap4 leak;
 
-    ioc --> presentation
-    ioc --> services
-    ioc --> ports
-    ioc --> infra
-    ioc --> config
+    style view fill:#fffdf8,stroke:#ffffff,stroke-width:0px
+    style ring1 fill:#fff7de,stroke:#c59a3c,stroke-width:4px,rx:40,ry:40,color:#35280e
+    style ring2 fill:#f3fbf6,stroke:#6fa184,stroke-width:4px,rx:48,ry:48,color:#1d3025
+    style ring3 fill:#f4f8fd,stroke:#7a97ba,stroke-width:4px,rx:56,ry:56,color:#1d2b3d
+    style ring4 fill:#fdf8f2,stroke:#9b7d63,stroke-width:4px,rx:64,ry:64,color:#2f241d
+    style gaps fill:#fffaf6,stroke:#d3b5a6,stroke-width:2px,rx:24,ry:24,color:#48261d
 
-    infra --> ports
-    infra --> dto
-    infra --> models
-    infra --> config
-    externals --> infra
-    config --> ports
-
-    services --> ports
-    services --> dto
-    services --> models
-    services --> exceptions
-    services --> mappers
-
-    mappers --> dto
-    mappers --> models
-
-    consumers --> ports
-    consumers --> dto
-    consumers --> models
-
-    models -. orm coupling .-> externals
-    consumers -. persistence model creation .-> models
-    mappers -. orm based mapping .-> models
-    presentation -. direct config read .-> config
-
-    classDef ring1 fill:#f7f1e1,stroke:#8b6f3d,stroke-width:2px,color:#2d2418;
-    classDef ring2 fill:#e7f0ec,stroke:#4f7a68,stroke-width:2px,color:#1f312b;
-    classDef ring3 fill:#e9eef6,stroke:#58708f,stroke-width:2px,color:#1f2c3c;
-    classDef ring4 fill:#f3e8e8,stroke:#8c5b5b,stroke-width:2px,color:#3b2424;
-    classDef legendNode fill:#fff8d9,stroke:#a88b2f,stroke-width:1.5px,color:#3b3210;
-
-    class models,exceptions ring1;
-    class services,ports,dto,mappers,consumers ring2;
-    class presentation,ioc ring3;
-    class infra,config,externals ring4;
-    class l1,l2 legendNode;
-
-    style R1 fill:#fff8e8,stroke:#b89656,stroke-width:3px,color:#2d2418
-    style R2 fill:#f4fbf7,stroke:#6f9c88,stroke-width:3px,color:#1f312b
-    style R3 fill:#f5f8fc,stroke:#7b94b4,stroke-width:3px,color:#1f2c3c
-    style R4 fill:#fdf5f5,stroke:#b07a7a,stroke-width:3px,color:#3b2424
-    style legend fill:#fffdf5,stroke:#d6c27a,stroke-width:2px,color:#3b3210
-
-    linkStyle 25,26,27,28 stroke:#b86b4b,stroke-width:2px,stroke-dasharray: 7 5
+    linkStyle 5,6,7,8,9,10,11,12 stroke:#c76849,stroke-width:2px,stroke-dasharray: 7 5
 ```
 
 ## Reading This Diagram
 
-- Solid arrows show the current main dependency direction in the project.
-- Dashed arrows highlight places where the architecture is still not fully isolated from persistence or framework concerns.
+- Solid arrows show the intended inward dependency direction: outer layers depend on inner layers.
+- Dashed arrows show the places where the current code still leaks persistence or framework concerns across layers.
+- This view is intentionally compressed into one block per ring. Use the other flowcharts for DTO-level and processor-level detail.
 
 ## Isolation Verdict
 
