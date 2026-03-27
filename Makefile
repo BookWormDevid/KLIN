@@ -63,7 +63,7 @@ ci-lint:
 	uv run --no-sync ruff check app helpers tests
 	uv run --no-sync ruff format --check app helpers tests
 	uv run --no-sync -m mypy app helpers tests
-	uv run --no-sync pylint app
+	uv run --no-sync pylint --jobs=0 app
 
 ci-test:
 	uv venv --allow-existing

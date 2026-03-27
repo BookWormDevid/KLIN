@@ -2779,14 +2779,12 @@ dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "alembic" },
-    { name = "apache-airflow" },
     { name = "asyncpg" },
     { name = "boto3" },
     { name = "dishka" },
     { name = "faststream", extra = ["cli", "rabbit"] },
     { name = "litestar", extra = ["prometheus", "structlog"] },
     { name = "msgspec" },
-    { name = "onnx" },
     { name = "opencv-python-headless" },
     { name = "python-dotenv" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -2794,9 +2792,13 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+airflow = [
+    { name = "apache-airflow" },
+]
 ci = [
     { name = "boto3-stubs", extra = ["s3"] },
     { name = "mypy" },
+    { name = "opencv-python-headless" },
     { name = "pylint" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -2804,10 +2806,16 @@ ci = [
     { name = "ruff" },
     { name = "types-requests" },
 ]
+ci-helpers = [
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 dev = [
     { name = "boto3-stubs", extra = ["s3"] },
     { name = "flake8" },
     { name = "mypy" },
+    { name = "onnx" },
     { name = "pre-commit" },
     { name = "pylint" },
     { name = "pytest-asyncio" },
@@ -2825,6 +2833,7 @@ ml = [
     { name = "albumentations" },
     { name = "evaluate" },
     { name = "mlflow" },
+    { name = "onnx" },
     { name = "onnxruntime-gpu" },
     { name = "onnxscript" },
     { name = "onnxslim" },
@@ -2838,14 +2847,12 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "alembic", specifier = ">=1.18.4" },
-    { name = "apache-airflow", specifier = ">=3.1.0" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "boto3", specifier = ">=1.42.73" },
     { name = "dishka", specifier = ">=1.7.2" },
     { name = "faststream", extras = ["cli", "rabbit"], specifier = ">=0.6.6" },
     { name = "litestar", extras = ["prometheus", "structlog"], specifier = ">=2.19.0" },
     { name = "msgspec", specifier = ">=0.20.0" },
-    { name = "onnx", specifier = ">=1.20.1" },
     { name = "opencv-python-headless", specifier = ">=4.13.0.92" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.46" },
@@ -2853,9 +2860,11 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+airflow = [{ name = "apache-airflow", specifier = ">=3.1.0" }]
 ci = [
     { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.42.73" },
     { name = "mypy", specifier = ">=1.5.8" },
+    { name = "opencv-python-headless", specifier = ">=4.13.0.92" },
     { name = "pylint", specifier = ">=4.0.5" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
@@ -2863,10 +2872,16 @@ ci = [
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "types-requests", specifier = ">=2.32.4.20260107" },
 ]
+ci-helpers = [
+    { name = "safetensors", specifier = ">=0.7.0" },
+    { name = "torch", specifier = ">=2.10.0", index = "https://download.pytorch.org/whl/cu128" },
+    { name = "transformers", specifier = ">=4.57.3" },
+]
 dev = [
     { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.42.73" },
     { name = "flake8", specifier = ">=7.3.0" },
     { name = "mypy", specifier = ">=1.5.8" },
+    { name = "onnx", specifier = ">=1.20.1" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pylint", specifier = ">=4.0.5" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
@@ -2884,6 +2899,7 @@ ml = [
     { name = "albumentations", specifier = "==2.0.4" },
     { name = "evaluate", specifier = ">=0.4.6" },
     { name = "mlflow", specifier = ">=3.8.1" },
+    { name = "onnx", specifier = ">=1.20.1" },
     { name = "onnxruntime-gpu", specifier = "==1.23.2" },
     { name = "onnxscript", specifier = ">=0.6.2" },
     { name = "onnxslim", specifier = ">=0.1.87" },

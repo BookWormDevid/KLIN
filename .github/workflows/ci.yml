@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       python: ${{ steps.filter.outputs.python }}
+      helpers: ${{ steps.filter.outputs.helpers }}
 
     steps:
       - name: Checkout
@@ -51,6 +52,8 @@ jobs:
               - "uv.lock"
               - "alembic.ini"
               - ".github/workflows/ci.yml"
+            helpers:
+              - "helpers/**"
 
   lint:
     needs: changes
@@ -71,9 +74,31 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Restore tool caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/pylint
+            .mypy_cache
+            .ruff_cache
+          key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-${{ hashFiles('uv.lock', 'pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-
+
+      - name: Select CI dependency groups
+        id: lint-groups
+        shell: bash
+        run: |
+          groups=(--group ci)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            groups+=(--group ci-helpers)
+          fi
+          printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Sync CI dependencies
-        run: uv sync --group ci --frozen --no-install-project
+        run: uv sync --no-dev ${{ steps.lint-groups.outputs.args }} --frozen --no-install-project
 
       - name: Ruff check
         run: uv run --no-sync ruff check app helpers tests
@@ -81,11 +106,20 @@ jobs:
       - name: Ruff format check
         run: uv run --no-sync ruff format --check app helpers tests
 
-      - name: Mypy
-        run: uv run --no-sync -m mypy app helpers tests
-
-      - name: Pylint (app only)
-        run: uv run --no-sync pylint --jobs=1 app
+      - name: Mypy and Pylint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mypy_targets=(app tests)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            mypy_targets+=(helpers)
+          fi
+          uv run --no-sync -m mypy "${mypy_targets[@]}" &
+          mypy_pid=$!
+          uv run --no-sync pylint --jobs=0 app &
+          pylint_pid=$!
+          wait "$mypy_pid"
+          wait "$pylint_pid"
 
       - name: Minimize uv cache
         if: always()
@@ -110,9 +144,20 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Select CI dependency groups
+        id: test-groups
+        shell: bash
+        run: |
+          groups=(--group ci)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            groups+=(--group ci-helpers)
+          fi
+          printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Sync CI dependencies
-        run: uv sync --group ci --frozen --no-install-project
+        run: uv sync --no-dev ${{ steps.test-groups.outputs.args }} --frozen --no-install-project
 
       - name: Pytest with coverage
         run: uv run --no-sync pytest -q --maxfail=1
