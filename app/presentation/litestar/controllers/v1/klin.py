@@ -22,6 +22,7 @@ from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_404_NOT_FO
 from app.application.dto import KlinReadDto, KlinUploadDto
 from app.application.exceptions import KlinEnqueueError, KlinNotFoundError
 from app.application.interfaces import IKlinVideoStorage
+from app.application.mappers import to_klin_read_dto
 from app.application.services import KlinService
 from app.config import app_settings
 
@@ -98,7 +99,7 @@ class KlinController(Controller):
             await self._cleanup_uploaded_object(klin_video_storage, object_uri)
             raise
 
-        return KlinReadDto.from_model(klin_model)
+        return to_klin_read_dto(klin_model)
 
     @get("/{klin_id:uuid}", status_code=HTTP_200_OK)
     @inject
@@ -156,4 +157,4 @@ class KlinController(Controller):
         """
 
         imfer_list = await klin_service.get_n_imferences(100)
-        return Response([KlinReadDto.from_model(imference) for imference in imfer_list])
+        return Response([to_klin_read_dto(inference) for inference in imfer_list])

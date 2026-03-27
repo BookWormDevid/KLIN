@@ -7,7 +7,7 @@ from app.config import app_settings
 from app.models import Model
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MIGRATIONS_DIR = PROJECT_ROOT / "app/infrastructure/database/migrations"
 
 

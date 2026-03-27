@@ -6,7 +6,6 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import cast
 
 from app.application.dto import (
     StreamEventDto,
@@ -17,9 +16,10 @@ from app.application.dto import (
 from app.application.interfaces import (
     IKlinEventProducer,
     IKlinProcessProducer,
-    IKlinRepository,
     IKlinStream,
+    IStreamStateRepository,
 )
+from app.application.mappers import to_stream_read_dto
 from app.models import KlinStreamState, ProcessingState
 
 
@@ -33,7 +33,7 @@ class StreamService:
 
     def __init__(
         self,
-        klin_repository: IKlinRepository,
+        klin_repository: IStreamStateRepository,
         klin_stream: IKlinStream,
         klin_process_producer: IKlinProcessProducer,
         klin_event_producer: IKlinEventProducer,
@@ -50,8 +50,7 @@ class StreamService:
             camera_id=data.camera_id,
             state=ProcessingState.PENDING,
         )
-        created = await self._klin_repository.create(stream_state)
-        stream_state = cast(KlinStreamState, created)
+        stream_state = await self._klin_repository.create(stream_state)
 
         try:
             await self._publish_stream_task(stream_state.id)
@@ -83,16 +82,17 @@ class StreamService:
         self, stream_state: KlinStreamState, error: Exception
     ) -> None:
         stream_state.state = ProcessingState.ERROR
-
-        if hasattr(stream_state, "error_message"):
-            stream_state.error_message = str(error)
-        else:
-            stream_state.last_mae_label = str(error)[:255]
+        self._store_error_message(stream_state, error)
 
         try:
             await self._klin_repository.update(stream_state)
         except Exception:
             logger.exception("Failed to persist stream error state")
+
+    @staticmethod
+    def _store_error_message(stream_state: KlinStreamState, error: Exception) -> None:
+        stream_state.last_mae_label = str(error)[:255]
+        stream_state.last_mae_confidence = None
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
         """Claim a pending stream, run analysis, and persist the final state."""
@@ -117,11 +117,7 @@ class StreamService:
         except Exception as exc:
             logger.exception("Stream failed id=%s error=%s", stream_id, exc)
             stream_state.state = ProcessingState.ERROR
-
-            if hasattr(stream_state, "error_message"):
-                stream_state.error_message = str(exc)
-            else:
-                stream_state.last_mae_label = str(exc)[:255]
+            self._store_error_message(stream_state, exc)
 
         finally:
             try:
@@ -174,4 +170,4 @@ class StreamService:
         if not stream_state:
             raise ValueError(f"Stream not found: {stream_id}")
 
-        return StreamReadDto.from_stream_state(stream_state)
+        return to_stream_read_dto(stream_state)

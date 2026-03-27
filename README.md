@@ -171,6 +171,8 @@ make lint
 make test
 ```
 
+Команда запускает `pytest` с coverage по пакету `app`, печатает summary в терминал и обновляет `coverage.xml`.
+
 Pre-commit:
 
 ```bash

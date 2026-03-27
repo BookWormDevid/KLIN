@@ -5,6 +5,7 @@
 import os
 import tempfile
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -24,6 +25,11 @@ PerformKlinContext = tuple[
     AsyncMock,
     KlinModel,
 ]
+
+
+@dataclass
+class RuntimeSettingsStub:
+    max_retry_attempts: int = 1
 
 
 # Фикстуры — общие заготовки для всех тестов
@@ -53,7 +59,7 @@ def fixture_mock_callback_sender() -> AsyncMock:
 
 @pytest.fixture(name="mock_video_storage")
 def fixture_mock_video_storage() -> AsyncMock:
-    """РњРѕРє S3-compatible storage for uploaded videos."""
+    """S3-compatible storage for uploaded videos."""
     return AsyncMock()
 
 
@@ -75,6 +81,7 @@ def fixture_klin_service(
         _klin_process_producer=mock_process_producer,
         _klin_callback_sender=mock_callback_sender,
         _klin_video_storage=mock_video_storage,
+        _runtime_settings=RuntimeSettingsStub(),
     )
 
 

@@ -8,17 +8,16 @@ from app.application.dto import StreamEventDto
 from app.config import app_settings
 
 
-async def send_mae_event():
+async def send_mae_event() -> None:
     broker = RabbitBroker(app_settings.rabbit_url)
     await broker.connect()
 
     event_id = f"mae-{uuid.uuid4()}"
-
     event = StreamEventDto(
         id=str(uuid.uuid4()),
         type="MAE",
         camera_id="cam_1",
-        stream_id="247b32f3-f4f5-478f-927e-18d67b088575",  # ← РЕАЛЬНЫЙ ID
+        stream_id=uuid.UUID("247b32f3-f4f5-478f-927e-18d67b088575"),
         payload={
             "event_id": event_id,
             "label": "Burglary",
@@ -38,7 +37,6 @@ async def send_mae_event():
         queue=app_settings.Klin_stream_event_queue,
     )
 
-    print("✅ MAE Event sent:", event_id)
 
-
-asyncio.run(send_mae_event())
+if __name__ == "__main__":
+    asyncio.run(send_mae_event())

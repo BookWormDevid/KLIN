@@ -8,14 +8,21 @@ from .klin import (
     IKlinInference,
     IKlinProcessProducer,
     IKlinRepository,
+    IKlinRuntimeSettings,
     IKlinStream,
     IKlinStreamEventConsumer,
+    IKlinTaskRepository,
     IKlinVideoStorage,
+    IStreamEventRepository,
+    IStreamStateRepository,
 )
 
 
 __all__ = (
     "IKlinRepository",
+    "IKlinTaskRepository",
+    "IStreamStateRepository",
+    "IStreamEventRepository",
     "IKlinInference",
     "IKlinProcessProducer",
     "IKlinCallbackSender",
@@ -23,4 +30,5 @@ __all__ = (
     "IKlinEventProducer",
     "IKlinVideoStorage",
     "IKlinStreamEventConsumer",
+    "IKlinRuntimeSettings",
 )

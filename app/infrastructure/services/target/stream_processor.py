@@ -372,6 +372,40 @@ class StreamProcessor(IKlinStream):
             },
         )
 
+    def _build_mae_top_probs(self, probs: NDArray[np.float32]) -> list[dict[str, Any]]:
+        top_probs: list[dict[str, Any]] = []
+        for class_idx in np.argsort(probs)[::-1][:3]:
+            if class_idx not in self.processing.mae_classes:
+                continue
+            top_probs.append(
+                {
+                    "class_name": self.processing.mae_classes[class_idx],
+                    "probability": float(probs[class_idx]),
+                }
+            )
+        return top_probs
+
+    async def _emit_mae_event(
+        self,
+        probs: NDArray[np.float32],
+        window_ts: list[float],
+        camera_id: str,
+        stream_id: uuid.UUID,
+    ) -> None:
+        pred_idx = int(np.argmax(probs))
+        await self._emit_event(
+            event_type="MAE",
+            camera_id=camera_id,
+            stream_id=stream_id,
+            payload={
+                "label": self.processing.mae_classes.get(pred_idx, str(pred_idx)),
+                "confidence": float(probs[pred_idx]),
+                "start_ts": window_ts[0],
+                "end_ts": window_ts[-1],
+                "probs": self._build_mae_top_probs(probs),
+            },
+        )
+
     async def _yolo_stream_pipeline(
         self, context: StreamContext, camera_id: str, stream_id: uuid.UUID
     ) -> None:
@@ -431,22 +465,22 @@ class StreamProcessor(IKlinStream):
         window: list[np.ndarray] = []
         window_ts: list[float] = []
         last_inference = -999.0
-        frame_queue = context.queue.mae_queue
-        x3d_window = context.queue.x3d_window
         while not context.stop_event.is_set():
             self._beat(context, "MAE")
 
             try:
-                frame, _, ts = await asyncio.wait_for(frame_queue.get(), 0.08)
+                frame, _, ts = await asyncio.wait_for(
+                    context.queue.mae_queue.get(), 0.08
+                )
             except asyncio.TimeoutError:
                 continue
 
-            x3d_window.append(frame)
-            if len(x3d_window) > 64:
-                x3d_window.pop(0)
+            context.queue.x3d_window.append(frame)
+            if len(context.queue.x3d_window) > 64:
+                context.queue.x3d_window.pop(0)
 
             if not context.heavy.heavy_active.is_set():
-                frame_queue.task_done()
+                context.queue.mae_queue.task_done()
                 continue
 
             window.append(frame)
@@ -465,36 +499,10 @@ class StreamProcessor(IKlinStream):
                 if probs is None:
                     continue
 
-                pred_idx = int(np.argmax(probs))
-                confidence = float(probs[pred_idx])
-                label = self.processing.mae_classes.get(pred_idx, str(pred_idx))
-
-                top_indices = np.argsort(probs)[::-1][:3]
-                top_probs = []
-                for idx in top_indices:
-                    if idx in self.processing.mae_classes:
-                        top_probs.append(
-                            {
-                                "class_name": self.processing.mae_classes[idx],
-                                "probability": float(probs[idx]),
-                            }
-                        )
-
-                await self._emit_event(
-                    event_type="MAE",
-                    camera_id=camera_id,
-                    stream_id=stream_id,
-                    payload={
-                        "label": label,
-                        "confidence": confidence,
-                        "start_ts": window_ts[0],
-                        "end_ts": window_ts[-1],
-                        "probs": top_probs,
-                    },
-                )
+                await self._emit_mae_event(probs, window_ts, camera_id, stream_id)
                 last_inference = ts
 
-            frame_queue.task_done()
+            context.queue.mae_queue.task_done()
 
     async def _periodic_x3d_checker(
         self,

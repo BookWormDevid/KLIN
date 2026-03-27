@@ -8,7 +8,7 @@ from app.application.dto import StreamEventDto
 from app.config import app_settings
 
 
-async def send_event():
+async def send_event() -> None:
     broker = RabbitBroker(app_settings.rabbit_url)
     await broker.connect()
 
@@ -16,7 +16,7 @@ async def send_event():
         id=str(uuid.uuid4()),
         type="YOLO",
         camera_id="cam_1",
-        stream_id="247b32f3-f4f5-478f-927e-18d67b088575",
+        stream_id=uuid.UUID("247b32f3-f4f5-478f-927e-18d67b088575"),
         payload={
             "frame_idx": 1,
             "timestamp": 1774543689.6240273,
@@ -42,7 +42,6 @@ async def send_event():
         queue=app_settings.Klin_stream_event_queue,
     )
 
-    print("✅ Event sent")
 
-
-asyncio.run(send_event())
+if __name__ == "__main__":
+    asyncio.run(send_event())

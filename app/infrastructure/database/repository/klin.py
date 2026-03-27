@@ -4,7 +4,7 @@
 
 import uuid
 from dataclasses import dataclass
-from typing import cast
+from typing import cast, overload
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -153,7 +153,7 @@ class KlinRepository(IKlinRepository):
                 raise KlinNotFoundError(klin_id)
             return klin
 
-    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState:
+    async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState | None:
         """
         Получение всех столбцов по конкретному id
         """
@@ -161,10 +161,7 @@ class KlinRepository(IKlinRepository):
             query = (
                 select(KlinStreamState).where(KlinStreamState.id == stream_id).limit(1)
             )
-            klin = await session.scalar(query)
-            if not klin:
-                raise KlinNotFoundError(stream_id)
-            return klin
+            return cast(KlinStreamState | None, await session.scalar(query))
 
     async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
         """
@@ -192,7 +189,7 @@ class KlinRepository(IKlinRepository):
             return cast(KlinModel | None, klin)
 
     async def claim_for_processing_stream(
-        self, klin_id: UUID
+        self, stream_id: UUID
     ) -> KlinStreamState | None:
         """
         Атомарно захватывает задачу для обработки.
@@ -203,7 +200,7 @@ class KlinRepository(IKlinRepository):
                 claim_stmt = (
                     update(KlinStreamState)
                     .where(
-                        KlinStreamState.id == klin_id,
+                        KlinStreamState.id == stream_id,
                         KlinStreamState.state == ProcessingState.PENDING,
                     )
                     .values(state=ProcessingState.PROCESSING)
@@ -232,6 +229,12 @@ class KlinRepository(IKlinRepository):
             imfer_list: list[KlinModel] = list(imfers.scalars().all())
             return imfer_list
 
+    @overload
+    async def create(self, model: KlinModel) -> KlinModel: ...
+
+    @overload
+    async def create(self, model: KlinStreamState) -> KlinStreamState: ...
+
     async def create(
         self, model: KlinModel | KlinStreamState
     ) -> KlinModel | KlinStreamState:
@@ -244,6 +247,12 @@ class KlinRepository(IKlinRepository):
             await session.refresh(model)
             return model
 
+    @overload
+    async def update(self, model: KlinModel) -> None: ...
+
+    @overload
+    async def update(self, model: KlinStreamState) -> None: ...
+
     async def update(self, model: KlinModel | KlinStreamState) -> None:
         """
         Обновить поля в бд
@@ -251,12 +260,3 @@ class KlinRepository(IKlinRepository):
         async with self.session() as session:
             async with session.begin():
                 await session.merge(model)
-
-    async def mark_stopped(self, stream_id: uuid.UUID) -> None:
-        async with self.session() as session:
-            async with session.begin():
-                await session.execute(
-                    update(KlinStreamState)
-                    .where(KlinStreamState.id == stream_id)
-                    .values(state=ProcessingState.STOPPED)
-                )

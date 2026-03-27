@@ -11,7 +11,6 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 from urllib.parse import urlparse
 
 from app.application.dto import KlinProcessDto, KlinReadDto, KlinUploadDto
@@ -20,10 +19,11 @@ from app.application.interfaces import (
     IKlinCallbackSender,
     IKlinInference,
     IKlinProcessProducer,
-    IKlinRepository,
+    IKlinRuntimeSettings,
+    IKlinTaskRepository,
     IKlinVideoStorage,
 )
-from app.config import app_settings
+from app.application.mappers import to_klin_read_dto
 from app.models import KlinModel, ProcessingState
 
 
@@ -36,18 +36,19 @@ class KlinService:
     Координирует постановку в очередь, обработку, callback и очистку артефактов.
     """
 
-    _klin_repository: IKlinRepository
+    _klin_repository: IKlinTaskRepository
     _klin_inference_service: IKlinInference
     _klin_process_producer: IKlinProcessProducer
     _klin_callback_sender: IKlinCallbackSender
     _klin_video_storage: IKlinVideoStorage
+    _runtime_settings: IKlinRuntimeSettings
 
     async def _publish_klin_task(self, klin_id: uuid.UUID) -> None:
         """
         Публикует задачу на обработку с повторными попытками.
         """
 
-        max_attempts = app_settings.max_retry_attempts
+        max_attempts = self._runtime_settings.max_retry_attempts
         payload = KlinProcessDto(klin_id=klin_id)
 
         for attempt in range(1, max_attempts + 1):
@@ -169,7 +170,7 @@ class KlinService:
             video_path=data.video_path,
             state=ProcessingState.PENDING,
         )
-        klin = cast(KlinModel, await self._klin_repository.create(klin))
+        klin = await self._klin_repository.create(klin)
 
         try:
             await self._publish_klin_task(klin.id)
@@ -270,7 +271,7 @@ class KlinService:
         """
 
         klin = await self._klin_repository.get_by_id(klin_id)
-        return KlinReadDto.from_model(klin)
+        return to_klin_read_dto(klin)
 
     async def get_n_imferences(self, count: int) -> list[KlinModel]:
         """
