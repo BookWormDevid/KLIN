@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from botocore.exceptions import ClientError
 
+from app.config import app_settings
 from app.infrastructure.services.callback_sender import KlinCallbackSender
 from app.infrastructure.services.s3_storage import S3ObjectStorage
 from app.models import KlinModel, ProcessingState
@@ -84,6 +85,24 @@ def make_s3_storage(
         MagicMock(return_value=client),
     )
     monkeypatch.setattr(S3ObjectStorage, "_run_sync", immediate_run_sync)
+
+    monkeypatch.setenv("S3_ENDPOINT_URL", "http://s3.local")
+    monkeypatch.setenv("S3_BUCKET_NAME", "klin-videos")
+    monkeypatch.setenv("S3_ACCESS_KEY_ID", "test-access-key")
+    monkeypatch.setenv("S3_SECRET_ACCESS_KEY", "test-secret-key")
+    monkeypatch.setenv("S3_REGION", "us-east-1")
+    monkeypatch.setenv("S3_ADDRESSING_STYLE", "path")
+
+    for key in (
+        "S3_ENDPOINT_URL",
+        "S3_BUCKET_NAME",
+        "S3_ACCESS_KEY_ID",
+        "S3_SECRET_ACCESS_KEY",
+        "S3_REGION",
+        "S3_ADDRESSING_STYLE",
+    ):
+        app_settings.env_properties.pop(key, None)
+
     return S3ObjectStorage(), client
 
 
