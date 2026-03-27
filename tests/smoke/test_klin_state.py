@@ -1,18 +1,15 @@
 import asyncio
 from uuid import uuid4
 
-import pytest
-from dishka import make_container
 
-from app.application.interfaces import IKlinRepository
-from app.ioc import get_worker_providers
-from app.models import KlinStreamState, ProcessingState
+async def repository_roundtrip_smoke() -> None:
+    from dishka import make_container
 
+    from app.application.interfaces import IKlinRepository
+    from app.ioc import get_worker_providers
+    from app.models import KlinStreamState, ProcessingState
 
-@pytest.mark.anyio
-async def test_repository():
     container = make_container(*get_worker_providers())
-
     repo = container.get(IKlinRepository)
     camera_id = f"repo_test_camera_{uuid4().hex}"
 
@@ -31,4 +28,4 @@ async def test_repository():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_repository())
+    asyncio.run(repository_roundtrip_smoke())

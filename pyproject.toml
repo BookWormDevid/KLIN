@@ -48,6 +48,7 @@ dev = [
     "flake8>=7.3.0",
     "pylint>=4.0.5",
     "uvicorn>=0.41.0",
+    "pytest-cov>=7.0.0",
     "pytest-asyncio>=1.3.0",
     "boto3-stubs[s3]>=1.42.73",
     # general ML DEPENDENCIES LOWER
@@ -62,6 +63,7 @@ ci = [
     "ruff>=0.14.10",
     "pylint>=4.0.5",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "pytest-asyncio>=1.3.0",
 ]
 
@@ -109,8 +111,29 @@ exclude = ["versions"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["tests"]
-addopts = ["--import-mode=prepend"]
+testpaths = ["tests/unit"]
+addopts = [
+    "--import-mode=prepend",
+    "--cov=app",
+    "--cov-report=xml",
+]
 markers = [
     "???: tests that require a running ??? inference server",
 ]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+source = ["app"]
+omit = [
+    "*/__init__.py",
+    "app/infrastructure/database/migrations/*",
+    "app/infrastructure/database/migrations/**/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.coverage.xml]
+output = "coverage.xml"

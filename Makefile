@@ -14,7 +14,7 @@ help:
 	@echo make uv-dev              # create and sync .venv with dev dependencies
 	@echo make pre-commit          # install all required pre-commit hooks
 	@echo make lint                # Start full project linting (including sandbox) and pylint for app
-	@echo make test                # Start application tests
+	@echo make test                # Start application tests with coverage
 	@echo make ci-python           # Run the same Python quality checks as GitHub CI
 	@echo make ci-infra            # Validate docker compose files used in GitHub CI
 	@echo make start-api-local     # Launch API locally on port 8008
@@ -53,8 +53,8 @@ lint: uv-dev
 	uv run -m mypy app helpers tests
 	uv run pylint app
 
-test:
-	uv run pytest
+test: uv-dev
+	uv run pytest -q --maxfail=1
 
 ci-python:
 	uv venv --allow-existing

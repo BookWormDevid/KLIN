@@ -53,7 +53,7 @@ def fixture_mock_callback_sender() -> AsyncMock:
 
 @pytest.fixture(name="mock_video_storage")
 def fixture_mock_video_storage() -> AsyncMock:
-    """РњРѕРє S3-compatible storage for uploaded videos."""
+    """S3-compatible storage for uploaded videos."""
     return AsyncMock()
 
 

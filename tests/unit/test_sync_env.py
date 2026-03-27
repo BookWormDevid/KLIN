@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "helpers" / "sync_env.py"
+MODULE_PATH = Path(__file__).resolve().parents[2] / "helpers" / "sync_env.py"
 MODULE_SPEC = importlib.util.spec_from_file_location("sync_env_module", MODULE_PATH)
 assert MODULE_SPEC is not None
 assert MODULE_SPEC.loader is not None

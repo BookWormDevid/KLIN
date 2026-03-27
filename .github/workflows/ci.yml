@@ -94,7 +94,7 @@ jobs:
       - name: Pylint (app only)
         run: uv run --no-sync pylint --jobs=1 app
 
-      - name: Pytest
+      - name: Pytest with coverage
         run: uv run --no-sync pytest -q --maxfail=1
 
       - name: Minimize uv cache

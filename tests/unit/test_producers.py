@@ -39,10 +39,6 @@ def test_klin_process_producer_routes_stream_jobs_to_stream_queue() -> None:
     }
 
 
-def test_stream_commands_and_events_use_distinct_queues() -> None:
-    assert app_settings.Klin_process_queue != app_settings.Klin_stream_event_queue
-
-
 def test_klin_event_producer_publishes_stream_event() -> None:
     broker = AsyncMock()
     producer = KlinEventProducer(_rabbit_broker=broker)

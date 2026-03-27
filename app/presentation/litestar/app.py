@@ -16,7 +16,7 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
-from litestar.static_files import StaticFilesConfig
+from litestar.static_files import create_static_files_router
 
 from app.config import app_settings
 from app.presentation.litestar.controllers import api_router
@@ -54,7 +54,16 @@ def create_litestar_app(
     prometheus_config = PrometheusConfig(group_path=group_path)
 
     app = Litestar(
-        route_handlers=[api_router, PrometheusController],
+        route_handlers=[
+            api_router,
+            PrometheusController,
+            create_static_files_router(
+                path="/frontend",
+                directories=[str(FRONTEND_DIR)],
+                html_mode=True,
+                name="frontend",
+            ),
+        ],
         middleware=[prometheus_config.middleware],
         request_max_body_size=200 * 1024 * 1024,
         cors_config=CORSConfig(allow_origins=app_settings.cors_allowed_origins),
@@ -71,13 +80,6 @@ def create_litestar_app(
                         response_log_fields=["status_code", "cookies", "headers"]
                     )
                 )
-            )
-        ],
-        static_files_config=[
-            StaticFilesConfig(
-                path="/frontend",
-                directories=[str(FRONTEND_DIR)],
-                html_mode=True,
             )
         ],
         lifespan=[lifespan],
