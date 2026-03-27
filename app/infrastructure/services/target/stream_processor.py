@@ -42,6 +42,7 @@ class StreamContext:
     heavy: HeavyLogic
     stop_event: asyncio.Event
     stopped_event: asyncio.Event
+    heartbeats: dict[str, float]
 
 
 class StreamProcessor(IKlinStream):
@@ -55,12 +56,57 @@ class StreamProcessor(IKlinStream):
         self.contexts: dict[str, StreamContext] = {}
         self.event_producer = event_producer
 
+    def _build_task_factories(self, context: StreamContext, stream: KlinStreamState):
+        return [
+            lambda: asyncio.create_task(
+                self._frame_reader(
+                    stream.camera_url,
+                    context.queue.source_queue,
+                    context.stop_event,
+                    context,
+                ),
+                name="frame_reader",
+            ),
+            lambda: asyncio.create_task(
+                self.broadcast_frames(context),
+                name="broadcast",
+            ),
+            lambda: asyncio.create_task(
+                self._periodic_x3d_checker(
+                    context=context,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
+                ),
+                name="x3d_checker",
+            ),
+            lambda: asyncio.create_task(
+                self._yolo_stream_pipeline(
+                    context=context,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
+                ),
+                name="yolo",
+            ),
+            lambda: asyncio.create_task(
+                self._mae_stream_pipeline(
+                    context=context,
+                    camera_id=stream.camera_id,
+                    stream_id=stream.id,
+                ),
+                name="mae",
+            ),
+        ]
+
+    def _beat(self, context: StreamContext, name: str) -> None:
+        context.heartbeats[name] = time.time()
+
     def _create_context(self) -> StreamContext:
         return StreamContext(
             queue=Queue(),
             heavy=HeavyLogic(),
             stop_event=asyncio.Event(),
             stopped_event=asyncio.Event(),
+            heartbeats={},
         )
 
     async def _quick_x3d_check_for_streaming(
@@ -123,6 +169,7 @@ class StreamProcessor(IKlinStream):
         camera_url: str,
         frame_queue: asyncio.Queue,
         stop_event: asyncio.Event,
+        context: StreamContext,
     ) -> None:
         cap = self._open_capture(camera_url)
 
@@ -142,6 +189,7 @@ class StreamProcessor(IKlinStream):
         reconnect_delay = 1.0
 
         while not stop_event.is_set():
+            self._beat(context, "frame_reader")
             ret, frame = cap.read()
 
             # ===================== КОНЕЦ ФАЙЛА =====================
@@ -333,6 +381,8 @@ class StreamProcessor(IKlinStream):
         last_send = -999.0
 
         while not context.stop_event.is_set():
+            self._beat(context, "YOLO")
+
             try:
                 frame, idx, ts = await asyncio.wait_for(
                     context.queue.yolo_queue.get(), timeout=0.1
@@ -384,6 +434,8 @@ class StreamProcessor(IKlinStream):
         frame_queue = context.queue.mae_queue
         x3d_window = context.queue.x3d_window
         while not context.stop_event.is_set():
+            self._beat(context, "MAE")
+
             try:
                 frame, _, ts = await asyncio.wait_for(frame_queue.get(), 0.08)
             except asyncio.TimeoutError:
@@ -455,6 +507,8 @@ class StreamProcessor(IKlinStream):
         x3d_window = context.queue.x3d_window
 
         while not context.stop_event.is_set():
+            self._beat(context, "X3D_VIOLENCE")
+
             await asyncio.sleep(interval)
             if len(x3d_window) < 16:
                 continue
@@ -495,6 +549,7 @@ class StreamProcessor(IKlinStream):
     async def broadcast_frames(self, context: StreamContext) -> None:
         """Задача-бродкастер: раздаёт каждый кадр во все нужные очереди"""
         while not context.stop_event.is_set():
+            self._beat(context, "broadcast")
             try:
                 frame_tuple = await asyncio.wait_for(
                     context.queue.source_queue.get(), timeout=0.1
@@ -540,69 +595,107 @@ class StreamProcessor(IKlinStream):
         except asyncio.TimeoutError:
             return False
 
-    async def _watchdog(self, tasks, context):
-        """Stop the stream if any worker task exits with an unexpected error."""
+    async def _watchdog(self, task_factories, tasks, context: StreamContext):
+        restart_limits = {
+            "frame_reader": 10,
+            "broadcast": 10,
+            "x3d_checker": 10,
+            "yolo": 10,
+            "mae": 10,
+        }
+
+        task_timeouts = {
+            "frame_reader": 10,
+            "broadcast": 5,
+            "x3d_checker": 10,
+            "yolo": 5,
+            "mae": 5,
+        }
+
+        restart_counts = {name: 0 for name in restart_limits}
 
         while not context.stop_event.is_set():
-            for t in tasks:
-                if t is asyncio.current_task():
+            now = time.time()
+
+            for i, task in enumerate(tasks):
+                if task is asyncio.current_task():
                     continue
 
-                if t.done():
-                    if t.cancelled():
+                name = task.get_name()
+
+                # ===================== 1. CRASH =====================
+                if task.done():
+                    if task.cancelled():
                         continue
 
-                    exc = t.exception()
-                    if exc is not None:
-                        logger.error("Task crashed: %s", t, exc_info=exc)
+                    exc = task.exception()
+                    if exc is None:
+                        continue
+
+                    logger.error("Task crashed: %s", name, exc_info=exc)
+
+                    restart_counts[name] += 1
+
+                    if restart_counts[name] > restart_limits[name]:
+                        logger.critical("Task %s exceeded restart limit", name)
                         context.stop_event.set()
-                        return
+                        raise RuntimeError(f"Critical task failed: {name}")
+
+                    await asyncio.sleep(min(2 ** restart_counts[name], 10))
+                    tasks[i] = task_factories[i]()
+                    continue
+
+                # ===================== 2. HANG DETECTION =====================
+                last = context.heartbeats.get(name)
+
+                if last is None:
+                    continue  # ещё не стартовала нормально
+
+                timeout = task_timeouts[name]
+
+                if now - last > timeout:
+                    logger.error(
+                        "Task %s is STUCK (no heartbeat for %.1fs)",
+                        name,
+                        now - last,
+                    )
+
+                    restart_counts[name] += 1
+
+                    if restart_counts[name] > restart_limits[name]:
+                        logger.critical("Task %s exceeded restart limit (stuck)", name)
+                        context.stop_event.set()
+                        raise RuntimeError(f"Task stuck: {name}")
+
+                    # 🔥 kill hung task
+                    task.cancel()
+                    try:
+                        await task
+                    except Exception:
+                        pass
+
+                    await asyncio.sleep(1)
+
+                    logger.info("Restarting stuck task: %s", name)
+                    tasks[i] = task_factories[i]()
 
             await asyncio.sleep(1)
 
     async def streaming_analyze(self, stream: KlinStreamState) -> None:
-        """Launches the background tasks for one camera stream.
-        Теперь принимает KlinStreamState вместо KlinStreamingModel.
-        """
         assert stream.camera_url is not None
         assert stream.camera_id is not None
 
         context = self._create_context()
         self.contexts[stream.camera_id] = context
 
-        tasks = [
-            asyncio.create_task(
-                self._frame_reader(
-                    stream.camera_url,
-                    context.queue.source_queue,
-                    context.stop_event,
-                )
-            ),
-            asyncio.create_task(self.broadcast_frames(context)),
-            asyncio.create_task(
-                self._periodic_x3d_checker(
-                    context=context,
-                    camera_id=stream.camera_id,
-                    stream_id=stream.id,
-                )
-            ),
-            asyncio.create_task(
-                self._yolo_stream_pipeline(
-                    context=context,
-                    camera_id=stream.camera_id,
-                    stream_id=stream.id,
-                )
-            ),
-            asyncio.create_task(
-                self._mae_stream_pipeline(
-                    context=context,
-                    camera_id=stream.camera_id,
-                    stream_id=stream.id,
-                )
-            ),
-        ]
+        task_factories = self._build_task_factories(context, stream)
+        tasks = [factory() for factory in task_factories]
 
-        watchdog_task = asyncio.create_task(self._watchdog(tasks, context))
+        watchdog_task = asyncio.create_task(
+            self._watchdog(task_factories, tasks, context),
+            name="watchdog",
+        )
+
         tasks.append(watchdog_task)
 
         logger.info(
@@ -613,23 +706,62 @@ class StreamProcessor(IKlinStream):
         )
 
         try:
-            try:
-                await asyncio.gather(*tasks)
-            finally:
-                for task in tasks:
-                    task.cancel()
-
-                await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*tasks)  # 👈 если watchdog упал — вылетим наружу
 
         except asyncio.CancelledError:
             logger.info("⛔ Стриминг отменён (stream_id=%s)", stream.id)
             context.stop_event.set()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            raise  # 👈 важно
+
         except Exception:
             logger.exception("Критическая ошибка в стриминге (stream_id=%s)", stream.id)
             context.stop_event.set()
-            raise
+            raise  # 👈 важно
+
         finally:
+            for task in tasks:
+                task.cancel()
+
+            await asyncio.gather(*tasks, return_exceptions=True)
+
             logger.info("Стриминг завершён (stream_id=%s)", stream.id)
             context.stopped_event.set()
             self.contexts.pop(stream.camera_id, None)
+
+    async def run_stream_with_restarts(
+        self,
+        stream: KlinStreamState,
+        max_restarts: int = 5,
+    ) -> None:
+        restart_count = 0
+
+        while restart_count <= max_restarts:
+            try:
+                logger.info(
+                    "Starting stream (attempt %d/%d)",
+                    restart_count + 1,
+                    max_restarts + 1,
+                )
+
+                await self.streaming_analyze(stream)
+
+                logger.info("Stream finished normally, no restart needed")
+                return
+
+            except Exception:
+                restart_count += 1
+
+                logger.exception(
+                    "Stream crashed (attempt %d/%d)",
+                    restart_count,
+                    max_restarts,
+                )
+
+                if restart_count > max_restarts:
+                    logger.critical("Stream exceeded max restarts → giving up")
+                    return
+
+                delay = min(2**restart_count, 30)
+                logger.info("Restarting whole stream in %s sec", delay)
+
+                await asyncio.sleep(delay)
