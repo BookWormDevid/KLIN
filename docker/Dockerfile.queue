@@ -32,10 +32,4 @@ WORKDIR /code
 COPY --from=builder /opt/venv /opt/venv
 COPY app /code/app
 
-CMD [
-    "python",
-    "-m",
-    "faststream",
-    "run",
-    "app.presentation.faststream.app:app"
-]
+CMD ["python -m faststream run app.presentation.faststream.app:app"]

@@ -166,11 +166,14 @@ class StreamProcessor(IKlinStream):
 
     async def _frame_reader(
         self,
-        camera_url: str,
+        camera_url: str | None,
         frame_queue: asyncio.Queue,
         stop_event: asyncio.Event,
         context: StreamContext,
     ) -> None:
+        if camera_url is None:
+            logger.log("Отсутствует URL камеры", level=logging.warning)
+
         cap = self._open_capture(camera_url)
 
         if not cap.isOpened():
