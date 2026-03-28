@@ -1,7 +1,7 @@
 [MASTER]
 ignore = migrations, .venv, venv, .env, x3d_net.py
 max-module-lines = 1200
-jobs = 0
+jobs = 1
 
 [MESSAGES CONTROL]
 disable =
@@ -29,6 +29,7 @@ known-third-party = pytest, sqlalchemy
 
 [TYPECHECK]
 ignored-classes = SQLAlchemy, scoped_session
+ignored-modules = dotenv
 extension-pkg-allow-list = cv2
 
 generated-members =
