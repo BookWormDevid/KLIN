@@ -164,6 +164,8 @@ class StreamProcessor(IKlinStream):
             raise ValueError(f"Failed to open camera stream: {camera_url}")
         return cap
 
+    # The reader loop intentionally keeps reconnect and playback state local.
+    # pylint: disable=too-many-locals
     async def _frame_reader(
         self,
         camera_url: str | None,
@@ -172,7 +174,8 @@ class StreamProcessor(IKlinStream):
         context: StreamContext,
     ) -> None:
         if camera_url is None:
-            logger.log("Отсутствует URL камеры", level=logging.warning)
+            logger.warning("Отсутствует URL камеры")
+            return
 
         cap = self._open_capture(camera_url)
 
@@ -744,6 +747,7 @@ class StreamProcessor(IKlinStream):
         stream: KlinStreamState,
         max_restarts: int = 5,
     ) -> None:
+        """Restart the whole streaming pipeline with backoff after fatal failures."""
         restart_count = 0
 
         while restart_count <= max_restarts:

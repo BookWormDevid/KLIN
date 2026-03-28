@@ -14,7 +14,7 @@
 
 7) HTTPS и SSL для manyflows.ru
 
-8) починить docker-compose
+8) починить docker-compose +
 
 9) Сделать API эндпоинт для stream (отдельной группой в api/v1)
 
