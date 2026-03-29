@@ -1,10 +1,13 @@
 import uuid
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
 
 from app.application.consumers.stream_event_consumer import StreamEventConsumer
+from app.application.consumers.stream_event_service import StreamEventService
 from app.application.dto import StreamEventDto
+from app.models import KlinStreamState, ProcessingState
 
 
 def make_stream_event(event_type: str, payload: dict) -> StreamEventDto:
@@ -22,16 +25,44 @@ def fixture_stream_event_repository() -> AsyncMock:
     return AsyncMock()
 
 
-# @pytest.fixture(name="stream_event_consumer")
-# def fixture_stream_event_consumer(
-#     stream_event_repository: AsyncMock,
-# ) -> StreamEventConsumer:
-#     return StreamEventConsumer(repository=stream_event_repository)
+@pytest.fixture(name="stream_state_repository")
+def fixture_stream_state_repository() -> AsyncMock:
+    repository = AsyncMock()
+    repository.get_by_id_stream.return_value = None
+    return repository
+
+
+@pytest.fixture(name="stream_processor")
+def fixture_stream_processor() -> AsyncMock:
+    return AsyncMock()
+
+
+@pytest.fixture(name="stream_event_service")
+def fixture_stream_event_service(
+    stream_event_repository: AsyncMock,
+    stream_state_repository: AsyncMock,
+    stream_processor: AsyncMock,
+) -> StreamEventService:
+    return StreamEventService(
+        repository_event=stream_event_repository,
+        repository_id=stream_state_repository,
+        stream_processor=stream_processor,
+    )
+
+
+@pytest.fixture(name="sample_stream_state")
+def fixture_sample_stream_state() -> KlinStreamState:
+    return KlinStreamState(
+        id=uuid.uuid4(),
+        camera_id="cam-1",
+        camera_url="rtsp://example/cam-1",
+        state=ProcessingState.PROCESSING,
+    )
 
 
 @pytest.mark.anyio
 async def test_handle_mae_event_builds_expected_result(
-    stream_event_consumer: StreamEventConsumer,
+    stream_event_service: StreamEventService,
     stream_event_repository: AsyncMock,
 ) -> None:
     event = make_stream_event(
@@ -44,7 +75,8 @@ async def test_handle_mae_event_builds_expected_result(
             "end_ts": 2.5,
         },
     )
-    await stream_event_consumer.handle(event)
+
+    await stream_event_service.process(event)
 
     stream_event_repository.save_mae.assert_awaited_once()
     saved_event = stream_event_repository.save_mae.await_args.args[0]
@@ -55,14 +87,15 @@ async def test_handle_mae_event_builds_expected_result(
 
 @pytest.mark.anyio
 async def test_handle_x3d_event_builds_expected_result(
-    stream_event_consumer: StreamEventConsumer,
+    stream_event_service: StreamEventService,
     stream_event_repository: AsyncMock,
 ) -> None:
     event = make_stream_event(
         "X3D_VIOLENCE",
         {"timestamp": 12.0, "label": "violence", "prob": 0.77},
     )
-    await stream_event_consumer.handle(event)
+
+    await stream_event_service.process(event)
 
     stream_event_repository.save_x3d.assert_awaited_once()
     saved_event = stream_event_repository.save_x3d.await_args.args[0]
@@ -71,43 +104,51 @@ async def test_handle_x3d_event_builds_expected_result(
 
 
 @pytest.mark.anyio
-async def test_handle_retries_once_then_succeeds(
-    stream_event_consumer: StreamEventConsumer,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sleep_mock = AsyncMock()
+async def test_consumer_delegates_to_service() -> None:
+    service = AsyncMock()
+    consumer = StreamEventConsumer(service=cast(StreamEventService, service))
     event = make_stream_event("YOLO", {"detections": [], "timestamp": 1.0})
-    retrying_handler = AsyncMock(side_effect=[RuntimeError("boom"), None])
-    monkeypatch.setattr(
-        "app.application.consumers.stream_event_consumer.asyncio.sleep",
-        sleep_mock,
-    )
-    monkeypatch.setattr(stream_event_consumer, "_handle_yolo", retrying_handler)
 
-    await stream_event_consumer.handle(event)
+    await consumer.handle(event)
 
-    assert retrying_handler.await_count == 2
-    sleep_mock.assert_awaited_once_with(0.5)
+    service.process.assert_awaited_once_with(event)
 
 
 @pytest.mark.anyio
-async def test_handle_raises_after_all_retries(
-    stream_event_consumer: StreamEventConsumer,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+async def test_handle_stop_requests_processor_shutdown(
+    stream_event_service: StreamEventService,
+    stream_processor: AsyncMock,
 ) -> None:
-    sleep_mock = AsyncMock()
-    event = make_stream_event("YOLO", {"detections": [], "timestamp": 1.0})
-    failing_handler = AsyncMock(side_effect=RuntimeError("still broken"))
-    monkeypatch.setattr(
-        "app.application.consumers.stream_event_consumer.asyncio.sleep",
-        sleep_mock,
-    )
-    monkeypatch.setattr(stream_event_consumer, "_handle_yolo", failing_handler)
+    event = make_stream_event("STOP_STREAM", {})
+    stream_processor.wait_stopped.return_value = True
 
-    with pytest.raises(RuntimeError, match="still broken"):
-        await stream_event_consumer.handle(event)
+    await stream_event_service.process(event)
 
-    assert failing_handler.await_count == 3
-    assert sleep_mock.await_count == 2
-    assert "Failed to save YOLO event" in caplog.text
+    stream_processor.stop.assert_awaited_once_with(event.camera_id)
+    stream_processor.wait_stopped.assert_awaited_once_with(event.camera_id)
+
+
+@pytest.mark.anyio
+async def test_handle_stream_stopped_marks_stream_stopped(
+    stream_event_service: StreamEventService,
+    stream_state_repository: AsyncMock,
+    sample_stream_state: KlinStreamState,
+) -> None:
+    event = make_stream_event("STREAM_STOPPED", {"timestamp": "2026-03-29T00:00:00Z"})
+    sample_stream_state.id = event.stream_id
+    stream_state_repository.get_by_id_stream.return_value = sample_stream_state
+
+    await stream_event_service.process(event)
+
+    assert sample_stream_state.state == ProcessingState.STOPPED
+    stream_state_repository.update.assert_awaited_once_with(sample_stream_state)
+
+
+@pytest.mark.anyio
+async def test_handle_raises_for_unsupported_event_type(
+    stream_event_service: StreamEventService,
+) -> None:
+    event = make_stream_event("UNKNOWN", {})
+
+    with pytest.raises(ValueError, match="Unsupported event type: UNKNOWN"):
+        await stream_event_service.process(event)

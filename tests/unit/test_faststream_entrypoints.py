@@ -154,13 +154,22 @@ async def test_faststream_stream_worker_handles_events_and_starts_streams(
     event_message = SimpleNamespace(body=msgspec.json.encode(event))
     dto = StreamProcessDto(stream_id=uuid.uuid4())
     start_message = SimpleNamespace(body=msgspec.json.encode(dto))
+    scheduled: list[object] = []
+
+    def fake_create_task(coro):
+        scheduled.append(coro)
+        coro.close()
+        return SimpleNamespace()
+
+    monkeypatch.setattr(module.asyncio, "create_task", fake_create_task)
 
     await module.verify_worker_database()
     await module.event_handler(event_message)
     await module.stream_start_handler(start_message)
 
     ping_mock.assert_awaited_once_with(module.db_engine)
-    stream_event_consumer.handle.assert_awaited_once()
-    stream_service.perform_stream.assert_awaited_once_with(stream_id=dto.stream_id)
+    stream_event_consumer.handle.assert_awaited_once_with(event=event)
+    stream_service.perform_stream.assert_called_once_with(stream_id=dto.stream_id)
+    assert len(scheduled) == 1
     assert {"status": "success"} in module.STREAM_PROCESSED.labels_calls
     assert module.STREAM_PROCESSING_TIME.calls == 1

@@ -241,8 +241,9 @@ async def test_analyze_runs_heavy_pipeline_when_x3d_gate_is_true(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_streaming_analyze_raises_when_camera_cannot_open(monkeypatch):
-    processor = StreamProcessor(event_producer=AsyncMock())
+async def test_streaming_analyze_gives_up_when_camera_cannot_open(monkeypatch):
+    event_producer = AsyncMock()
+    processor = StreamProcessor(event_producer=event_producer)
     stream = KlinStreamState(
         id=uuid.uuid4(),
         camera_id="cam-1",
@@ -256,7 +257,16 @@ async def test_streaming_analyze_raises_when_camera_cannot_open(monkeypatch):
         lambda _path: FakeVideoCapture(frame_count=0, fps=0.0, opened=False),
     )
 
-    with pytest.raises(ValueError, match="Failed to open camera stream"):
-        await processor.streaming_analyze(stream)
+    original_run_stream_with_restarts = processor.run_stream_with_restarts
+
+    async def run_without_backoff(stream_state: KlinStreamState) -> None:
+        await original_run_stream_with_restarts(stream_state, max_restarts=0)
+
+    monkeypatch.setattr(processor, "run_stream_with_restarts", run_without_backoff)
+
+    await processor.streaming_analyze(stream)
 
     assert stream.camera_id not in processor.contexts
+    event_producer.send_event.assert_awaited_once()
+    event = event_producer.send_event.await_args.args[0]
+    assert event.type == "STREAM_STOPPED"

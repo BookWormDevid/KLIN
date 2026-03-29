@@ -12,12 +12,10 @@
 
 6) Frontend подключение и тест с текущим API
 
-7) HTTPS и SSL для manyflows.ru
+7) HTTPS и SSL для manyflows.ru +
 
 8) починить docker-compose +
 
-9) Сделать API эндпоинт для stream (отдельной группой в api/v1)
+9) Сделать API эндпоинт для stream (отдельной группой в api/v1) +
 
 10) Разобраться с Airflow и сделать DAG для батчевой обработки
-
-11)
