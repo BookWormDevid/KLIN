@@ -14,8 +14,8 @@ def to_klin_read_dto(model: KlinModel) -> KlinReadDto:
         x3d=model.x3d,
         mae=model.mae,
         yolo=model.yolo,
-        objects=model.objects,
-        all_classes=model.all_classes,
+        objects=model.objects or [],
+        all_classes=model.all_classes or [],
         state=model.state,
     )
 

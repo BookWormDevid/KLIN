@@ -57,7 +57,7 @@ class KlinStreamState(BaseModel):
 
     __tablename__ = "klin_stream_state"
 
-    id: Mapped[UUID]  # PK из BaseModel
+    id: Mapped[UUID]
 
     camera_id: Mapped[str] = mapped_column(String(), unique=True, index=True)
     camera_url: Mapped[str | None] = mapped_column(nullable=True)

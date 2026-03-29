@@ -3,6 +3,10 @@
 """
 
 from .klin import KlinController
+from .stream import KlinStreamController
 
 
-__all__ = ("KlinController",)
+__all__ = (
+    "KlinController",
+    "KlinStreamController",
+)

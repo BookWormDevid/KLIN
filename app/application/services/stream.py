@@ -5,7 +5,8 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+
+from sqlalchemy.exc import IntegrityError
 
 from app.application.dto import (
     StreamEventDto,
@@ -44,13 +45,44 @@ class StreamService:
         self._klin_event_producer = klin_event_producer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamState:
-        """Create a stream state record and enqueue background processing."""
+        existing = await self._klin_repository.get_by_id_camera(data.camera_id)
+
+        if existing and existing.state in (
+            ProcessingState.PROCESSING,
+            ProcessingState.PENDING,
+        ):
+            return existing
+
+        if existing:
+            existing.camera_url = data.camera_url
+            existing.state = ProcessingState.PENDING
+            await self._klin_repository.update(existing)
+
+            try:
+                await self._publish_stream_task(existing.id)
+            except Exception as exc:
+                await self._persist_start_failure(existing, exc)
+                raise
+
+            return existing
+
         stream_state = KlinStreamState(
             camera_url=data.camera_url,
             camera_id=data.camera_id,
             state=ProcessingState.PENDING,
         )
-        stream_state = await self._klin_repository.create(stream_state)
+
+        try:
+            stream_state = await self._klin_repository.create(stream_state)
+        except IntegrityError as err:
+            existing = await self._klin_repository.get_by_id_camera(data.camera_id)
+
+            if existing is None:
+                raise RuntimeError(
+                    "Stream creation race failed: record not found"
+                ) from err
+
+            return existing
 
         try:
             await self._publish_stream_task(stream_state.id)
@@ -58,25 +90,11 @@ class StreamService:
             await self._persist_start_failure(stream_state, exc)
             raise
 
-        logger.info(
-            "Stream started: camera_id=%s, stream_id=%s",
-            data.camera_id,
-            stream_state.id,
-        )
         return stream_state
 
     async def _publish_stream_task(self, stream_id: uuid.UUID) -> None:
-        max_attempts = 3
         payload = StreamProcessDto(stream_id=stream_id)
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                await self._klin_process_producer.send_stream(payload)
-                return
-            except Exception:
-                if attempt >= max_attempts:
-                    raise
-                await asyncio.sleep(2 ** (attempt - 1))
+        await self._klin_process_producer.send_stream(payload)
 
     async def _persist_start_failure(
         self, stream_state: KlinStreamState, error: Exception
@@ -95,7 +113,6 @@ class StreamService:
         stream_state.last_mae_confidence = None
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
-        """Claim a pending stream, run analysis, and persist the final state."""
         stream_state = await self._klin_repository.claim_for_processing_stream(
             stream_id
         )
@@ -107,60 +124,67 @@ class StreamService:
         stream_state.state = ProcessingState.PROCESSING
         await self._klin_repository.update(stream_state)
 
+        final_state: ProcessingState | None = None
+
         try:
             await self._klin_stream.streaming_analyze(stream_state)
+            final_state = ProcessingState.FINISHED
 
         except asyncio.CancelledError:
             logger.info("Stream cancelled id=%s", stream_id)
-            stream_state.state = ProcessingState.STOPPED
+            final_state = ProcessingState.STOPPED
 
         except Exception as exc:
             logger.exception("Stream failed id=%s error=%s", stream_id, exc)
-            stream_state.state = ProcessingState.ERROR
+            final_state = ProcessingState.ERROR
             self._store_error_message(stream_state, exc)
 
         finally:
             try:
-                await self._klin_repository.update(stream_state)
+                # 🔥 КЛЮЧ: читаем актуальное состояние
+                current = await self._klin_repository.get_by_id_stream(stream_id)
+
+                if (
+                    final_state is not None
+                    and current
+                    and current.state == ProcessingState.PROCESSING
+                ):
+                    stream_state.state = final_state
+                    await self._klin_repository.update(stream_state)
+
             except Exception:
                 logger.exception("Failed to update stream state")
 
     async def stop_stream(self, stream_id: uuid.UUID) -> None:
-        """Request a graceful stop for the active stream and publish an event."""
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
 
         if not stream_state:
             logger.warning("Stream not found: %s", stream_id)
             return
 
-        await self._klin_stream.stop(stream_state.camera_id)
+        if stream_state.state in (ProcessingState.STOPPED, ProcessingState.ERROR):
+            logger.info(
+                "Stop skipped (already stopped): camera_id=%s stream_id=%s",
+                stream_state.camera_id,
+                stream_id,
+            )
+            return
 
-        stopped = await self._klin_stream.wait_stopped(stream_state.camera_id)
+        await self._klin_event_producer.send_event(
+            StreamEventDto(
+                id=str(uuid.uuid4()),
+                type="STOP_STREAM",
+                camera_id=stream_state.camera_id,
+                stream_id=stream_id,
+                payload={},
+            )
+        )
 
-        if stopped:
-            try:
-                await self._klin_event_producer.send_event(
-                    StreamEventDto(
-                        id=str(uuid.uuid4()),
-                        type="STREAM_STOPPED",
-                        camera_id=stream_state.camera_id,
-                        stream_id=stream_id,
-                        payload={"timestamp": datetime.now(timezone.utc).isoformat()},
-                    )
-                )
-            except Exception:
-                logger.exception("Failed to publish STREAM_STOPPED event")
-        else:
-            logger.warning("Processor did not stop in time. stream_id=%s", stream_id)
-
-        # защита от перезаписи состояния
-        if stream_state.state != ProcessingState.STOPPED:
-            stream_state.state = ProcessingState.STOPPED
-
-        try:
-            await self._klin_repository.update(stream_state)
-        except Exception:
-            logger.exception("Failed to update stream state")
+        logger.info(
+            "STOP_STREAM event sent: camera_id=%s stream_id=%s",
+            stream_state.camera_id,
+            stream_id,
+        )
 
     async def get_stream_status(self, stream_id: uuid.UUID) -> StreamReadDto:
         """Return the latest persisted status snapshot for the requested stream."""

@@ -44,7 +44,7 @@ class YoloConfig:
     Настройки инференса YOLO.
     """
 
-    yolo_stride: int = 2
+    yolo_stride: int = 5
     yolo_batch_size: int = 32
     yolo_conf: float = 0.6
     yolo_classes: dict[int, str] = field(default_factory=lambda: {0: "person"})

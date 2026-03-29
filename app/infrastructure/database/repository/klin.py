@@ -217,6 +217,16 @@ class KlinRepository(IKlinRepository):
             klin = await session.scalar(query)
             return cast(KlinStreamState | None, klin)
 
+    async def get_by_id_camera(self, camera_id: str) -> KlinStreamState | None:
+        async with self.session() as session:
+            query = (
+                select(KlinStreamState)
+                .where(KlinStreamState.camera_id == camera_id)
+                .limit(1)
+            )
+            result = await session.scalar(query)
+            return cast(KlinStreamState | None, result)
+
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """
         Получить n количество последних строк в бд

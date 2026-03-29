@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.application.consumers.stream_event_consumer import StreamEventConsumer
+from app.application.consumers.stream_event_service import StreamEventService
 from app.application.interfaces import (
     IKlinCallbackSender,
     IKlinEventProducer,
@@ -107,6 +108,7 @@ class InfrastructureProvider(Provider):
     KLIN_stream_event_consumer = provide(
         StreamEventConsumer, provides=IKlinStreamEventConsumer
     )
+    KLIN_stream_event_service = provide(StreamEventService)
 
     @provide(provides=IKlinRuntimeSettings)
     def klin_runtime_settings(self) -> IKlinRuntimeSettings:
@@ -120,6 +122,7 @@ class ApiApplicationProvider(Provider):
 
     scope = Scope.APP
     KLIN_service = provide(KlinService)
+    KLIN_stream_service = provide(StreamService)
 
 
 class ApiVideoProvider(Provider):

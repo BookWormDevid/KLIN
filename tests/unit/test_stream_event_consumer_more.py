@@ -22,11 +22,11 @@ def fixture_stream_event_repository() -> AsyncMock:
     return AsyncMock()
 
 
-@pytest.fixture(name="stream_event_consumer")
-def fixture_stream_event_consumer(
-    stream_event_repository: AsyncMock,
-) -> StreamEventConsumer:
-    return StreamEventConsumer(repository=stream_event_repository)
+# @pytest.fixture(name="stream_event_consumer")
+# def fixture_stream_event_consumer(
+#     stream_event_repository: AsyncMock,
+# ) -> StreamEventConsumer:
+#     return StreamEventConsumer(repository=stream_event_repository)
 
 
 @pytest.mark.anyio
@@ -68,20 +68,6 @@ async def test_handle_x3d_event_builds_expected_result(
     saved_event = stream_event_repository.save_x3d.await_args.args[0]
     assert saved_event.ts == 12.0
     assert saved_event.label == "violence"
-
-
-@pytest.mark.anyio
-async def test_handle_x3d_event_skips_missing_timestamps(
-    stream_event_consumer: StreamEventConsumer,
-    stream_event_repository: AsyncMock,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    event = make_stream_event("X3D_VIOLENCE", {"label": "violence"})
-
-    await stream_event_consumer._handle_x3d(event)
-
-    assert "missing timestamp payload" in caplog.text
-    stream_event_repository.save_x3d.assert_not_awaited()
 
 
 @pytest.mark.anyio

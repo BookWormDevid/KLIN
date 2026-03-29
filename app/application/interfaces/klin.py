@@ -47,8 +47,10 @@ class IKlinStreamEventConsumer(Protocol):
     async def handle(self, event: StreamEventDto) -> None:
         """Handle one event."""
 
-    async def handle_many(self, events: list[StreamEventDto]) -> None:
-        """Handle a batch of events."""
+
+class IKlinStreamEventService(Protocol):
+    async def process(self, event: StreamEventDto) -> None:
+        """Process one stream event."""
 
 
 class IKlinInference(Protocol):
@@ -107,6 +109,9 @@ class IKlinTaskRepository(Protocol):
 
 class IStreamStateRepository(Protocol):
     """Persistence port for stream lifecycle state."""
+
+    async def get_by_id_camera(self, camera_id: str) -> KlinStreamState | None:
+        """Load one stream by camera id."""
 
     async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState | None:
         """Load one stream state by id, if it exists."""
