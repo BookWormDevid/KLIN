@@ -8,7 +8,7 @@ model_repository/**/1/*.pt
 model_repository/**/1/*.data
 mlruns/*/**
 tmp
-
+.pylint
 
 
 # Byte-compiled / optimized / DLL files
@@ -246,5 +246,3 @@ dvc_remote/
 .dvc/state
 .dvc/state-journal
 .dvc/state-wal
-
-airflow/logs/
