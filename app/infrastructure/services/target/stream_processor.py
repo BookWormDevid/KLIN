@@ -53,12 +53,15 @@ class StreamProcessor(IKlinStream):
     """
 
     def __init__(self, event_producer: IKlinEventProducer) -> None:
+        """Инициализирует процессор, конфигурацию и runtime,
+        хранит активные контексты."""
         self.processing = StreamProcessorConfig()
         self.runtime = build_processor_runtime(self.processing)
         self.contexts: dict[str, StreamContext] = {}
         self.event_producer = event_producer
 
     def _build_task_factories(self, context: StreamContext, stream: KlinStreamState):
+        """Формирует фабрики задач для запуска пайплайна стрима."""
         return [
             lambda: asyncio.create_task(
                 self._frame_reader(
@@ -100,9 +103,11 @@ class StreamProcessor(IKlinStream):
         ]
 
     def _beat(self, context: StreamContext, name: str) -> None:
+        """Обновляет heartbeat для отслеживания активности задачи."""
         context.heartbeats[name] = time.time()
 
     def _create_context(self) -> StreamContext:
+        """Создаёт контекст стрима (очереди, heavy-логика, события и heartbeat)."""
         return StreamContext(
             queue=Queue(),
             heavy=HeavyLogic(),
@@ -114,6 +119,7 @@ class StreamProcessor(IKlinStream):
     async def _quick_x3d_check_for_streaming(
         self, frames: list[np.ndarray], context: StreamContext
     ) -> dict[str, float] | None:
+        """Выполняет быстрый X3D-инференс"""
         logits = await self._triton_infer_with_retry(
             self.runtime.x3d_processor.infer_clip, frames, context=context
         )
@@ -130,6 +136,7 @@ class StreamProcessor(IKlinStream):
         timeout: float = 10,
         retries: int = 4,
     ) -> Any:
+        """Запускает инференс в Triton с ретраями и таймаутом."""
         last_exc = None
         loop = asyncio.get_running_loop()
 
@@ -162,6 +169,7 @@ class StreamProcessor(IKlinStream):
 
     @staticmethod
     def _open_capture(camera_url: str) -> cv2.VideoCapture:
+        """Открывает видеопоток через OpenCV и проверяет доступность."""
         cap = cv2.VideoCapture(camera_url)
         if not cap.isOpened():
             cap.release()
@@ -177,6 +185,7 @@ class StreamProcessor(IKlinStream):
         stop_event: asyncio.Event,
         context: StreamContext,
     ) -> None:
+        """Читает кадры из камеры/файла, обрабатывает reconnect и кладёт в очередь."""
         if camera_url is None:
             logger.warning("Отсутствует URL камеры")
             return
@@ -263,6 +272,7 @@ class StreamProcessor(IKlinStream):
         timestamp: float,
         last_send: float,
     ) -> bool:
+        """Определяет, когда отправлять батч YOLO на инференс."""
         return len(buffer) >= self.processing.yolo_batch_size or (
             bool(buffer) and timestamp - last_send > 0.8
         )
@@ -270,6 +280,7 @@ class StreamProcessor(IKlinStream):
     def _build_stream_yolo_batch(
         self, buffer: list[tuple[int, np.ndarray, float]]
     ) -> np.ndarray:
+        """Формирует батч изображений для YOLO."""
         return np.stack(
             [
                 self.runtime.prepare.prepare_yolo_frame_for_triton(frame)[0]
@@ -283,6 +294,7 @@ class StreamProcessor(IKlinStream):
         preds: NDArray[np.float32],
         timestamp: float,
     ) -> list[dict[str, Any]]:
+        """Преобразует предсказания YOLO в список детекций."""
         detections: list[dict[str, Any]] = []
         for pred in preds:
             detection = self.runtime.business_processor.parse_yolo_detection(pred)
@@ -305,6 +317,7 @@ class StreamProcessor(IKlinStream):
         buffer: list[tuple[int, np.ndarray, float]],
         preds_list: list[NDArray[np.float32]],
     ) -> list[dict[str, Any]]:
+        """Собирает детекции для всего батча кадров."""
         detections: list[dict[str, Any]] = []
         for (_, _, timestamp), preds in zip(buffer, preds_list, strict=True):
             detections.extend(self._build_frame_detections(preds, timestamp))
@@ -318,6 +331,7 @@ class StreamProcessor(IKlinStream):
         stream_id: uuid.UUID,
         payload: dict[str, Any],
     ) -> None:
+        """Отправляет событие через event producer."""
         event = StreamEventDto(
             id=str(uuid.uuid4()),
             type=event_type,
@@ -343,7 +357,7 @@ class StreamProcessor(IKlinStream):
         context: StreamContext,
         batch_imgs: np.ndarray,
     ) -> list[NDArray[np.float32]] | None:
-        """Run YOLO inference with a short retry loop for transient failures."""
+        """Запускает YOLO-инференс с повторными попытками."""
 
         max_batch_retries = 2
 
@@ -371,7 +385,7 @@ class StreamProcessor(IKlinStream):
         camera_id: str,
         stream_id: uuid.UUID,
     ) -> None:
-        """Publish a YOLO event for the processed batch when detections exist."""
+        """Публикует YOLO-событие при наличии детекций."""
 
         detections = self._collect_yolo_detections(batch, preds_list)
         if not detections:
@@ -389,6 +403,7 @@ class StreamProcessor(IKlinStream):
         )
 
     def _build_mae_top_probs(self, probs: NDArray[np.float32]) -> list[dict[str, Any]]:
+        """Возвращает топ-3 вероятности классов MAE."""
         top_probs: list[dict[str, Any]] = []
         for class_idx in np.argsort(probs)[::-1][:3]:
             if class_idx not in self.processing.mae_classes:
@@ -408,6 +423,7 @@ class StreamProcessor(IKlinStream):
         camera_id: str,
         stream_id: uuid.UUID,
     ) -> None:
+        """Отправляет событие MAE с результатами классификации."""
         pred_idx = int(np.argmax(probs))
         await self._emit_event(
             event_type="MAE",
@@ -425,7 +441,7 @@ class StreamProcessor(IKlinStream):
     async def _yolo_stream_pipeline(
         self, context: StreamContext, camera_id: str, stream_id: uuid.UUID
     ) -> None:
-        """Buffer frames for YOLO and flush them in bounded batches."""
+        """Буферизует кадры и выполняет батч-инференс YOLO."""
 
         buffer: list[tuple[int, np.ndarray, float]] = []
         last_send = -999.0
@@ -482,6 +498,7 @@ class StreamProcessor(IKlinStream):
         camera_id: str,
         stream_id: uuid.UUID,
     ) -> None:
+        """Обрабатывает скользящее окно кадров для MAE-инференса."""
         window: list[np.ndarray] = []
         window_ts: list[float] = []
         last_inference = -999.0
@@ -636,6 +653,9 @@ class StreamProcessor(IKlinStream):
             context.queue.source_queue.task_done()
 
     async def stop(self, camera_id: str) -> None:
+        """
+        Задача остановить стрим
+        """
         context = self.contexts.get(camera_id)
         if not context:
             logger.warning("Stop requested but context not found: %s", camera_id)
@@ -654,7 +674,7 @@ class StreamProcessor(IKlinStream):
         await self.wait_stopped(camera_id)
 
     async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
-        """Wait until the stream context reports that shutdown has completed."""
+        """Ожидает полного завершения стрима."""
 
         context = self.contexts.get(camera_id)
         if not context:
@@ -669,6 +689,7 @@ class StreamProcessor(IKlinStream):
     async def _watchdog(
         self, task_factories, tasks, context: StreamContext, model: KlinStreamState
     ):
+        """Следит за задачами, перезапускает упавшие или зависшие."""
         restart_limits = {
             "frame_reader": 10,
             "broadcast": 10,
@@ -757,9 +778,7 @@ class StreamProcessor(IKlinStream):
             await asyncio.sleep(1)
 
     async def streaming_analyze_once(self, stream: KlinStreamState) -> None:
-        """
-        Запуск тасок, обработка ошибок
-        """
+        """Запускает таски и управляет жизненным циклом задач."""
         assert stream.camera_url is not None
         assert stream.camera_id is not None
 
@@ -838,7 +857,7 @@ class StreamProcessor(IKlinStream):
         stream: KlinStreamState,
         max_restarts: int = 5,
     ) -> None:
-        """Restart the whole streaming pipeline with backoff after fatal failures."""
+        """Перезапускает стрим при критических сбоях с backoff."""
         restart_count = 0
 
         while restart_count <= max_restarts:
@@ -878,4 +897,5 @@ class StreamProcessor(IKlinStream):
                 await asyncio.sleep(delay)
 
     async def streaming_analyze(self, stream: KlinStreamState) -> None:
+        """Точка входа"""
         await self.run_stream_with_restarts(stream)
