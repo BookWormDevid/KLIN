@@ -3,6 +3,7 @@ FastStream Worker — обработка стриминговых задач (р
 Очередь: Klin_stream_queue
 """
 
+import asyncio
 import logging
 
 import msgspec
@@ -87,7 +88,7 @@ async def stream_start_handler(message: RabbitMessage) -> None:
         )
 
         with STREAM_PROCESSING_TIME.time():
-            await stream_service.perform_stream(stream_id=dto.stream_id)
+            asyncio.create_task(stream_service.perform_stream(stream_id=dto.stream_id))
 
         STREAM_PROCESSED.labels(status="success").inc()
 

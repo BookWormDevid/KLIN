@@ -218,6 +218,9 @@ class KlinRepository(IKlinRepository):
             return cast(KlinStreamState | None, klin)
 
     async def get_by_id_camera(self, camera_id: str) -> KlinStreamState | None:
+        """
+        Получение id камеры
+        """
         async with self.session() as session:
             query = (
                 select(KlinStreamState)

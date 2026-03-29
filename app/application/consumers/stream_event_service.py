@@ -1,3 +1,7 @@
+"""
+Обрабатывает жизнь стрима
+"""
+
 import asyncio
 import logging
 
@@ -14,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 
 class StreamEventService:
+    """
+    Содержит обработку по моделям и остановки стрима.
+    Что стрим останавливается и остановился
+    """
+
     def __init__(
         self,
         repository_event: IStreamEventRepository,
@@ -25,6 +34,9 @@ class StreamEventService:
         self.stream_processor = stream_processor
 
     async def process(self, event: StreamEventDto) -> None:
+        """
+        Обработка по событиям
+        """
         if event.type == "YOLO":
             await self._process_yolo(event)
 
@@ -44,6 +56,9 @@ class StreamEventService:
             raise ValueError(f"Unsupported event type: {event.type}")
 
     async def _process_yolo(self, event: StreamEventDto) -> None:
+        """
+        Обработка yolo для подачи в бд
+        """
         data = event.payload or {}
 
         result = KlinYoloResult(
@@ -58,6 +73,9 @@ class StreamEventService:
         await self.repository_event.save_yolo(result)
 
     async def _process_mae(self, event: StreamEventDto) -> None:
+        """
+        Обработка mae для подачи в бд
+        """
         data = event.payload or {}
 
         result = KlinMaeResult(
@@ -74,6 +92,9 @@ class StreamEventService:
         await self.repository_event.save_mae(result)
 
     async def _process_x3d(self, event: StreamEventDto) -> None:
+        """
+        Обработка x3d для подачи в бд
+        """
         data = event.payload or {}
 
         ts_raw = data.get("timestamp")
@@ -92,6 +113,9 @@ class StreamEventService:
         await self.repository_event.save_x3d(result)
 
     async def _handle_stop(self, event: StreamEventDto) -> None:
+        """
+        Остановка стрима
+        """
         try:
             await self.stream_processor.stop(event.camera_id)
             await asyncio.wait_for(
@@ -104,6 +128,9 @@ class StreamEventService:
             raise
 
     async def handle_stream_stopped(self, event: StreamEventDto) -> None:
+        """
+        Стрим остановлен
+        """
         stream = await self.repository_id.get_by_id_stream(event.stream_id)
 
         if not stream:

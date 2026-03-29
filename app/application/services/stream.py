@@ -45,6 +45,15 @@ class StreamService:
         self._klin_event_producer = klin_event_producer
 
     async def start_stream(self, data: StreamUploadDto) -> KlinStreamState:
+        """
+        1. Проверяет — есть ли уже стрим
+        2. Если есть активный → возвращает
+        3. Если есть старый → перезапускает
+        4. Если нет → создаёт
+        5. Защищается от гонок (IntegrityError)
+        6. Обрабатывает ошибки очереди (Rabbit)
+        """
+
         existing = await self._klin_repository.get_by_id_camera(data.camera_id)
 
         if existing and existing.state in (
@@ -113,6 +122,9 @@ class StreamService:
         stream_state.last_mae_confidence = None
 
     async def perform_stream(self, stream_id: uuid.UUID) -> None:
+        """
+        Запуска стрима
+        """
         stream_state = await self._klin_repository.claim_for_processing_stream(
             stream_id
         )
@@ -128,11 +140,11 @@ class StreamService:
 
         try:
             await self._klin_stream.streaming_analyze(stream_state)
-            final_state = ProcessingState.FINISHED
 
         except asyncio.CancelledError:
             logger.info("Stream cancelled id=%s", stream_id)
             final_state = ProcessingState.STOPPED
+            raise
 
         except Exception as exc:
             logger.exception("Stream failed id=%s error=%s", stream_id, exc)
@@ -156,6 +168,9 @@ class StreamService:
                 logger.exception("Failed to update stream state")
 
     async def stop_stream(self, stream_id: uuid.UUID) -> None:
+        """
+        Остановка стрима по id
+        """
         stream_state = await self._klin_repository.get_by_id_stream(stream_id)
 
         if not stream_state:

@@ -636,18 +636,22 @@ class StreamProcessor(IKlinStream):
             context.queue.source_queue.task_done()
 
     async def stop(self, camera_id: str) -> None:
-        """Stops an active stream by camera id."""
         context = self.contexts.get(camera_id)
         if not context:
             logger.warning("Stop requested but context not found: %s", camera_id)
             return
 
         logger.info("Stopping stream processor for camera_id=%s", camera_id)
+
         context.stop_event.set()
 
         if context.tasks:
             for task in context.tasks:
                 task.cancel()
+
+            await asyncio.gather(*context.tasks, return_exceptions=True)
+
+        await self.wait_stopped(camera_id)
 
     async def wait_stopped(self, camera_id: str, timeout: float = 5) -> bool:
         """Wait until the stream context reports that shutdown has completed."""
@@ -701,7 +705,7 @@ class StreamProcessor(IKlinStream):
                         continue
 
                     logger.error(
-                        "Task crashed: %s (camera_id=%s, stream_id=%s)",
+                        "Task crashed: %s (camera_id=%s)",
                         name,
                         model.camera_id,
                         exc_info=exc,
@@ -753,6 +757,9 @@ class StreamProcessor(IKlinStream):
             await asyncio.sleep(1)
 
     async def streaming_analyze_once(self, stream: KlinStreamState) -> None:
+        """
+        Запуск тасок, обработка ошибок
+        """
         assert stream.camera_url is not None
         assert stream.camera_id is not None
 
@@ -781,7 +788,7 @@ class StreamProcessor(IKlinStream):
             await asyncio.gather(*tasks)
 
         except asyncio.CancelledError:
-            logger.info("⛔ Стриминг отменён (stream_id=%s)", stream.id)
+            logger.info("⛔ Stream stopped gracefully (stream_id=%s)", stream.id)
             context.stop_event.set()
             raise
 

@@ -17,7 +17,7 @@ from litestar.datastructures import UploadFile
 from litestar.enums import RequestEncodingType
 from litestar.exceptions import HTTPException
 from litestar.params import Body
-from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED, HTTP_404_NOT_FOUND
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 from app.application.dto import KlinReadDto, KlinUploadDto
 from app.application.exceptions import KlinEnqueueError, KlinNotFoundError
@@ -25,6 +25,10 @@ from app.application.interfaces import IKlinVideoStorage
 from app.application.mappers import to_klin_read_dto
 from app.application.services import KlinService
 from app.config import app_settings
+from app.presentation.litestar.controllers.helpers import LitestarErrors
+
+
+litestar_errors: LitestarErrors = LitestarErrors()
 
 
 class KlinController(Controller):
@@ -115,10 +119,7 @@ class KlinController(Controller):
         try:
             inference = await klin_service.get_inference_status(klin_id)
         except KlinNotFoundError as exc:
-            raise HTTPException(
-                status_code=HTTP_404_NOT_FOUND,
-                detail=str(exc),
-            ) from exc
+            litestar_errors.raise_404(exc)
         return Response(inference)
 
     @get(path="/health/live", media_type=MediaType.TEXT)
