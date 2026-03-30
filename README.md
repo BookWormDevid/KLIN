@@ -206,7 +206,7 @@ docker compose --env-file .env -f docker/docker-compose.infra.yml up -d
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
-docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d --remove-orphans
+docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
 ```
 
 </details>
