@@ -159,6 +159,59 @@ make app-down
 </details>
 
 <details>
+<summary><h3>CD и Registry</h3></summary>
+
+В репозитории предусмотрен CD workflow: [cd.yml](.github/workflows/cd.yml).
+
+Что он делает:
+
+- собирает `docker/Dockerfile.api` и `docker/Dockerfile.queue`
+- пушит образы в GHCR
+- подключается к серверу по SSH
+- выполняет `docker compose pull` и `docker compose up -d`
+
+Для деплоя используется compose-файл [docker/docker-compose.deploy.yml](docker/docker-compose.deploy.yml).
+
+### GitHub secrets
+
+Создайте secrets в репозитории:
+
+- `DEPLOY_HOST`
+- `DEPLOY_USER`
+- `DEPLOY_SSH_KEY`
+- `DEPLOY_PORT`
+- `DEPLOY_PATH`
+- `GHCR_USERNAME`
+- `GHCR_TOKEN`
+
+`GHCR_TOKEN` должен уметь читать пакеты (`read:packages`) на сервере.
+
+### Подготовка сервера
+
+Один раз на сервере:
+
+```bash
+git clone https://github.com/BookWormDevid/KLIN.git /opt/KLIN
+cd /opt/KLIN
+cp example.env .env
+```
+
+Заполните `.env`, затем поднимите инфраструктуру:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.infra.yml up -d
+```
+
+После этого workflow сам будет подтягивать новые образы приложения через:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
+docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d --remove-orphans
+```
+
+</details>
+
+<details>
 <summary><h3> Линтинг и статический анализ</h2></summary>
 
 ```bash

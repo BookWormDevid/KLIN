@@ -1,0 +1,43 @@
+services:
+  klin_api_development:
+    image: ${KLIN_API_IMAGE:?KLIN_API_IMAGE is required}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - web
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RABBIT_URL: ${RABBIT_URL}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.klin_api.rule=Host(`${API_HOST:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.services.klin_api.loadbalancer.server.port=8008"
+
+  klin_processor_worker_development:
+    image: ${KLIN_WORKER_IMAGE:?KLIN_WORKER_IMAGE is required}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - web
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      RABBIT_URL: ${RABBIT_URL}
+      S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_REGION: ${S3_REGION}
+      S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+
+networks:
+  web:
+    name: klin-web

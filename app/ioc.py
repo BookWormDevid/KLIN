@@ -39,10 +39,10 @@ from app.application.services import (
 from app.config import app_settings
 from app.infrastructure.database import KlinRepository
 from app.infrastructure.producers import KlinEventProducer, KlinProcessProducer
-from app.infrastructure.services import StreamProcessor
 from app.infrastructure.services.callback_sender import KlinCallbackSender
 from app.infrastructure.services.inference_stub import ApiInferenceStub
 from app.infrastructure.services.s3_storage import S3ObjectStorage
+from app.infrastructure.services.stream_stub import ApiStreamStub
 
 
 class InfrastructureProvider(Provider):
@@ -104,7 +104,6 @@ class InfrastructureProvider(Provider):
     KLIN_callback_sender = provide(KlinCallbackSender, provides=IKlinCallbackSender)
     KLIN_video_storage = provide(S3ObjectStorage, provides=IKlinVideoStorage)
 
-    KLIN_stream = provide(StreamProcessor, provides=IKlinStream)
     KLIN_stream_event_consumer = provide(
         StreamEventConsumer, provides=IKlinStreamEventConsumer
     )
@@ -132,6 +131,13 @@ class ApiVideoProvider(Provider):
     InferenceProcessor = provide(ApiInferenceStub, provides=IKlinInference)
 
 
+class ApiStreamProvider(Provider):
+    """Заглушка стрим-процессора для API."""
+
+    scope = Scope.APP
+    StreamProcessor = provide(ApiStreamStub, provides=IKlinStream)
+
+
 class WorkerApplicationProvider(Provider):
     """Сервисы для queue-worker процесса."""
 
@@ -154,12 +160,31 @@ class WorkerVideoProvider(Provider):
         return cast(IKlinInference, processor_module.InferenceProcessor())
 
 
+class WorkerStreamProvider(Provider):
+    """Реальный стрим-процессор только для worker."""
+
+    scope = Scope.APP
+
+    @provide(provides=IKlinStream)
+    def stream_processor(self, event_producer: IKlinEventProducer) -> IKlinStream:
+        """Create the worker stream processor lazily to avoid API-side imports."""
+
+        processor_module = import_module(
+            "app.infrastructure.services.target.stream_processor"
+        )
+        return cast(
+            IKlinStream,
+            processor_module.StreamProcessor(event_producer=event_producer),
+        )
+
+
 # ====================== ФАБРИКИ ПРОВАЙДЕРОВ ======================
 def get_api_providers() -> tuple[Provider, ...]:
     """Провайдеры для API-контейнера."""
     return (
         InfrastructureProvider(),
         ApiApplicationProvider(),
+        ApiStreamProvider(),
         ApiVideoProvider(),
     )
 
@@ -169,5 +194,6 @@ def get_worker_providers() -> tuple[Provider, ...]:
     return (
         InfrastructureProvider(),
         WorkerApplicationProvider(),
+        WorkerStreamProvider(),
         WorkerVideoProvider(),
     )
