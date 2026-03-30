@@ -87,6 +87,23 @@ jobs:
     environment: production
 
     steps:
+      - name: Debug deploy connectivity
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Runner public IP:"
+          curl -fsS https://api.ipify.org
+          echo
+          echo "DNS resolution for DEPLOY_HOST:"
+          getent ahosts "$DEPLOY_HOST" || nslookup "$DEPLOY_HOST" || true
+          echo "TCP probe to ${DEPLOY_HOST}:${DEPLOY_PORT}:"
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/${DEPLOY_HOST}/${DEPLOY_PORT}" \
+            && echo "TCP port is reachable" \
+            || echo "TCP probe failed"
+
       - name: Deploy to server over SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
