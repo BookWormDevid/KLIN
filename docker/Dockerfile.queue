@@ -3,11 +3,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /build
 ENV UV_LINK_MODE=copy
+ENV VENV_PATH=/opt/venv
+ENV VENV_SITE_PACKAGES=/opt/venv/lib/python3.10/site-packages
 
-RUN python -m venv /opt/venv
+RUN python -m venv "${VENV_PATH}"
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --python /opt/venv/bin/python \
+    uv pip install --python "${VENV_PATH}/bin/python" \
     "aiohttp>=3.13.3" \
     "async-timeout>=4.0.3" \
     "asyncpg>=0.31.0" \
@@ -20,7 +22,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "prometheus-client>=0.23.1" \
     "python-dotenv>=1.2.1" \
     "sqlalchemy[asyncio]>=2.0.46" \
-    "tritonclient[grpc,http]>=2.66.0"
+    "tritonclient[grpc]>=2.66.0"
+
+RUN find "${VENV_PATH}" -type d \( -name "__pycache__" -o -name "tests" -o -name "testing" \) -prune -exec rm -rf {} + \
+    && find "${VENV_PATH}" -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete \
+    && rm -rf \
+        "${VENV_PATH}/bin/pip" \
+        "${VENV_PATH}/bin/pip3" \
+        "${VENV_PATH}/bin/pip3.10" \
+        "${VENV_SITE_PACKAGES}/pip" \
+        "${VENV_SITE_PACKAGES}"/pip-*.dist-info \
+        "${VENV_SITE_PACKAGES}/setuptools" \
+        "${VENV_SITE_PACKAGES}"/setuptools-*.dist-info \
+        "${VENV_SITE_PACKAGES}/wheel" \
+        "${VENV_SITE_PACKAGES}"/wheel-*.dist-info \
+    && (find "${VENV_PATH}" -type f -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true)
 
 FROM python:3.10.6-slim AS final
 ENV PATH="/opt/venv/bin:${PATH}"
@@ -30,6 +46,15 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /code
 
 COPY --from=builder /opt/venv /opt/venv
-COPY app /code/app
+
+COPY app/__init__.py /code/app/__init__.py
+COPY app/ioc.py /code/app/ioc.py
+COPY app/application /code/app/application
+COPY app/config /code/app/config
+COPY app/infrastructure /code/app/infrastructure
+COPY app/models /code/app/models
+COPY app/presentation/__init__.py /code/app/presentation/__init__.py
+COPY app/presentation/faststream /code/app/presentation/faststream
+COPY app/presentation/faststream_stream /code/app/presentation/faststream_stream
 
 CMD ["python", "-m", "faststream", "run", "app.presentation.faststream.app:app"]
