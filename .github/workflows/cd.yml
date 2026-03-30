@@ -102,8 +102,9 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 30s
+          command_timeout: 10m
           envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE
-          script_stop: true
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
