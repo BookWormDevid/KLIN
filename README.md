@@ -209,9 +209,6 @@ docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
 docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
 ```
 
-If the infrastructure is started from `docker/docker-compose.infra.yml`, keep `APP_DB_HOST=postgresql` and `RABBITMQ_HOST=rabbitmq`.
-For public access on `manyflows.ru/api/docs`, set `KLIN_API_HOST=manyflows.ru`, point the domain to the server, and expose Traefik with `TRAEFIK_BIND_HOST=0.0.0.0`.
-
 </details>
 
 <details>
