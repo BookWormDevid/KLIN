@@ -18,7 +18,9 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"
-      - "traefik.http.routers.klin_api.rule=Host(`${API_HOST:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.klin_api.rule=Host(`manyflows.ru`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls=true"
       - "traefik.http.services.klin_api.loadbalancer.server.port=8008"
 
   klin_processor_worker_development:
