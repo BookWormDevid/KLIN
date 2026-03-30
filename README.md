@@ -209,6 +209,8 @@ docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
 docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
 ```
 
+If the infrastructure is started from `docker/docker-compose.infra.yml`, keep `APP_DB_HOST=postgresql` and `RABBITMQ_HOST=rabbitmq`.
+
 </details>
 
 <details>
