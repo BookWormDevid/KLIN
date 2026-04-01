@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     default_s3_addressing_style: str = "path"
     default_s3_key_prefix: str = "klin/uploads"
 
-    default_triton_grpc_url: str = "127.0.0.1:8001"
+    default_triton_grpc_url: str = "0.0.0.0:8001"
 
     Klin_queue = "Klin-queue"
     Klin_process_queue = "Klin-stream-queue"
