@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 
+from app.config import app_settings
 from app.infrastructure.helpers import (
     MaeConfig,
     PrepareForTriton,
@@ -88,7 +89,7 @@ def build_processor_runtime(config: ProcessorConfig) -> ProcessorRuntime:
     Build a fully initialized processor runtime for the given config.
     """
     prepare = PrepareForTriton()
-    triton = grpcclient.InferenceServerClient(url="127.0.0.1:8001")
+    triton = grpcclient.InferenceServerClient(url=app_settings.triton_url)
     return ProcessorRuntime(
         prepare=prepare,
         triton=triton,

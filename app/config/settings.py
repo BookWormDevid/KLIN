@@ -1,3 +1,4 @@
+# pylint: disable=R0904
 """
 Настройки приложения с валидацией
 """
@@ -39,6 +40,8 @@ class Settings(BaseSettings):
     default_s3_region: str = "us-east-1"
     default_s3_addressing_style: str = "path"
     default_s3_key_prefix: str = "klin/uploads"
+
+    default_triton_grpc_url: str = "127.0.0.1:8001"
 
     Klin_queue = "Klin-queue"
     Klin_process_queue = "Klin-stream-queue"
@@ -200,6 +203,15 @@ class Settings(BaseSettings):
             )
             .strip()
             .strip("/")
+        )
+
+    @property
+    def triton_url(self) -> str:
+        """
+        URL сервера с моделями к которому будет обращаться воркер
+        """
+        return self.resolve_env_property(
+            "TRITON_GRPC_URL", str, default_value=self.default_triton_grpc_url
         )
 
     @property

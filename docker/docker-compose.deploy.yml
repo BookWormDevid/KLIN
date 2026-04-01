@@ -39,6 +39,7 @@ services:
       S3_REGION: ${S3_REGION}
       S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+      TRITON_GRPC_URL: ${TRITON_GRPC_URL}
 
 networks:
   web:
