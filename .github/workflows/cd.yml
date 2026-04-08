@@ -71,7 +71,6 @@ jobs:
     needs: check-changes
     runs-on: ubuntu-latest
     if: needs.check-changes.outputs.code_changed == 'true' || github.event_name == 'workflow_dispatch'
-
     outputs:
       api_image: ${{ needs.check-changes.outputs.api_image }}
       worker_image: ${{ needs.check-changes.outputs.worker_image }}
