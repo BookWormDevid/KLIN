@@ -23,6 +23,7 @@ async def repository_roundtrip_smoke() -> None:
     loaded = await repo.get_by_id_stream(created.id)
 
     assert created.id is not None
+    assert loaded is not None
     assert loaded.id == created.id
     assert loaded.camera_id == camera_id
 

@@ -81,7 +81,6 @@ jobs:
         with:
           path: |
             .cache/pylint
-            .mypy_cache
             .ruff_cache
           key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-${{ hashFiles('uv.lock', 'pyproject.toml') }}
           restore-keys: |
@@ -106,20 +105,21 @@ jobs:
       - name: Ruff format check
         run: uv run --no-sync ruff format --check app helpers tests
 
-      - name: Mypy and Pylint
+      - name: Ty check
         shell: bash
         run: |
           set -euo pipefail
-          mypy_targets=(app tests)
+          ty_targets=(app tests)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
-            mypy_targets+=(helpers)
+            ty_targets+=(helpers)
           fi
-          uv run --no-sync -m mypy "${mypy_targets[@]}" &
-          mypy_pid=$!
-          uv run --no-sync pylint --jobs=0 app &
-          pylint_pid=$!
-          wait "$mypy_pid"
-          wait "$pylint_pid"
+          uv run --no-sync ty check "${ty_targets[@]}"
+
+      - name: Pylint
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run --no-sync -m pylint --jobs=0 app
 
       - name: Minimize uv cache
         if: always()

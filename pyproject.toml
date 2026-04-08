@@ -21,7 +21,6 @@ dependencies = [
     "grpcio>=1.67.1",
     "grpcio-tools>=1.67.1",
     "faststream[cli,rabbit]>=0.6.6",
-    "opencv-python-headless>=4.13.0.92",
     "boto3>=1.42.73",
 ]
 
@@ -44,7 +43,7 @@ ml = [
 dev = [
     "torch>=2.10.0",
     "yt-dlp>=2025.12.8",
-    "mypy>=1.5.8",
+    "ty>=0.0.29",
     "types-requests>=2.32.4.20260107",
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
@@ -60,7 +59,7 @@ dev = [
 ]
 
 ci = [
-    "mypy>=1.5.8",
+    "ty>=0.0.29",
     "boto3-stubs[s3]>=1.42.73",
     "types-requests>=2.32.4.20260107",
     "ruff>=0.14.10",
@@ -88,25 +87,9 @@ torch = [{ index = "pytorch-cu128" }]
 torchvision = [{ index = "pytorch-cu128" }]
 
 
-
-[tool.mypy]
-python_version = "3.10"
-warn_return_any = true
-warn_unused_configs = true
-strict_optional = true
-exclude = ["data", "videomae_results", "mlflow", "mlruns", "sandbox", "model_repository", "versions"]
-plugins = []
-
-[[tool.mypy.overrides]]
-module = ["ultralytics", "yt_dlp", "aiofiles"]
-ignore_missing_imports = true
-
-[tool.pylint.main]
-extension-pkg-allow-list = ["cv2"]
-
-
-
 [tool.ruff]
+fix = true
+unsafe-fixes = true
 line-length = 88
 target-version = "py310"
 exclude = ["versions"]
@@ -121,6 +104,17 @@ select = [
 ]
 isort.lines-after-imports = 2
 exclude = ["versions"]
+
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+exclude = [
+    "bin", "**/versions", "sandbox", "model_repository"
+]
+
+
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

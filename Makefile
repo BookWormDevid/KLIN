@@ -51,8 +51,8 @@ pre-commit:
 lint: uv-dev
 	uv run ruff check --fix
 	uv run ruff format
-	uv run -m mypy app helpers tests
-	uv run pylint app
+	uv run ty check
+	uv run -m pylint app
 
 test: uv-dev
 	uv run pytest -q --maxfail=1
@@ -62,8 +62,8 @@ ci-lint:
 	uv sync --group ci --frozen --no-install-project
 	uv run --no-sync ruff check app helpers tests
 	uv run --no-sync ruff format --check app helpers tests
-	uv run --no-sync -m mypy app helpers tests
-	uv run --no-sync pylint --jobs=0 app
+	uv run --no-sync ty check app helpers tests
+	uv run --no-sync -m pylint --jobs=0 app
 
 ci-test:
 	uv venv --allow-existing
