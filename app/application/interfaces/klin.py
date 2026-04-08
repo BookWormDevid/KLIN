@@ -79,6 +79,8 @@ class IKlinVideoStorage(Protocol):
     async def delete(self, source_uri: str) -> None:
         """Delete an object by URI."""
 
+    async def list_objects(self, prefix: str) -> list[str]: ...
+
 
 class IKlinRuntimeSettings(Protocol):
     """Small settings surface used by application services."""
