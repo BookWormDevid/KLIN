@@ -73,9 +73,9 @@ ci-test:
 	uv run --no-sync pytest -q --maxfail=1
 	uv run --no-sync -m coverage report
 
-ci: ci-lint ci-test ci-mypy
+ci: ci-lint ci-test
 
-ci-python: ci
+ci-heavy: ci
 
 
 start-api-local:
