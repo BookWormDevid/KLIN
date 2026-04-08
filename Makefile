@@ -53,6 +53,7 @@ lint: uv-dev
 	uv run ruff format
 	uv run ty check
 	uv run -m pylint app
+	uv run -m mypy app helpers tests
 
 test: uv-dev
 	uv run pytest -q --maxfail=1

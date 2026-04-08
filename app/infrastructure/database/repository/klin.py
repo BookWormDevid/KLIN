@@ -163,7 +163,7 @@ class KlinRepository(IKlinRepository):
             )
             klin_state = await session.scalar(query)
             if not klin_state:
-                raise KlinNotFoundError(stream_id)
+                return None
             return klin_state
 
     async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
