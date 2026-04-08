@@ -64,6 +64,7 @@ ci-lint:
 	uv run --no-sync ruff format --check app helpers tests
 	uv run --no-sync ty check app helpers tests
 	uv run --no-sync -m pylint --jobs=0 app
+	uv run --no-sync -m mypy app helpers tests
 
 ci-test:
 	uv venv --allow-existing
@@ -71,7 +72,7 @@ ci-test:
 	uv run --no-sync pytest -q --maxfail=1
 	uv run --no-sync -m coverage report
 
-ci: ci-lint ci-test
+ci: ci-lint ci-test ci-mypy
 
 ci-python: ci
 

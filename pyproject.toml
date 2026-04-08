@@ -44,6 +44,7 @@ dev = [
     "torch>=2.10.0",
     "yt-dlp>=2025.12.8",
     "ty>=0.0.29",
+    "mypy>=1.20.0",
     "types-requests>=2.32.4.20260107",
     "pre-commit>=4.5.1",
     "ruff>=0.14.10",
@@ -60,6 +61,7 @@ dev = [
 
 ci = [
     "ty>=0.0.29",
+    "mypy>=1.20.0",
     "boto3-stubs[s3]>=1.42.73",
     "types-requests>=2.32.4.20260107",
     "ruff>=0.14.10",
@@ -114,6 +116,14 @@ exclude = [
     "bin", "**/versions", "sandbox", "model_repository"
 ]
 
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+strict_optional = true
+exclude = ["data", "videomae_results", "mlflow", "mlruns", "sandbox", "model_repository", "versions"]
+plugins = []
 
 
 [tool.pytest.ini_options]

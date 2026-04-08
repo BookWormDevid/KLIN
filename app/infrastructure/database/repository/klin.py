@@ -161,7 +161,7 @@ class KlinRepository(IKlinRepository):
             query = (
                 select(KlinStreamState).where(KlinStreamState.id == stream_id).limit(1)
             )
-            return await session.scalar(query)
+            return await session.scalar(query)  # type: ignore
 
     async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
         """

@@ -82,6 +82,7 @@ jobs:
           path: |
             .cache/pylint
             .ruff_cache
+            .mypy_cache
           key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-${{ hashFiles('uv.lock', 'pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-
@@ -105,6 +106,7 @@ jobs:
       - name: Ruff format check
         run: uv run --no-sync ruff format --check app helpers tests
 
+      # ----- ty type checker. In beta. Mypy is used too. -----
       - name: Ty check
         shell: bash
         run: |
@@ -120,6 +122,16 @@ jobs:
         run: |
           set -euo pipefail
           uv run --no-sync -m pylint --jobs=0 app
+
+      - name: Mypy check
+        shell: bash
+        run: |
+          set -euo pipefail
+          mypy_targets=(app tests)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            mypy_targets+=(helpers)
+          fi
+          uv run --no-sync mypy "${mypy_targets[@]}"
 
       - name: Minimize uv cache
         if: always()
