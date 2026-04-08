@@ -4,6 +4,7 @@
 
 import json
 import uuid
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import cv2
@@ -195,6 +196,8 @@ async def test_analyze_skips_heavy_pipeline_when_x3d_gate_is_false(monkeypatch):
 
     result = await processor.analyze(model)
 
+    assert result.x3d is not None
+
     assert json.loads(result.x3d) == {"False": 0.99}
     assert result.mae == "[]"
     assert result.yolo == "{}"
@@ -232,12 +235,16 @@ async def test_analyze_runs_heavy_pipeline_when_x3d_gate_is_true(monkeypatch):
 
     result = await processor.analyze(model)
 
+    assert result.x3d is not None
+    assert result.mae is not None
+    assert result.yolo is not None
+
     assert json.loads(result.x3d) == {"True": 0.91}
     assert json.loads(result.mae)[0]["answer"] == "Fight"
     assert list(json.loads(result.yolo).values())[0] == [[1.0, 2.0, 3.0, 4.0]]
     assert result.objects == ["person"]
     assert set(result.all_classes or []) == {"Fight"}
-    processor.logging.log_processing.assert_called_once()
+    cast(MagicMock, processor.logging.log_processing).assert_called_once()
 
 
 @pytest.mark.anyio

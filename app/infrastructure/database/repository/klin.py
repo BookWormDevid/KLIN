@@ -4,7 +4,7 @@
 
 import uuid
 from dataclasses import dataclass
-from typing import cast, overload
+from typing import overload
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -161,7 +161,10 @@ class KlinRepository(IKlinRepository):
             query = (
                 select(KlinStreamState).where(KlinStreamState.id == stream_id).limit(1)
             )
-            return cast(KlinStreamState | None, await session.scalar(query))
+            klin_state = await session.scalar(query)
+            if not klin_state:
+                return None
+            return klin_state
 
     async def claim_for_processing(self, klin_id: UUID) -> KlinModel | None:
         """
@@ -186,7 +189,7 @@ class KlinRepository(IKlinRepository):
 
             query = select(KlinModel).where(KlinModel.id == claimed_id).limit(1)
             klin = await session.scalar(query)
-            return cast(KlinModel | None, klin)
+            return klin
 
     async def claim_for_processing_stream(
         self, stream_id: UUID
@@ -215,7 +218,7 @@ class KlinRepository(IKlinRepository):
                 select(KlinStreamState).where(KlinStreamState.id == claimed_id).limit(1)
             )
             klin = await session.scalar(query)
-            return cast(KlinStreamState | None, klin)
+            return klin
 
     async def get_by_id_camera(self, camera_id: str) -> KlinStreamState | None:
         """
@@ -228,7 +231,7 @@ class KlinRepository(IKlinRepository):
                 .limit(1)
             )
             result = await session.scalar(query)
-            return cast(KlinStreamState | None, result)
+            return result
 
     async def get_first_n(self, count: int) -> list[KlinModel]:
         """
