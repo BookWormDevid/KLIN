@@ -5,11 +5,6 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "mlflow/**"
-      - "sandbox/**"
   workflow_dispatch:
 
 permissions:
@@ -30,10 +25,13 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
     outputs:
-      code_changed: ${{ steps.filter.outputs.code_changed }}
+      deploy_changed: ${{ steps.filter.outputs.deploy_changed }}
+      app_image_changed: ${{ steps.filter.outputs.app_image_changed }}
+      airflow_image_changed: ${{ steps.filter.outputs.airflow_image_changed }}
       api_image: ${{ steps.vars.outputs.api_image }}
       worker_image: ${{ steps.vars.outputs.worker_image }}
       batch_image: ${{ steps.vars.outputs.batch_image }}
+      airflow_image: ${{ steps.vars.outputs.airflow_image }}
       image_tag: ${{ steps.vars.outputs.image_tag }}
 
     steps:
@@ -42,23 +40,40 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Detect code changes
+      - name: Detect deploy changes
         id: filter
         uses: dorny/paths-filter@v3
         with:
           filters: |
-            code_changed:
+            deploy_changed:
               - "app/**"
+              - "airflow/**"
+              - "pyproject.toml"
+              - "uv.lock"
+              - "alembic.ini"
+              - "docker/Dockerfile.api"
+              - "docker/Dockerfile.airflow"
+              - "docker/Dockerfile.queue"
+              - "docker/docker-compose.deploy.yml"
+              - "docker/docker-compose.infra.yml"
+              - ".github/workflows/cd.yml"
+            app_image_changed:
+              - "app/**"
+              - "pyproject.toml"
               - "uv.lock"
               - "alembic.ini"
               - "docker/Dockerfile.api"
               - "docker/Dockerfile.queue"
-              - "docker/docker-compose.deploy.yml"
+              - ".github/workflows/cd.yml"
+            airflow_image_changed:
+              - "pyproject.toml"
+              - "uv.lock"
+              - "docker/Dockerfile.airflow"
               - ".github/workflows/cd.yml"
 
       - name: Compute image names
         id: vars
-        if: steps.filter.outputs.code_changed == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.filter.outputs.deploy_changed == 'true' || github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -66,17 +81,19 @@ jobs:
           echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api" >> "$GITHUB_OUTPUT"
           echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker" >> "$GITHUB_OUTPUT"
           echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner" >> "$GITHUB_OUTPUT"
+          echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow" >> "$GITHUB_OUTPUT"
           echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   build-and-push:
     needs: check-changes
     runs-on: ubuntu-latest
-    if: needs.check-changes.outputs.code_changed == 'true' || github.event_name == 'workflow_dispatch'
+    if: needs.check-changes.outputs.deploy_changed == 'true' || github.event_name == 'workflow_dispatch'
 
     outputs:
       api_image: ${{ needs.check-changes.outputs.api_image }}
       worker_image: ${{ needs.check-changes.outputs.worker_image }}
       batch_image: ${{ needs.check-changes.outputs.batch_image }}
+      airflow_image: ${{ needs.check-changes.outputs.airflow_image }}
       image_tag: ${{ needs.check-changes.outputs.image_tag }}
 
     steps:
@@ -88,10 +105,13 @@ jobs:
       - name: Debug resolved outputs
         shell: bash
         run: |
-          echo "code_changed=${{ needs.check-changes.outputs.code_changed }}"
+          echo "deploy_changed=${{ needs.check-changes.outputs.deploy_changed }}"
+          echo "app_image_changed=${{ needs.check-changes.outputs.app_image_changed }}"
+          echo "airflow_image_changed=${{ needs.check-changes.outputs.airflow_image_changed }}"
           echo "api_image=${{ needs.check-changes.outputs.api_image }}"
           echo "worker_image=${{ needs.check-changes.outputs.worker_image }}"
           echo "batch_image=${{ needs.check-changes.outputs.batch_image }}"
+          echo "airflow_image=${{ needs.check-changes.outputs.airflow_image }}"
           echo "image_tag=${{ needs.check-changes.outputs.image_tag }}"
 
       - name: Validate image variables
@@ -101,6 +121,7 @@ jobs:
           test -n "${{ needs.check-changes.outputs.api_image }}"
           test -n "${{ needs.check-changes.outputs.worker_image }}"
           test -n "${{ needs.check-changes.outputs.batch_image }}"
+          test -n "${{ needs.check-changes.outputs.airflow_image }}"
           test -n "${{ needs.check-changes.outputs.image_tag }}"
 
       - name: Set up Docker Buildx
@@ -141,6 +162,19 @@ jobs:
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
+      - name: Build and push Airflow image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.airflow
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ needs.check-changes.outputs.airflow_image }}:latest
+            ${{ needs.check-changes.outputs.airflow_image }}:${{ needs.check-changes.outputs.image_tag }}
+          cache-from: type=gha,scope=airflow
+          cache-to: type=gha,mode=max,scope=airflow
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -161,24 +195,30 @@ jobs:
           KLIN_API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
           KLIN_WORKER_IMAGE: ${{ needs.build-and-push.outputs.worker_image }}
           KLIN_BATCH_RUNNER_IMAGE: ${{ needs.build-and-push.outputs.batch_image }}
+          KLIN_AIRFLOW_IMAGE: ${{ needs.build-and-push.outputs.airflow_image }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 30s
-          command_timeout: 10m
-          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE
+          command_timeout: 15m
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
             git fetch --all --tags --prune
             git checkout "$DEPLOY_REF"
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
             export IMAGE_TAG
             export KLIN_API_IMAGE
             export KLIN_WORKER_IMAGE
-            export KLIN_BATCH_RUNNER_IMAGE
-            docker compose --profile batch --env-file .env -f docker/docker-compose.deploy.yml pull
-            docker tag "${KLIN_BATCH_RUNNER_IMAGE}:${IMAGE_TAG}" klin-batch-runner:latest
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
             docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
+
+            export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE}:${IMAGE_TAG}"
+            export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE}:${IMAGE_TAG}"
+            docker pull "$KLIN_BATCH_RUNNER_IMAGE"
+            docker pull "$KLIN_AIRFLOW_IMAGE"
+            docker compose --env-file .env -f docker/docker-compose.infra.yml up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor

@@ -1,6 +1,7 @@
 x-airflow-common-env: &airflow-common-env
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:?AIRFLOW_DATABASE_URL is required}
   AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
   AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
   AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:?AIRFLOW_SECRET_KEY is required}
   AIRFLOW__CORE__LOAD_EXAMPLES: "false"
@@ -10,7 +11,7 @@ x-airflow-image: &airflow-image
   build:
     context: ..
     dockerfile: docker/Dockerfile.airflow
-  image: klin-airflow:3.1.7-fab3.3.0
+  image: ${KLIN_AIRFLOW_IMAGE:-klin-airflow:3.1.7-fab3.3.0}
 
 x-batch-image: &batch-image
   build:
@@ -249,6 +250,8 @@ services:
     depends_on:
       airflow-create-admin:
         condition: service_completed_successfully
+      airflow-webserver:
+        condition: service_healthy
     environment:
       <<: *airflow-common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
