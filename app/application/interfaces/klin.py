@@ -89,12 +89,19 @@ class IKlinRuntimeSettings(Protocol):
     def max_retry_attempts(self) -> int:
         """Number of enqueue retries for offline processing."""
 
+    @property
+    def keep_s3_source_objects(self) -> bool:
+        """Whether offline processing should retain source S3 objects."""
+
 
 class IKlinTaskRepository(Protocol):
     """Persistence port for offline klin tasks."""
 
     async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel:
         """Load one offline task by id."""
+
+    async def get_latest_by_video_path(self, video_path: str) -> KlinModel | None:
+        """Load the latest offline task for a given source video path."""
 
     async def claim_for_processing(self, klin_id: uuid.UUID) -> KlinModel | None:
         """Atomically move a pending task into processing state."""
@@ -150,6 +157,8 @@ class IKlinRepository(Protocol):
     async def save_x3d(self, event: KlinX3DResult) -> None: ...
 
     async def get_by_id(self, klin_id: uuid.UUID) -> KlinModel: ...
+
+    async def get_latest_by_video_path(self, video_path: str) -> KlinModel | None: ...
 
     async def get_by_id_stream(
         self, stream_id: uuid.UUID

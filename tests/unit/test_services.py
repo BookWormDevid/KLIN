@@ -30,6 +30,7 @@ PerformKlinContext = tuple[
 @dataclass
 class RuntimeSettingsStub:
     max_retry_attempts: int = 1
+    keep_s3_source_objects: bool = True
 
 
 # Фикстуры — общие заготовки для всех тестов
@@ -291,16 +292,39 @@ class TestS3Cleanup:
         )
         mock_remove.assert_called_once_with(expected_local_path)
 
-    async def test_cleanup_video_artifacts_keeps_local_cleanup_when_s3_delete_fails(
+    async def test_cleanup_video_artifacts_keeps_s3_and_removes_local_temp_file(
         self,
         klin_service: KlinService,
         mock_video_storage: AsyncMock,
         monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
         source_uri = "s3://klin-videos/klin/uploads/test-video.mp4"
         local_video_path = "temp/downloaded-video.mp4"
-        mock_video_storage.delete.side_effect = RuntimeError("s3 delete failed")
+
+        monkeypatch.setattr(os.path, "exists", lambda path: path == local_video_path)
+        mock_remove = MagicMock()
+        monkeypatch.setattr(os, "remove", mock_remove)
+
+        await klin_service._cleanup_video_artifacts(
+            source_video_path=source_uri,
+            local_video_path=local_video_path,
+        )
+
+        mock_video_storage.delete.assert_not_awaited()
+        mock_remove.assert_called_once_with(local_video_path)
+
+    async def test_cleanup_video_artifacts_deletes_s3_when_retention_disabled(
+        self,
+        klin_service: KlinService,
+        mock_video_storage: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        source_uri = "s3://klin-videos/klin/uploads/test-video.mp4"
+        local_video_path = "temp/downloaded-video.mp4"
+        klin_service._runtime_settings = RuntimeSettingsStub(
+            max_retry_attempts=1,
+            keep_s3_source_objects=False,
+        )
 
         monkeypatch.setattr(os.path, "exists", lambda path: path == local_video_path)
         mock_remove = MagicMock()
@@ -313,7 +337,6 @@ class TestS3Cleanup:
 
         mock_video_storage.delete.assert_awaited_once_with(source_uri)
         mock_remove.assert_called_once_with(local_video_path)
-        assert "Failed to delete S3 object" in caplog.text
 
 
 # Тесты метода perform_klin — основной этап обработки видео
@@ -580,7 +603,7 @@ class TestPerformKlin:
 
         assert "Failed to delete temp file" in caplog.text
 
-    async def test_perform_klin_downloads_and_deletes_s3_artifact(
+    async def test_perform_klin_downloads_and_keeps_s3_artifact(
         self,
         perform_klin_context: PerformKlinContext,
         monkeypatch: pytest.MonkeyPatch,
@@ -628,7 +651,7 @@ class TestPerformKlin:
             source_uri=sample_klin_model.video_path,
             destination_path=expected_local_path,
         )
-        mock_video_storage.delete.assert_awaited_once_with(sample_klin_model.video_path)
+        mock_video_storage.delete.assert_not_awaited()
         assert seen_video_path["value"] == expected_local_path
         mock_remove.assert_called_once_with(expected_local_path)
 
@@ -668,7 +691,7 @@ class TestPerformKlin:
             source_uri=sample_klin_model.video_path,
             destination_path=expected_local_path,
         )
-        mock_video_storage.delete.assert_awaited_once_with(sample_klin_model.video_path)
+        mock_video_storage.delete.assert_not_awaited()
         mock_remove.assert_called_once_with(expected_local_path)
 
     async def test_perform_klin_update_error(

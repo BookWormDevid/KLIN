@@ -20,6 +20,7 @@ help:
 	@echo make start-api-local     # Launch API locally on port 8008
 	@echo make start-queue-local   # Launch Queue locally
 	@echo make triton-up           # Launch only the local Triton server container
+	@echo make batch-image-build   # Build the DockerOperator batch runner image
 	@echo .
 	@echo For production \ docker:
 	@echo make infra-up \ -down    # Full docker infra up/down
@@ -86,6 +87,9 @@ start-queue-local:
 
 triton-up: init-env
 	docker compose --env-file .env -f docker/docker-compose.infra.yml up -d triton
+
+batch-image-build: init-env
+	docker compose --env-file .env -f docker/docker-compose.infra.yml build batch-runner-image
 
 
 infra-up: init-env

@@ -337,6 +337,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/78/56/f2bea2df212d6ec8076fc559b1c4e7a2b783b725046ad87316ee655356b4/apache_airflow-3.1.0-py3-none-any.whl", hash = "sha256:4f51a6ad5617467ddb2a8d3a2bfb199f3d2788b45d71fac53a2f1de792274bce", size = 12322, upload-time = "2025-09-25T20:31:38.67Z" },
 ]
 
+[package.optional-dependencies]
+docker = [
+    { name = "apache-airflow-providers-docker" },
+]
+
 [[package]]
 name = "apache-airflow-core"
 version = "3.1.0"
@@ -450,6 +455,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ea/1f/9fa029cdc6c0204df43798f5ec95b7d0e62067609adb50611002451145b8/apache_airflow_providers_common_sql-1.32.0.tar.gz", hash = "sha256:631bd9bf7fcec817eeb8fd19804f194a9c61762e4f4b7ec41674c9da7e1021bd", size = 114337, upload-time = "2026-03-02T21:05:56Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/72/dc/9560263fc80693b90fa4fd45a42afeb3df9b2f03ace8d4045f4a6ea72a74/apache_airflow_providers_common_sql-1.32.0-py3-none-any.whl", hash = "sha256:d9386e12c8f057a3a4538b88acf0c4f5b56879ce7a6677154eef884cc5adcd15", size = 74979, upload-time = "2026-03-02T20:52:10.904Z" },
+]
+
+[[package]]
+name = "apache-airflow-providers-docker"
+version = "4.5.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "apache-airflow" },
+    { name = "apache-airflow-providers-common-compat" },
+    { name = "docker" },
+    { name = "python-dotenv" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9a/91/6ca53ff518d5041ff8ba20d9dce6afecf381d6c1aeb844a10afdc1b6753b/apache_airflow_providers_docker-4.5.4.tar.gz", hash = "sha256:2ce85337cfa458e571b1292139dbf64c0566f5b8a0f02e6e2aaa009756acbce2", size = 110636, upload-time = "2026-03-28T10:59:21.938Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/b8/d8ab26e81fa57beaccdfe0f3b2456ac612997e69f4efa4f5e1cbd497f125/apache_airflow_providers_docker-4.5.4-py3-none-any.whl", hash = "sha256:07bda5c12b08e2b53b0bcbdf8cb8029fa50314d3d924220e4ddf9a5ba3f4f0b1", size = 33332, upload-time = "2026-03-28T10:57:28.098Z" },
 ]
 
 [[package]]
@@ -2828,7 +2848,7 @@ dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
     { name = "alembic" },
-    { name = "apache-airflow" },
+    { name = "apache-airflow", extra = ["docker"] },
     { name = "async-timeout" },
     { name = "asyncpg" },
     { name = "boto3" },
@@ -2898,7 +2918,7 @@ requires-dist = [
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "aiohttp", specifier = ">=3.13.3" },
     { name = "alembic", specifier = ">=1.18.4" },
-    { name = "apache-airflow", specifier = ">=3.1.0" },
+    { name = "apache-airflow", extras = ["docker"], specifier = ">=3.1.0" },
     { name = "async-timeout", specifier = ">=5.0.1" },
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "boto3", specifier = ">=1.42.73" },

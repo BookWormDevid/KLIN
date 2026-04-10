@@ -10,4 +10,6 @@ RUN uv pip install --no-cache-dir \
     grpcio==1.67.1 \
     grpcio-tools==1.67.1
 
-RUN uv pip install apache-airflow-providers-fab==3.3.0
+RUN uv pip install --no-cache-dir \
+    apache-airflow-providers-docker \
+    apache-airflow-providers-fab==3.3.0

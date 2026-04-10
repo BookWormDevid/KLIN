@@ -130,14 +130,15 @@ class KlinService:
         local_video_path: str | None,
     ) -> None:
         if self._is_s3_uri(source_video_path):
-            try:
-                await self._klin_video_storage.delete(source_video_path)
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.warning(
-                    "Failed to delete S3 object. uri=%s error=%s",
-                    source_video_path,
-                    exc,
-                )
+            if not self._runtime_settings.keep_s3_source_objects:
+                try:
+                    await self._klin_video_storage.delete(source_video_path)
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.warning(
+                        "Failed to delete S3 object. uri=%s error=%s",
+                        source_video_path,
+                        exc,
+                    )
 
             if local_video_path and os.path.exists(local_video_path):
                 try:
