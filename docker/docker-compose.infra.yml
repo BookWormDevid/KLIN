@@ -1,6 +1,5 @@
 x-airflow-common-env: &airflow-common-env
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:?AIRFLOW_DATABASE_URL is required}
-  AIRFLOW_CONFIG: /opt/klin/airflow/config/airflow.cfg
   AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
   AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
   AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?AIRFLOW_JWT_SECRET is required}
@@ -118,7 +117,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
-      - ../airflow/config:/opt/airflow/config
       - airflow_logs:/opt/airflow/logs
     command:
       - airflow
@@ -141,7 +139,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
-      - ../airflow/config:/opt/airflow/config
       - airflow_logs:/opt/airflow/logs
     entrypoint:
       - /bin/bash
@@ -186,7 +183,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
-      - ../airflow/config:/opt/airflow/config
       - airflow_logs:/opt/airflow/logs
       - ../alembic.ini:/opt/airflow/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock
@@ -226,7 +222,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
-      - ../airflow/config:/opt/airflow/config
       - airflow_logs:/opt/airflow/logs
       - ../alembic.ini:/opt/airflow/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock
@@ -280,7 +275,6 @@ services:
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
-      - ../airflow/config:/opt/airflow/config
       - airflow_logs:/opt/airflow/logs
       - ../alembic.ini:/opt/airflow/alembic.ini
       - /var/run/docker.sock:/var/run/docker.sock

@@ -1,6 +1,5 @@
 x-airflow-common-env: &airflow-common-env
   AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DATABASE_URL:?AIRFLOW_DATABASE_URL is required}
-  AIRFLOW_CONFIG: /opt/klin/airflow/config/airflow.cfg
   AIRFLOW__CORE__EXECUTOR: LocalExecutor
   AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
   AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-webserver:8080/execution/
@@ -40,7 +39,6 @@ x-airflow-common: &airflow-common
     - ../airflow/dags:/opt/airflow/dags:ro
     - ../app:/opt/airflow/app
     - ../airflow/plugins:/opt/airflow/plugins
-    - ../airflow/config:/opt/airflow/config
     - ../alembic.ini:/opt/airflow/alembic.ini
     - airflow_logs:/opt/airflow/logs
 
@@ -319,7 +317,6 @@ services:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
       - ../airflow/plugins:/opt/airflow/plugins
-      - ../airflow/config:/opt/airflow/config
       - ../alembic.ini:/opt/airflow/alembic.ini
       - airflow_logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
@@ -343,7 +340,6 @@ services:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
       - ../airflow/plugins:/opt/airflow/plugins
-      - ../airflow/config:/opt/airflow/config
       - ../alembic.ini:/opt/airflow/alembic.ini
       - airflow_logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
@@ -383,7 +379,6 @@ services:
       - ../airflow/dags:/opt/airflow/dags:ro
       - ../app:/opt/airflow/app
       - ../airflow/plugins:/opt/airflow/plugins
-      - ../airflow/config:/opt/airflow/config
       - ../alembic.ini:/opt/airflow/alembic.ini
       - airflow_logs:/opt/airflow/logs
       - /var/run/docker.sock:/var/run/docker.sock
