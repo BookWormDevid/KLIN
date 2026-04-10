@@ -111,6 +111,28 @@ class TestSettings(unittest.TestCase):
             with self.assertRaises(ValueError):
                 _ = settings_invalid.db_connect_timeout
 
+    def test_keep_s3_source_objects(self) -> None:
+        settings_default = Settings()
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(settings_default.keep_s3_source_objects)
+
+        settings_custom = Settings()
+        with patch.dict(os.environ, {"KEEP_S3_SOURCE_OBJECTS": "false"}, clear=True):
+            self.assertFalse(settings_custom.keep_s3_source_objects)
+
+    def test_batch_s3_prefix_and_extensions(self) -> None:
+        settings = Settings()
+        with patch.dict(
+            os.environ,
+            {
+                "KLIN_BATCH_S3_PREFIX": "daily/imports",
+                "KLIN_BATCH_FILE_EXTENSIONS": ".mp4,.avi",
+            },
+            clear=True,
+        ):
+            self.assertEqual(settings.batch_s3_prefix, "daily/imports")
+            self.assertEqual(settings.batch_file_extensions, (".mp4", ".avi"))
+
     def test_klin_secret_missing(self) -> None:
         settings = Settings()
         with patch.dict(os.environ, {}, clear=True):

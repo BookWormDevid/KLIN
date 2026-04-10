@@ -153,6 +153,22 @@ class KlinRepository(IKlinRepository):
                 raise KlinNotFoundError(klin_id)
             return klin
 
+    async def get_latest_by_video_path(self, video_path: str) -> KlinModel | None:
+        """
+        Return the latest offline task for the provided source video path.
+        """
+        async with self.session() as session:
+            query = (
+                select(KlinModel)
+                .where(KlinModel.video_path == video_path)
+                .order_by(KlinModel.created_at.desc())
+                .limit(1)
+            )
+            data = await session.scalar(query)
+            if not data:
+                return None
+            return data
+
     async def get_by_id_stream(self, stream_id: uuid.UUID) -> KlinStreamState | None:
         """
         Получение всех столбцов по конкретному id

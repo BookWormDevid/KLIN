@@ -106,6 +106,37 @@ class S3ObjectStorage:
             Key=object_key,
         )
 
+    async def list_objects(self, prefix: str) -> list[str]:
+        """
+        Lists object URIs in the configured bucket for the given prefix.
+        """
+
+        await self._ensure_bucket_exists()
+        normalized_prefix = prefix.strip().lstrip("/")
+
+        def _list() -> list[str]:
+            paginator = self._client.get_paginator("list_objects_v2")
+            uris: list[str] = []
+
+            for page in paginator.paginate(
+                Bucket=self._bucket_name,
+                Prefix=normalized_prefix,
+            ):
+                for item in page.get("Contents", []):
+                    object_key = item.get("Key")
+                    if not object_key or object_key.endswith("/"):
+                        continue
+                    uris.append(
+                        self.build_uri(
+                            bucket_name=self._bucket_name,
+                            object_key=object_key,
+                        )
+                    )
+
+            return uris
+
+        return cast(list[str], await self._run_sync(_list))
+
     async def _ensure_bucket_exists(self) -> None:
         if self._bucket_ready:
             return

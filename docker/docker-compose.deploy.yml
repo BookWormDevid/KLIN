@@ -41,6 +41,16 @@ services:
       S3_KEY_PREFIX: ${S3_KEY_PREFIX}
       TRITON_GRPC_URL: ${TRITON_GRPC_URL}
 
+  klin_batch_runner_image:
+    image: ${KLIN_BATCH_RUNNER_IMAGE:?KLIN_BATCH_RUNNER_IMAGE is required}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    profiles:
+      - batch
+    command:
+      - python
+      - -c
+      - print('klin-batch-runner image is ready')
+
 networks:
   web:
     name: klin-web

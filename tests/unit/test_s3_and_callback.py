@@ -250,6 +250,32 @@ async def test_download_and_delete_delegate_to_boto_client(
 
 
 @pytest.mark.anyio
+async def test_list_objects_returns_s3_uris_for_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, client = make_s3_storage(monkeypatch)
+    paginator = MagicMock()
+    paginator.paginate.return_value = [
+        {"Contents": [{"Key": "klin/batch/2026-04-10/a.mp4"}]},
+        {
+            "Contents": [
+                {"Key": "klin/batch/2026-04-10/subdir/"},
+                {"Key": "klin/batch/2026-04-10/b.avi"},
+            ]
+        },
+    ]
+    client.get_paginator.return_value = paginator
+
+    uris = await storage.list_objects("klin/batch/2026-04-10/")
+
+    assert uris == [
+        "s3://klin-videos/klin/batch/2026-04-10/a.mp4",
+        "s3://klin-videos/klin/batch/2026-04-10/b.avi",
+    ]
+    client.get_paginator.assert_called_once_with("list_objects_v2")
+
+
+@pytest.mark.anyio
 async def test_ensure_bucket_exists_creates_missing_bucket_with_region_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

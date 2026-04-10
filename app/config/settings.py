@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     default_s3_region: str = "us-east-1"
     default_s3_addressing_style: str = "path"
     default_s3_key_prefix: str = "klin/uploads"
+    default_keep_s3_source_objects: bool = True
+    default_batch_s3_prefix: str = "klin/batch"
+    default_batch_file_extensions: str = ".mp4,.avi,.mov,.mkv,.wmv,.webm"
 
     default_triton_grpc_url: str = "0.0.0.0:8001"
 
@@ -204,6 +207,51 @@ class Settings(BaseSettings):
             .strip()
             .strip("/")
         )
+
+    @property
+    def keep_s3_source_objects(self) -> bool:
+        """
+        Keep original S3 objects after offline processing.
+        """
+        return self.resolve_env_property(
+            "KEEP_S3_SOURCE_OBJECTS",
+            self.parse_bool_env,
+            default_value=self.default_keep_s3_source_objects,
+        )
+
+    @property
+    def batch_s3_prefix(self) -> str:
+        """
+        Base S3 prefix for date-partitioned batch runs.
+        """
+        return (
+            self.resolve_env_property(
+                "KLIN_BATCH_S3_PREFIX",
+                str,
+                default_value=self.default_batch_s3_prefix,
+            )
+            .strip()
+            .strip("/")
+        )
+
+    @property
+    def batch_file_extensions(self) -> tuple[str, ...]:
+        """
+        Allowed file extensions for S3 batch discovery.
+        """
+        raw_value = self.resolve_env_property(
+            "KLIN_BATCH_FILE_EXTENSIONS",
+            str,
+            default_value=self.default_batch_file_extensions,
+        )
+        extensions = tuple(
+            part.strip().lower() for part in raw_value.split(",") if part.strip()
+        )
+        if not extensions:
+            raise ValueError(
+                "KLIN_BATCH_FILE_EXTENSIONS must contain at least one value"
+            )
+        return extensions
 
     @property
     def triton_url(self) -> str:
