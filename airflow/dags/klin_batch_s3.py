@@ -44,5 +44,5 @@ with DAG(
         auto_remove="success",
         mount_tmp_dir=False,
         force_pull=False,
-        environment=BATCH_ENV,
+        private_environment=BATCH_ENV,
     )
