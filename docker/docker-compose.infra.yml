@@ -16,7 +16,7 @@ x-batch-image: &batch-image
   build:
     context: ..
     dockerfile: docker/Dockerfile.queue
-  image: klin-batch-runner:latest
+  image: ${KLIN_BATCH_RUNNER_IMAGE:-klin-batch-runner:latest}
 
 services:
   # --- DATABASE SECTION ---
