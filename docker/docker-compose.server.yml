@@ -23,12 +23,12 @@ x-airflow-runtime-env: &airflow-runtime-env
   KEEP_S3_SOURCE_OBJECTS: ${KEEP_S3_SOURCE_OBJECTS:-true}
   KLIN_BATCH_S3_PREFIX: ${KLIN_BATCH_S3_PREFIX:-klin/batch}
   KLIN_BATCH_FILE_EXTENSIONS: ${KLIN_BATCH_FILE_EXTENSIONS:-.mp4,.avi,.mov,.mkv,.wmv,.webm}
-  KLIN_BATCH_RUNNER_IMAGE: ${KLIN_BATCH_RUNNER_IMAGE:-klin-batch-runner:latest}
+  KLIN_BATCH_RUNNER_IMAGE: ${KLIN_BATCH_RUNNER_IMAGE:?KLIN_BATCH_RUNNER_IMAGE is required}
   DOCKER_HOST: unix:///var/run/docker.sock
 
 x-airflow-common: &airflow-common
-  image: ${KLIN_AIRFLOW_IMAGE:-klin-airflow:3.1.7-fab3.3.0}
-  pull_policy: always
+  image: ${KLIN_AIRFLOW_IMAGE:?KLIN_AIRFLOW_IMAGE is required}
+  pull_policy: ${KLIN_SERVER_PULL_POLICY:-always}
   user: "${AIRFLOW_UID:-50000}:0"
   networks:
     - web
