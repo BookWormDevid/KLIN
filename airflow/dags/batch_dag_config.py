@@ -7,12 +7,15 @@ from typing import Literal, TypedDict
 
 from airflow.exceptions import AirflowException
 from airflow.models.variable import Variable
+from airflow.sdk import BaseHook
+from sqlalchemy.engine.url import make_url
 
 
 DEFAULT_BATCH_S3_PREFIX = "klin/batch"
 DEFAULT_BATCH_FILE_EXTENSIONS = ".mp4,.avi,.mov,.mkv,.wmv,.webm"
 DEFAULT_DOCKER_NETWORK = "klin-web"
 DEFAULT_DOCKER_URL = "unix:///var/run/docker.sock"
+APP_DB_CONN_ID = "klin_app_db"
 
 
 class CommonDockerOperatorArgs(TypedDict):
@@ -81,15 +84,26 @@ def batch_image(dag_id: str) -> str:
     )
 
 
+def database_url_from_connection(dag_id: str) -> str:
+    """Build asyncpg DATABASE_URL from Airflow connection klin_app_db."""
+
+    try:
+        connection = BaseHook.get_connection(APP_DB_CONN_ID)
+    except Exception as exc:  # pragma: no cover - depends on Airflow metastore state
+        raise AirflowException(
+            f"Airflow Connection '{APP_DB_CONN_ID}' is required for DAG '{dag_id}'."
+        ) from exc
+
+    url = make_url(connection.get_uri())
+    asyncpg_url = url.set(drivername="postgresql+asyncpg")
+    return asyncpg_url.render_as_string(hide_password=False)
+
+
 def build_batch_runtime_env(dag_id: str) -> dict[str, str]:
     """Return runtime env for the main batch processing DAG."""
 
     return {
-        "DATABASE_URL": required_variable(
-            dag_id,
-            "DATABASE_URL",
-            "klin_batch_database_url",
-        ),
+        "DATABASE_URL": database_url_from_connection(dag_id),
         "S3_ENDPOINT_URL": required_variable(
             dag_id,
             "S3_ENDPOINT_URL",
