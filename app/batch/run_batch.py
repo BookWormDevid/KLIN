@@ -171,15 +171,17 @@ def build_result_row(
     *,
     klin_id: UUID,
     source_uri: str,
-    state: ProcessingState,
+    state: ProcessingState | str,
     action: str,
 ) -> dict[str, str]:
     """Build one JSON-serializable result row for the batch summary."""
 
+    state_value = state.value if isinstance(state, ProcessingState) else str(state)
+
     return {
         "klin_id": str(klin_id),
         "source_uri": source_uri,
-        "state": state.value,
+        "state": state_value,
         "action": action,
     }
 

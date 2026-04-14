@@ -64,13 +64,13 @@ def docker_url() -> str:
     return os.environ.get("DOCKER_HOST", DEFAULT_DOCKER_URL).strip()
 
 
-def docker_network() -> str:
+def docker_network(host: bool) -> str:
     """Return the Docker network used for batch containers."""
 
+    if host:
+        return "host"
     return optional_variable(
         DEFAULT_DOCKER_NETWORK,
-        "KLIN_BATCH_DOCKER_NETWORK",
-        "klin_batch_docker_network",
     )
 
 
@@ -225,14 +225,16 @@ def build_seed_runtime_env(dag_id: str, source_bucket: str) -> dict[str, str]:
     }
 
 
-def common_docker_operator_args(dag_id: str) -> CommonDockerOperatorArgs:
+def common_docker_operator_args(
+    dag_id: str, host_network: bool = False
+) -> CommonDockerOperatorArgs:
     """Return the common DockerOperator arguments for all batch DAG tasks."""
 
     image = batch_image(dag_id)
     return {
         "image": image,
         "docker_url": docker_url(),
-        "network_mode": docker_network(),
+        "network_mode": docker_network(host_network),
         "auto_remove": "success",
         "mount_tmp_dir": False,
         "force_pull": True,

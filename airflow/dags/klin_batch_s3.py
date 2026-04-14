@@ -15,7 +15,7 @@ from batch_dag_config import (
 DAG_ID = "klin_batch_s3"
 BATCH_ENV = build_batch_runtime_env(DAG_ID)
 COMMON_OPERATOR_ARGS = common_docker_operator_args(DAG_ID)
-
+BATCH_OPERATOR_ARGS = common_docker_operator_args(DAG_ID, True)
 
 with DAG(
     dag_id=DAG_ID,
@@ -36,7 +36,7 @@ with DAG(
         task_id="run_batch_for_date",
         command="python -m app.batch.run_batch --date {{ ds }}",
         private_environment=BATCH_ENV,
-        **COMMON_OPERATOR_ARGS,
+        **BATCH_OPERATOR_ARGS,
     )
 
     inspect_batch_inputs >> run_batch
