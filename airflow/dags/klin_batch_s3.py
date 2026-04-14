@@ -15,28 +15,31 @@ DAG_ID = "klin_batch_s3"
 DOCKER_CONN_ID = "klin_batch_docker"
 
 
-def _get_required_variable(key: str) -> str:
-    """Load one required Airflow variable and fail DAG parsing with context."""
+def _get_required_variable(*keys: str) -> str:
+    """Load the first non-empty Airflow variable from the provided aliases."""
 
-    try:
-        value = str(Variable.get(key)).strip()
-    except KeyError as exc:
-        raise AirflowException(
-            f"Airflow Variable '{key}' is required for DAG '{DAG_ID}'."
-        ) from exc
+    for key in keys:
+        try:
+            value = str(Variable.get(key)).strip()
+        except KeyError:
+            continue
+        if value:
+            return value
 
-    if not value:
-        raise AirflowException(
-            f"Airflow Variable '{key}' must not be empty for DAG '{DAG_ID}'."
-        )
-
-    return value
+    keys_list = ", ".join(f"'{key}'" for key in keys)
+    raise AirflowException(
+        f"One of Airflow Variables {keys_list} is required for DAG '{DAG_ID}'."
+    )
 
 
-def _get_optional_variable(key: str, default: str) -> str:
-    """Load one optional Airflow variable with a string default."""
+def _get_optional_variable(default: str, *keys: str) -> str:
+    """Load the first non-empty Airflow variable from aliases or return default."""
 
-    return str(Variable.get(key, default_var=default)).strip()
+    for key in keys:
+        value = str(Variable.get(key, default_var="")).strip()
+        if value:
+            return value
+    return default
 
 
 def _require_connection(conn_id: str) -> str:
@@ -55,45 +58,68 @@ def _build_batch_environment() -> dict[str, str]:
     """Assemble the hidden runtime environment for the batch container."""
 
     return {
-        "DATABASE_URL": _get_required_variable("klin_batch_database_url"),
-        "S3_ENDPOINT_URL": _get_required_variable("klin_batch_s3_endpoint_url"),
-        "S3_BUCKET_NAME": _get_required_variable("klin_batch_s3_bucket_name"),
-        "S3_ACCESS_KEY_ID": _get_required_variable("klin_batch_s3_access_key_id"),
+        "DATABASE_URL": _get_required_variable(
+            "DATABASE_URL",
+            "klin_batch_database_url",
+        ),
+        "S3_ENDPOINT_URL": _get_required_variable(
+            "S3_ENDPOINT_URL",
+            "klin_batch_s3_endpoint_url",
+        ),
+        "S3_BUCKET_NAME": _get_required_variable(
+            "S3_BUCKET_NAME",
+            "klin_batch_s3_bucket_name",
+        ),
+        "S3_ACCESS_KEY_ID": _get_required_variable(
+            "S3_ACCESS_KEY_ID",
+            "klin_batch_s3_access_key_id",
+        ),
         "S3_SECRET_ACCESS_KEY": _get_required_variable(
-            "klin_batch_s3_secret_access_key"
+            "S3_SECRET_ACCESS_KEY", "klin_batch_s3_secret_access_key"
         ),
-        "S3_REGION": _get_optional_variable("klin_batch_s3_region", "us-east-1"),
+        "S3_REGION": _get_optional_variable(
+            "us-east-1",
+            "S3_REGION",
+            "klin_batch_s3_region",
+        ),
         "S3_ADDRESSING_STYLE": _get_optional_variable(
-            "klin_batch_s3_addressing_style",
             "path",
+            "S3_ADDRESSING_STYLE",
+            "klin_batch_s3_addressing_style",
         ),
-        "TRITON_GRPC_URL": _get_required_variable("klin_batch_triton_grpc_url"),
+        "TRITON_GRPC_URL": _get_required_variable(
+            "TRITON_GRPC_URL",
+            "klin_batch_triton_grpc_url",
+        ),
         "KEEP_S3_SOURCE_OBJECTS": _get_optional_variable(
-            "klin_batch_keep_s3_source_objects",
             "true",
+            "klin_batch_keep_s3_source_objects",
         ),
         "KLIN_BATCH_S3_PREFIX": _get_optional_variable(
-            "klin_batch_s3_prefix",
             "klin/batch",
+            "klin_batch_s3_prefix",
         ),
         "KLIN_BATCH_FILE_EXTENSIONS": _get_optional_variable(
-            "klin_batch_file_extensions",
             ".mp4,.avi,.mov,.mkv,.wmv,.webm",
+            "klin_batch_file_extensions",
         ),
         "DB_CONNECT_TIMEOUT": _get_optional_variable(
-            "klin_batch_db_connect_timeout",
             "30",
+            "klin_batch_db_connect_timeout",
         ),
         "MAX_RETRY_ATTEMPTS": _get_optional_variable(
-            "klin_batch_max_retry_attempts",
             "1",
+            "klin_batch_max_retry_attempts",
         ),
     }
 
 
 BATCH_ENV = _build_batch_environment()
-BATCH_IMAGE = _get_required_variable("klin_batch_runner_image")
-DOCKER_NETWORK = _get_optional_variable("klin_batch_docker_network", "klin-web")
+BATCH_IMAGE = _get_required_variable(
+    "KLIN_BATCH_RUNNER_IMAGE",
+    "klin_batch_runner_image",
+)
+DOCKER_NETWORK = _get_optional_variable("klin-web", "klin_batch_docker_network")
 VALIDATED_DOCKER_CONN_ID = _require_connection(DOCKER_CONN_ID)
 
 

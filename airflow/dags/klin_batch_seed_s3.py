@@ -16,28 +16,31 @@ DOCKER_CONN_ID = "klin_batch_docker"
 SEED_SOURCE_BUCKET = "ufc-crime-klin-dataset"
 
 
-def _get_required_variable(key: str) -> str:
-    """Load one required Airflow variable and fail DAG parsing with context."""
+def _get_required_variable(*keys: str) -> str:
+    """Load the first non-empty Airflow variable from the provided aliases."""
 
-    try:
-        value = str(Variable.get(key)).strip()
-    except KeyError as exc:
-        raise AirflowException(
-            f"Airflow Variable '{key}' is required for DAG '{DAG_ID}'."
-        ) from exc
+    for key in keys:
+        try:
+            value = str(Variable.get(key)).strip()
+        except KeyError:
+            continue
+        if value:
+            return value
 
-    if not value:
-        raise AirflowException(
-            f"Airflow Variable '{key}' must not be empty for DAG '{DAG_ID}'."
-        )
-
-    return value
+    keys_list = ", ".join(f"'{key}'" for key in keys)
+    raise AirflowException(
+        f"One of Airflow Variables {keys_list} is required for DAG '{DAG_ID}'."
+    )
 
 
-def _get_optional_variable(key: str, default: str) -> str:
-    """Load one optional Airflow variable with a string default."""
+def _get_optional_variable(default: str, *keys: str) -> str:
+    """Load the first non-empty Airflow variable from aliases or return default."""
 
-    return str(Variable.get(key, default_var=default)).strip()
+    for key in keys:
+        value = str(Variable.get(key, default_var="")).strip()
+        if value:
+            return value
+    return default
 
 
 def _require_connection(conn_id: str) -> str:
@@ -59,40 +62,57 @@ def _build_seed_environment() -> dict[str, str]:
     """Assemble hidden runtime environment for the seed container."""
 
     return {
-        "S3_ENDPOINT_URL": _get_required_variable("klin_batch_s3_endpoint_url"),
-        "S3_BUCKET_NAME": _get_required_variable("klin_batch_s3_bucket_name"),
-        "S3_ACCESS_KEY_ID": _get_required_variable("klin_batch_s3_access_key_id"),
-        "S3_SECRET_ACCESS_KEY": _get_required_variable(
-            "klin_batch_s3_secret_access_key"
+        "S3_ENDPOINT_URL": _get_required_variable(
+            "S3_ENDPOINT_URL",
+            "klin_batch_s3_endpoint_url",
         ),
-        "S3_REGION": _get_optional_variable("klin_batch_s3_region", "us-east-1"),
+        "S3_BUCKET_NAME": _get_required_variable(
+            "S3_BUCKET_NAME",
+            "klin_batch_s3_bucket_name",
+        ),
+        "S3_ACCESS_KEY_ID": _get_required_variable(
+            "S3_ACCESS_KEY_ID",
+            "klin_batch_s3_access_key_id",
+        ),
+        "S3_SECRET_ACCESS_KEY": _get_required_variable(
+            "S3_SECRET_ACCESS_KEY", "klin_batch_s3_secret_access_key"
+        ),
+        "S3_REGION": _get_optional_variable(
+            "us-east-1",
+            "S3_REGION",
+            "klin_batch_s3_region",
+        ),
         "S3_ADDRESSING_STYLE": _get_optional_variable(
-            "klin_batch_s3_addressing_style",
             "path",
+            "S3_ADDRESSING_STYLE",
+            "klin_batch_s3_addressing_style",
         ),
         "KLIN_BATCH_S3_PREFIX": _get_optional_variable(
-            "klin_batch_s3_prefix",
             "klin/batch",
+            "klin_batch_s3_prefix",
         ),
         "KLIN_BATCH_FILE_EXTENSIONS": _get_optional_variable(
-            "klin_batch_file_extensions",
             ".mp4,.avi,.mov,.mkv,.wmv,.webm",
+            "klin_batch_file_extensions",
         ),
         "KLIN_BATCH_SEED_SOURCE_BUCKET": SEED_SOURCE_BUCKET,
         "KLIN_BATCH_SEED_SOURCE_PREFIX": _get_optional_variable(
-            "klin_batch_seed_source_prefix",
             "",
+            "klin_batch_seed_source_prefix",
         ),
         "KLIN_BATCH_SEED_COUNT": _get_optional_variable(
-            "klin_batch_seed_count",
             "5",
+            "klin_batch_seed_count",
         ),
     }
 
 
 SEED_ENV = _build_seed_environment()
-BATCH_IMAGE = _get_required_variable("klin_batch_runner_image")
-DOCKER_NETWORK = _get_optional_variable("klin_batch_docker_network", "klin-web")
+BATCH_IMAGE = _get_required_variable(
+    "KLIN_BATCH_RUNNER_IMAGE",
+    "klin_batch_runner_image",
+)
+DOCKER_NETWORK = _get_optional_variable("klin-web", "klin_batch_docker_network")
 VALIDATED_DOCKER_CONN_ID = _require_connection(DOCKER_CONN_ID)
 
 
