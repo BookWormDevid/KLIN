@@ -105,7 +105,11 @@ async def test_process_batch_skips_finished_existing_task(
 
     monkeypatch.setenv("KLIN_BATCH_S3_PREFIX", "klin/batch")
     monkeypatch.setenv("KLIN_BATCH_FILE_EXTENSIONS", ".mp4")
-    for key in ("KLIN_BATCH_S3_PREFIX", "KLIN_BATCH_FILE_EXTENSIONS"):
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@postgresql:5432/klin",
+    )
+    for key in ("KLIN_BATCH_S3_PREFIX", "KLIN_BATCH_FILE_EXTENSIONS", "DATABASE_URL"):
         app_settings.env_properties.pop(key, None)
 
     args = argparse.Namespace(
