@@ -190,7 +190,12 @@ jobs:
     needs: [check-changes, build-and-push]
     runs-on: ubuntu-latest
     if: >
-      github.ref == ('refs/heads/main' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main'
+      )
     environment: production
 
     steps:
