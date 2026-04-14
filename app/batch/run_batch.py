@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from dishka import make_container
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.application.interfaces import (
@@ -130,6 +131,32 @@ async def _verify_database_connectivity(container: Any) -> None:
         ) from exc
 
 
+def _build_database_runtime_error(
+    *,
+    source_uri: str,
+    exc: Exception,
+) -> RuntimeError:
+    """Convert low-level DB access failures into one concise batch error."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = parsed.hostname or "<unknown>"
+    db_name = parsed.path.strip("/") or "<unknown>"
+    return RuntimeError(
+        "Batch database operation failed for "
+        f"host='{hostname}' db='{db_name}' "
+        f"source_uri='{source_uri}' timeout={app_settings.db_connect_timeout}. "
+        "The batch container can start, but runtime DB queries are timing out. "
+        "Check network reachability, DB load, connection limits, and SSL/network "
+        f"policy. Original error: {exc.__class__.__name__}."
+    )
+
+
+def _is_database_access_error(exc: Exception) -> bool:
+    """Return whether the exception looks like a database connectivity failure."""
+
+    return isinstance(exc, (SQLAlchemyError, TimeoutError, OSError))
+
+
 def build_partition_prefix(batch_date: str, base_prefix: str) -> str:
     normalized_base = base_prefix.strip().strip("/")
     return f"{normalized_base}/{batch_date}/" if normalized_base else f"{batch_date}/"
@@ -220,7 +247,15 @@ async def process_source_uri(
 ) -> tuple[dict[str, str], bool, bool]:
     """Process one discovered source URI and return summary flags."""
 
-    klin, action = await prepare_task_for_source_uri(repository, source_uri)
+    try:
+        klin, action = await prepare_task_for_source_uri(repository, source_uri)
+    except Exception as exc:  # pylint: disable=broad-except
+        if _is_database_access_error(exc):
+            raise _build_database_runtime_error(
+                source_uri=source_uri,
+                exc=exc,
+            ) from None
+        raise
 
     if action.startswith("skipped"):
         return (
@@ -249,6 +284,11 @@ async def process_source_uri(
             failed and not continue_on_error,
         )
     except Exception as exc:  # pylint: disable=broad-except
+        if _is_database_access_error(exc):
+            raise _build_database_runtime_error(
+                source_uri=source_uri,
+                exc=exc,
+            ) from None
         logger.exception(
             "Batch object failed. klin_id=%s source_uri=%s error=%s",
             klin.id,
