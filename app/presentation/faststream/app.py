@@ -29,7 +29,11 @@ Klin_service = container.get(KlinService)
 async def verify_worker_database() -> None:
     """Fail startup early when Postgres is unavailable."""
     logger.info("Checking worker database connectivity before consuming messages")
-    await ping_database(db_engine)
+    try:
+        await ping_database(db_engine)
+    except Exception as exc:
+        logger.error("Worker database connectivity check failed: %s", exc)
+        raise RuntimeError("Worker database connectivity check failed") from None
     logger.info("Worker database connectivity check passed")
 
 

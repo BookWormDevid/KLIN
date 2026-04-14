@@ -2,6 +2,7 @@
 Настройки litestar, prometheus, swagger, контейнера dishka
 """
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,6 +23,9 @@ from app.config import app_settings
 from app.presentation.litestar.controllers import api_router
 
 
+logger = logging.getLogger(__name__)
+
+
 # Путь к фронтенду
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
 
@@ -39,7 +43,15 @@ async def lifespan(app: Litestar) -> AsyncIterator[None]:
         container: AsyncContainer = app.state.dishka_container
         rabbit_broker = await container.get(RabbitBroker)
 
-        await rabbit_broker.connect()
+        try:
+            await rabbit_broker.connect()
+        except Exception:
+            logger.warning(
+                "Rabbit broker is unavailable during API startup. "
+                "HTTP endpoints will stay up, but enqueue operations may fail "
+                "until RabbitMQ becomes reachable.",
+                exc_info=True,
+            )
         yield
     finally:
         await app.state.dishka_container.close()

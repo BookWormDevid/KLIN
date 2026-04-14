@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from dishka import make_container
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.application.interfaces import (
     IKlinCallbackSender,
@@ -23,6 +25,7 @@ from app.application.interfaces import (
 )
 from app.application.services import KlinService
 from app.config import app_settings
+from app.infrastructure.database.health import ping_database
 from app.ioc import get_worker_providers
 from app.models import KlinModel, ProcessingState
 
@@ -99,12 +102,59 @@ def _validate_database_url() -> None:
     parsed = urlparse(app_settings.database_url)
     hostname = (parsed.hostname or "").strip().lower()
 
-    if hostname in {"localhost", "127.0.0.1", "::1"}:
+    if hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
         raise RuntimeError(
-            "DATABASE_URL points to localhost, but batch processing runs inside "
-            "a Docker container. Use a Docker-reachable host such as "
-            "'postgresql', 'host.docker.internal', or a public DB host."
+            "DATABASE_URL points to a non-routable local address, but batch "
+            "processing runs inside a Docker container. Use a Docker-reachable "
+            "host such as 'postgresql', 'host.docker.internal', or a public "
+            "DB host."
         )
+
+
+async def _verify_database_connectivity(container: Any) -> None:
+    """Fail early with a concise error when the batch DB is unreachable."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = parsed.hostname or "<unknown>"
+    db_name = parsed.path.strip("/") or "<unknown>"
+
+    try:
+        engine = cast(AsyncEngine, container.get(AsyncEngine))
+        await ping_database(engine)
+    except Exception as exc:
+        raise RuntimeError(
+            "Batch database connectivity check failed for "
+            f"host='{hostname}' db='{db_name}' "
+            f"timeout={app_settings.db_connect_timeout}. "
+            "The batch container must reach this database over Docker networking. "
+            "If Postgres runs in the same compose stack, use host 'postgresql'."
+        ) from exc
+
+
+def _build_database_runtime_error(
+    *,
+    source_uri: str,
+    exc: Exception,
+) -> RuntimeError:
+    """Convert low-level DB access failures into one concise batch error."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = parsed.hostname or "<unknown>"
+    db_name = parsed.path.strip("/") or "<unknown>"
+    return RuntimeError(
+        "Batch database operation failed for "
+        f"host='{hostname}' db='{db_name}' "
+        f"source_uri='{source_uri}' timeout={app_settings.db_connect_timeout}. "
+        "The batch container can start, but runtime DB queries are timing out. "
+        "Check network reachability, DB load, connection limits, and SSL/network "
+        f"policy. Original error: {exc.__class__.__name__}."
+    )
+
+
+def _is_database_access_error(exc: Exception) -> bool:
+    """Return whether the exception looks like a database connectivity failure."""
+
+    return isinstance(exc, (SQLAlchemyError, TimeoutError, OSError))
 
 
 def build_partition_prefix(batch_date: str, base_prefix: str) -> str:
@@ -197,7 +247,15 @@ async def process_source_uri(
 ) -> tuple[dict[str, str], bool, bool]:
     """Process one discovered source URI and return summary flags."""
 
-    klin, action = await prepare_task_for_source_uri(repository, source_uri)
+    try:
+        klin, action = await prepare_task_for_source_uri(repository, source_uri)
+    except Exception as exc:  # pylint: disable=broad-except
+        if _is_database_access_error(exc):
+            raise _build_database_runtime_error(
+                source_uri=source_uri,
+                exc=exc,
+            ) from None
+        raise
 
     if action.startswith("skipped"):
         return (
@@ -226,6 +284,11 @@ async def process_source_uri(
             failed and not continue_on_error,
         )
     except Exception as exc:  # pylint: disable=broad-except
+        if _is_database_access_error(exc):
+            raise _build_database_runtime_error(
+                source_uri=source_uri,
+                exc=exc,
+            ) from None
         logger.exception(
             "Batch object failed. klin_id=%s source_uri=%s error=%s",
             klin.id,
@@ -249,6 +312,7 @@ async def process_batch(args: argparse.Namespace) -> int:
 
     _validate_database_url()
     container = make_container(*get_worker_providers())
+    await _verify_database_connectivity(container)
     storage = container.get(IKlinVideoStorage)
     repository = container.get(IKlinTaskRepository)
     klin_service = _build_batch_klin_service(container)

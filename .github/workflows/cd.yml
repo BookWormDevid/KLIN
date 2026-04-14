@@ -56,13 +56,11 @@ jobs:
               - "docker/Dockerfile.airflow"
               - "docker/Dockerfile.queue"
               - "docker/docker-compose.deploy.yml"
-              - "docker/docker-compose.infra.yml"
               - "docker/docker-compose.server.yml"
               - ".github/workflows/cd.yml"
             dags_changed:
               - "airflow/dags/**"
               - "airflow/plugins/**"
-              - "docker/docker-compose.infra.yml"
               - "docker/docker-compose.server.yml"
               - ".github/workflows/cd.yml"
             app_image_changed:
@@ -225,7 +223,7 @@ jobs:
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
-            AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.infra.yml}"
+            AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.server.yml}"
             git fetch --all --tags --prune
             git checkout "$DEPLOY_REF"
             if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then

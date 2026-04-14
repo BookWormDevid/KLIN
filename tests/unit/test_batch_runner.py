@@ -102,6 +102,10 @@ async def test_process_batch_skips_finished_existing_task(
         "app.batch.run_batch._build_batch_klin_service",
         lambda _container: klin_service,
     )
+    monkeypatch.setattr(
+        "app.batch.run_batch._verify_database_connectivity",
+        AsyncMock(),
+    )
 
     monkeypatch.setenv("KLIN_BATCH_S3_PREFIX", "klin/batch")
     monkeypatch.setenv("KLIN_BATCH_FILE_EXTENSIONS", ".mp4")
