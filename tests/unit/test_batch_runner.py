@@ -88,22 +88,28 @@ async def test_process_batch_skips_finished_existing_task(
     klin_service = AsyncMock()
 
     from app.application.interfaces import IKlinTaskRepository, IKlinVideoStorage
-    from app.application.services import KlinService
 
     container = FakeContainer(
         {
             IKlinVideoStorage: storage,
             IKlinTaskRepository: repository,
-            KlinService: klin_service,
         }
     )
 
     monkeypatch.setattr("app.batch.run_batch.make_container", lambda *args: container)
     monkeypatch.setattr("app.batch.run_batch.get_worker_providers", lambda: ("worker",))
+    monkeypatch.setattr(
+        "app.batch.run_batch._build_batch_klin_service",
+        lambda _container: klin_service,
+    )
 
     monkeypatch.setenv("KLIN_BATCH_S3_PREFIX", "klin/batch")
     monkeypatch.setenv("KLIN_BATCH_FILE_EXTENSIONS", ".mp4")
-    for key in ("KLIN_BATCH_S3_PREFIX", "KLIN_BATCH_FILE_EXTENSIONS"):
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@postgresql:5432/klin",
+    )
+    for key in ("KLIN_BATCH_S3_PREFIX", "KLIN_BATCH_FILE_EXTENSIONS", "DATABASE_URL"):
         app_settings.env_properties.pop(key, None)
 
     args = argparse.Namespace(

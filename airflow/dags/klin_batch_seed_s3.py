@@ -1,4 +1,4 @@
-"""Airflow DAG for date-partitioned KLIN batch processing from UI-managed secrets."""
+"""Airflow DAG for seeding daily fake batch videos when a date partition is empty."""
 
 from __future__ import annotations
 
@@ -11,8 +11,9 @@ from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.sdk import BaseHook
 
 
-DAG_ID = "klin_batch_s3"
+DAG_ID = "klin_batch_seed_s3"
 DOCKER_CONN_ID = "klin_batch_docker"
+SEED_SOURCE_BUCKET = "ufc-crime-klin-dataset"
 
 
 def _get_required_variable(key: str) -> str:
@@ -51,11 +52,13 @@ def _require_connection(conn_id: str) -> str:
     return conn_id
 
 
-def _build_batch_environment() -> dict[str, str]:
-    """Assemble the hidden runtime environment for the batch container."""
+# Please dont die on me
+
+
+def _build_seed_environment() -> dict[str, str]:
+    """Assemble hidden runtime environment for the seed container."""
 
     return {
-        "DATABASE_URL": _get_required_variable("klin_batch_database_url"),
         "S3_ENDPOINT_URL": _get_required_variable("klin_batch_s3_endpoint_url"),
         "S3_BUCKET_NAME": _get_required_variable("klin_batch_s3_bucket_name"),
         "S3_ACCESS_KEY_ID": _get_required_variable("klin_batch_s3_access_key_id"),
@@ -67,11 +70,6 @@ def _build_batch_environment() -> dict[str, str]:
             "klin_batch_s3_addressing_style",
             "path",
         ),
-        "TRITON_GRPC_URL": _get_required_variable("klin_batch_triton_grpc_url"),
-        "KEEP_S3_SOURCE_OBJECTS": _get_optional_variable(
-            "klin_batch_keep_s3_source_objects",
-            "true",
-        ),
         "KLIN_BATCH_S3_PREFIX": _get_optional_variable(
             "klin_batch_s3_prefix",
             "klin/batch",
@@ -80,18 +78,19 @@ def _build_batch_environment() -> dict[str, str]:
             "klin_batch_file_extensions",
             ".mp4,.avi,.mov,.mkv,.wmv,.webm",
         ),
-        "DB_CONNECT_TIMEOUT": _get_optional_variable(
-            "klin_batch_db_connect_timeout",
-            "30",
+        "KLIN_BATCH_SEED_SOURCE_BUCKET": SEED_SOURCE_BUCKET,
+        "KLIN_BATCH_SEED_SOURCE_PREFIX": _get_optional_variable(
+            "klin_batch_seed_source_prefix",
+            "",
         ),
-        "MAX_RETRY_ATTEMPTS": _get_optional_variable(
-            "klin_batch_max_retry_attempts",
-            "1",
+        "KLIN_BATCH_SEED_COUNT": _get_optional_variable(
+            "klin_batch_seed_count",
+            "5",
         ),
     }
 
 
-BATCH_ENV = _build_batch_environment()
+SEED_ENV = _build_seed_environment()
 BATCH_IMAGE = _get_required_variable("klin_batch_runner_image")
 DOCKER_NETWORK = _get_optional_variable("klin_batch_docker_network", "klin-web")
 VALIDATED_DOCKER_CONN_ID = _require_connection(DOCKER_CONN_ID)
@@ -99,15 +98,15 @@ VALIDATED_DOCKER_CONN_ID = _require_connection(DOCKER_CONN_ID)
 
 with DAG(
     dag_id=DAG_ID,
-    start_date=datetime(2026, 4, 10),
+    start_date=datetime(2026, 4, 14),
     schedule="0 1 * * *",
     catchup=False,
     max_active_runs=1,
-    dagrun_timeout=timedelta(hours=24),
-    tags=["klin", "batch", "docker"],
+    dagrun_timeout=timedelta(hours=2),
+    tags=["klin", "batch", "seed", "docker"],
 ) as dag:
-    inspect_batch_inputs = DockerOperator(
-        task_id="inspect_batch_inputs_for_date",
+    inspect_seed_target_partition = DockerOperator(
+        task_id="inspect_seed_target_partition_for_date",
         image=BATCH_IMAGE,
         command="python -m app.batch.inspect_batch_inputs --date {{ ds }}",
         docker_conn_id=VALIDATED_DOCKER_CONN_ID,
@@ -115,18 +114,18 @@ with DAG(
         auto_remove="success",
         mount_tmp_dir=False,
         force_pull=False,
-        private_environment=BATCH_ENV,
+        private_environment=SEED_ENV,
     )
-    run_batch = DockerOperator(
-        task_id="run_batch_for_date",
+    seed_batch = DockerOperator(
+        task_id="seed_batch_for_date",
         image=BATCH_IMAGE,
-        command="python -m app.batch.run_batch --date {{ ds }}",
+        command="python -m app.batch.seed_fake_batch --date {{ ds }}",
         docker_conn_id=VALIDATED_DOCKER_CONN_ID,
         network_mode=DOCKER_NETWORK,
         auto_remove="success",
         mount_tmp_dir=False,
         force_pull=False,
-        private_environment=BATCH_ENV,
+        private_environment=SEED_ENV,
     )
 
-    inspect_batch_inputs >> run_batch
+    inspect_seed_target_partition >> seed_batch

@@ -7,12 +7,20 @@ import asyncio
 import json
 import logging
 from pathlib import PurePosixPath
+from typing import Any, cast
 from urllib.parse import urlparse
 from uuid import UUID
 
 from dishka import make_container
 
-from app.application.interfaces import IKlinTaskRepository, IKlinVideoStorage
+from app.application.interfaces import (
+    IKlinCallbackSender,
+    IKlinInference,
+    IKlinProcessProducer,
+    IKlinRuntimeSettings,
+    IKlinTaskRepository,
+    IKlinVideoStorage,
+)
 from app.application.services import KlinService
 from app.config import app_settings
 from app.ioc import get_worker_providers
@@ -20,6 +28,39 @@ from app.models import KlinModel, ProcessingState
 
 
 logger = logging.getLogger(__name__)
+
+
+class _NoopKlinProcessProducer:
+    """Batch mode does not enqueue follow-up jobs through RabbitMQ."""
+
+    async def send(self, _data: object) -> None:
+        """Ignore offline enqueue requests in synchronous batch mode."""
+
+    async def send_stream(self, _data: object) -> None:
+        """Ignore stream enqueue requests in synchronous batch mode."""
+
+
+def _build_batch_klin_service(container: Any) -> KlinService:
+    """Build a KlinService instance without RabbitMQ dependencies."""
+
+    process_producer = cast(
+        IKlinProcessProducer,
+        _NoopKlinProcessProducer(),
+    )
+
+    return KlinService(
+        _klin_repository=cast(IKlinTaskRepository, container.get(IKlinTaskRepository)),
+        _klin_inference_service=cast(IKlinInference, container.get(IKlinInference)),
+        _klin_process_producer=process_producer,
+        _klin_callback_sender=cast(
+            IKlinCallbackSender, container.get(IKlinCallbackSender)
+        ),
+        _klin_video_storage=cast(IKlinVideoStorage, container.get(IKlinVideoStorage)),
+        _runtime_settings=cast(
+            IKlinRuntimeSettings,
+            container.get(IKlinRuntimeSettings),
+        ),
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -50,6 +91,20 @@ def parse_args() -> argparse.Namespace:
         help="Continue processing the rest of the batch after a failure.",
     )
     return parser.parse_args()
+
+
+def _validate_database_url() -> None:
+    """Fail fast when DATABASE_URL points back to the batch container itself."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = (parsed.hostname or "").strip().lower()
+
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "DATABASE_URL points to localhost, but batch processing runs inside "
+            "a Docker container. Use a Docker-reachable host such as "
+            "'postgresql', 'host.docker.internal', or a public DB host."
+        )
 
 
 def build_partition_prefix(batch_date: str, base_prefix: str) -> str:
@@ -192,10 +247,11 @@ async def process_source_uri(
 async def process_batch(args: argparse.Namespace) -> int:
     """Process all discovered S3 objects for the requested date partition."""
 
+    _validate_database_url()
     container = make_container(*get_worker_providers())
     storage = container.get(IKlinVideoStorage)
     repository = container.get(IKlinTaskRepository)
-    klin_service = container.get(KlinService)
+    klin_service = _build_batch_klin_service(container)
     source_uris = await discover_source_uris(args, storage)
     failures = 0
     results: list[dict[str, str]] = []
