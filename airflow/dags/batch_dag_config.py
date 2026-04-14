@@ -221,5 +221,5 @@ def common_docker_operator_args(dag_id: str) -> CommonDockerOperatorArgs:
         "network_mode": docker_network(),
         "auto_remove": "success",
         "mount_tmp_dir": False,
-        "force_pull": image,
+        "force_pull": True,
     }
