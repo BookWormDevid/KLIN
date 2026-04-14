@@ -1,12 +1,6 @@
 name: CI
 
 on:
-  push:
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "mlflow/**"
-      - "sandbox/**"
   pull_request:
     paths-ignore:
       - "**/*.md"
