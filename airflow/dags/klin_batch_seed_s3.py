@@ -52,6 +52,9 @@ def _require_connection(conn_id: str) -> str:
     return conn_id
 
 
+# Please dont die on me
+
+
 def _build_seed_environment() -> dict[str, str]:
     """Assemble hidden runtime environment for the seed container."""
 
