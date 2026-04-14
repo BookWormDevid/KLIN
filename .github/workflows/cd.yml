@@ -26,6 +26,7 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     outputs:
       deploy_changed: ${{ steps.filter.outputs.deploy_changed }}
+      dags_changed: ${{ steps.filter.outputs.dags_changed }}
       app_image_changed: ${{ steps.filter.outputs.app_image_changed }}
       airflow_image_changed: ${{ steps.filter.outputs.airflow_image_changed }}
       api_image: ${{ steps.vars.outputs.api_image }}
@@ -56,6 +57,13 @@ jobs:
               - "docker/Dockerfile.queue"
               - "docker/docker-compose.deploy.yml"
               - "docker/docker-compose.infra.yml"
+              - "docker/docker-compose.server.yml"
+              - ".github/workflows/cd.yml"
+            dags_changed:
+              - "airflow/dags/**"
+              - "airflow/plugins/**"
+              - "docker/docker-compose.infra.yml"
+              - "docker/docker-compose.server.yml"
               - ".github/workflows/cd.yml"
             app_image_changed:
               - "app/**"
@@ -125,9 +133,11 @@ jobs:
           test -n "${{ needs.check-changes.outputs.image_tag }}"
 
       - name: Set up Docker Buildx
+        if: needs.check-changes.outputs.app_image_changed == 'true' || needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: needs.check-changes.outputs.app_image_changed == 'true' || needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -135,6 +145,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push API image
+        if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -148,6 +159,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=api
 
       - name: Build and push worker and batch images
+        if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -163,6 +175,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=worker
 
       - name: Build and push Airflow image
+        if: needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -176,7 +189,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=airflow
 
   deploy:
-    needs: build-and-push
+    needs: [check-changes, build-and-push]
     runs-on: ubuntu-latest
     if: >
       github.ref == 'refs/heads/main' &&
@@ -191,6 +204,11 @@ jobs:
           DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          FORCE_FULL_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
+          DAGS_CHANGED: ${{ needs.check-changes.outputs.dags_changed }}
+          APP_IMAGE_CHANGED: ${{ needs.check-changes.outputs.app_image_changed }}
+          AIRFLOW_IMAGE_CHANGED: ${{ needs.check-changes.outputs.airflow_image_changed }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           KLIN_API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
           KLIN_WORKER_IMAGE: ${{ needs.build-and-push.outputs.worker_image }}
@@ -203,22 +221,35 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 30s
           command_timeout: 15m
-          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,FORCE_FULL_DEPLOY,AIRFLOW_COMPOSE_FILE,DAGS_CHANGED,APP_IMAGE_CHANGED,AIRFLOW_IMAGE_CHANGED,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
+            AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.infra.yml}"
             git fetch --all --tags --prune
             git checkout "$DEPLOY_REF"
-            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+              echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            fi
 
-            export IMAGE_TAG
-            export KLIN_API_IMAGE
-            export KLIN_WORKER_IMAGE
-            docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
-            docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
+            if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+              export IMAGE_TAG
+              export KLIN_API_IMAGE
+              export KLIN_WORKER_IMAGE
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
+            fi
 
-            export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE}:${IMAGE_TAG}"
-            export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE}:${IMAGE_TAG}"
-            docker pull "$KLIN_BATCH_RUNNER_IMAGE"
-            docker pull "$KLIN_AIRFLOW_IMAGE"
-            docker compose --env-file .env -f docker/docker-compose.infra.yml up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor
+            if [ "$DAGS_CHANGED" = "true" ] || [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+              if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+                export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE}:${IMAGE_TAG}"
+                docker pull "$KLIN_BATCH_RUNNER_IMAGE"
+              fi
+
+              if [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+                export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE}:${IMAGE_TAG}"
+                docker pull "$KLIN_AIRFLOW_IMAGE"
+              fi
+
+              docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor
+            fi
