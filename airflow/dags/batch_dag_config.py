@@ -214,11 +214,12 @@ def build_seed_runtime_env(dag_id: str, source_bucket: str) -> dict[str, str]:
 def common_docker_operator_args(dag_id: str) -> CommonDockerOperatorArgs:
     """Return the common DockerOperator arguments for all batch DAG tasks."""
 
+    image = batch_image(dag_id)
     return {
-        "image": batch_image(dag_id),
+        "image": image,
         "docker_url": docker_url(),
         "network_mode": docker_network(),
         "auto_remove": "success",
         "mount_tmp_dir": False,
-        "force_pull": False,
+        "force_pull": image,
     }
