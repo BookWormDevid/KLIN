@@ -13,6 +13,7 @@ from airflow.sdk import BaseHook
 
 DAG_ID = "klin_batch_seed_s3"
 DOCKER_CONN_ID = "klin_batch_docker"
+SEED_SOURCE_BUCKET = "ufc-crime-klin-dataset"
 
 
 def _get_required_variable(key: str) -> str:
@@ -74,10 +75,7 @@ def _build_seed_environment() -> dict[str, str]:
             "klin_batch_file_extensions",
             ".mp4,.avi,.mov,.mkv,.wmv,.webm",
         ),
-        "KLIN_BATCH_SEED_SOURCE_BUCKET": _get_optional_variable(
-            "klin_batch_seed_source_bucket",
-            "ufc-crime-klin-dataset",
-        ),
+        "KLIN_BATCH_SEED_SOURCE_BUCKET": SEED_SOURCE_BUCKET,
         "KLIN_BATCH_SEED_SOURCE_PREFIX": _get_optional_variable(
             "klin_batch_seed_source_prefix",
             "",

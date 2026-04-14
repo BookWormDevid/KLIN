@@ -93,6 +93,20 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _validate_database_url() -> None:
+    """Fail fast when DATABASE_URL points back to the batch container itself."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = (parsed.hostname or "").strip().lower()
+
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError(
+            "DATABASE_URL points to localhost, but batch processing runs inside "
+            "a Docker container. Use a Docker-reachable host such as "
+            "'postgresql', 'host.docker.internal', or a public DB host."
+        )
+
+
 def build_partition_prefix(batch_date: str, base_prefix: str) -> str:
     normalized_base = base_prefix.strip().strip("/")
     return f"{normalized_base}/{batch_date}/" if normalized_base else f"{batch_date}/"
@@ -233,6 +247,7 @@ async def process_source_uri(
 async def process_batch(args: argparse.Namespace) -> int:
     """Process all discovered S3 objects for the requested date partition."""
 
+    _validate_database_url()
     container = make_container(*get_worker_providers())
     storage = container.get(IKlinVideoStorage)
     repository = container.get(IKlinTaskRepository)

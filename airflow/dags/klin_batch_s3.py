@@ -80,6 +80,10 @@ def _build_batch_environment() -> dict[str, str]:
             "klin_batch_file_extensions",
             ".mp4,.avi,.mov,.mkv,.wmv,.webm",
         ),
+        "DB_CONNECT_TIMEOUT": _get_optional_variable(
+            "klin_batch_db_connect_timeout",
+            "30",
+        ),
         "MAX_RETRY_ATTEMPTS": _get_optional_variable(
             "klin_batch_max_retry_attempts",
             "1",
