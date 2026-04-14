@@ -82,7 +82,7 @@ def create_litestar_app(
         openapi_config=OpenAPIConfig(
             title="Klin Inference",
             version="1.0.0",
-            path="/api/v1/docs",
+            path="/api/docs",
             render_plugins=[SwaggerRenderPlugin()],
         ),
         plugins=[
