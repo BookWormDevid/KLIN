@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 from dishka import make_container
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.application.interfaces import (
     IKlinCallbackSender,
@@ -23,6 +24,7 @@ from app.application.interfaces import (
 )
 from app.application.services import KlinService
 from app.config import app_settings
+from app.infrastructure.database.health import ping_database
 from app.ioc import get_worker_providers
 from app.models import KlinModel, ProcessingState
 
@@ -99,12 +101,33 @@ def _validate_database_url() -> None:
     parsed = urlparse(app_settings.database_url)
     hostname = (parsed.hostname or "").strip().lower()
 
-    if hostname in {"localhost", "127.0.0.1", "::1"}:
+    if hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
         raise RuntimeError(
-            "DATABASE_URL points to localhost, but batch processing runs inside "
-            "a Docker container. Use a Docker-reachable host such as "
-            "'postgresql', 'host.docker.internal', or a public DB host."
+            "DATABASE_URL points to a non-routable local address, but batch "
+            "processing runs inside a Docker container. Use a Docker-reachable "
+            "host such as 'postgresql', 'host.docker.internal', or a public "
+            "DB host."
         )
+
+
+async def _verify_database_connectivity(container: Any) -> None:
+    """Fail early with a concise error when the batch DB is unreachable."""
+
+    parsed = urlparse(app_settings.database_url)
+    hostname = parsed.hostname or "<unknown>"
+    db_name = parsed.path.strip("/") or "<unknown>"
+
+    try:
+        engine = cast(AsyncEngine, container.get(AsyncEngine))
+        await ping_database(engine)
+    except Exception as exc:
+        raise RuntimeError(
+            "Batch database connectivity check failed for "
+            f"host='{hostname}' db='{db_name}' "
+            f"timeout={app_settings.db_connect_timeout}. "
+            "The batch container must reach this database over Docker networking. "
+            "If Postgres runs in the same compose stack, use host 'postgresql'."
+        ) from exc
 
 
 def build_partition_prefix(batch_date: str, base_prefix: str) -> str:
@@ -249,6 +272,7 @@ async def process_batch(args: argparse.Namespace) -> int:
 
     _validate_database_url()
     container = make_container(*get_worker_providers())
+    await _verify_database_connectivity(container)
     storage = container.get(IKlinVideoStorage)
     repository = container.get(IKlinTaskRepository)
     klin_service = _build_batch_klin_service(container)
