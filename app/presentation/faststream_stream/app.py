@@ -40,7 +40,11 @@ async def verify_worker_database() -> None:
     logger.info(
         "Checking stream worker database connectivity before consuming messages"
     )
-    await ping_database(db_engine)
+    try:
+        await ping_database(db_engine)
+    except Exception as exc:
+        logger.error("Stream worker database connectivity check failed: %s", exc)
+        raise RuntimeError("Stream worker database connectivity check failed") from None
     logger.info("Stream worker database connectivity check passed")
 
 
