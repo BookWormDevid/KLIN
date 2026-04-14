@@ -15,7 +15,7 @@ from batch_dag_config import (
 DAG_ID = "klin_batch_s3"
 BATCH_ENV = build_batch_runtime_env(DAG_ID)
 COMMON_OPERATOR_ARGS = common_docker_operator_args(DAG_ID)
-BATCH_OPERATOR_ARGS = common_docker_operator_args(DAG_ID, True)
+BATCH_OPERATOR_ARGS = common_docker_operator_args(DAG_ID, host_network=True)
 
 with DAG(
     dag_id=DAG_ID,
