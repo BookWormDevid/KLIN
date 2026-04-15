@@ -96,21 +96,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _validate_database_url() -> None:
-    """Fail fast when DATABASE_URL points back to the batch container itself."""
-
-    parsed = urlparse(app_settings.database_url)
-    hostname = (parsed.hostname or "").strip().lower()
-
-    if hostname in {"localhost", "127.0.0.1", "::1", "0.0.0.0"}:
-        raise RuntimeError(
-            "DATABASE_URL points to a non-routable local address, but batch "
-            "processing runs inside a Docker container. Use a Docker-reachable "
-            "host such as 'postgresql', 'host.docker.internal', or a public "
-            "DB host."
-        )
-
-
 async def _verify_database_connectivity(container: Any) -> None:
     """Fail early with a concise error when the batch DB is unreachable."""
 
@@ -171,15 +156,17 @@ def build_result_row(
     *,
     klin_id: UUID,
     source_uri: str,
-    state: ProcessingState,
+    state: ProcessingState | str,
     action: str,
 ) -> dict[str, str]:
     """Build one JSON-serializable result row for the batch summary."""
 
+    state_value = state.value if isinstance(state, ProcessingState) else str(state)
+
     return {
         "klin_id": str(klin_id),
         "source_uri": source_uri,
-        "state": state.value,
+        "state": state_value,
         "action": action,
     }
 
@@ -310,7 +297,6 @@ async def process_source_uri(
 async def process_batch(args: argparse.Namespace) -> int:
     """Process all discovered S3 objects for the requested date partition."""
 
-    _validate_database_url()
     container = make_container(*get_worker_providers())
     await _verify_database_connectivity(container)
     storage = container.get(IKlinVideoStorage)

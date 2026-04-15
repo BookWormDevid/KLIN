@@ -137,3 +137,73 @@ async def test_process_batch_skips_finished_existing_task(
             "action": "skipped_finished",
         }
     ]
+
+
+@pytest.mark.anyio
+async def test_process_batch_handles_string_state_from_repository(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_uri = "s3://klin-videos/klin/batch/2026-04-10/d.mp4"
+    finished = KlinModel(
+        id=uuid.uuid4(),
+        response_url=None,
+        video_path=source_uri,
+        state=ProcessingState.FINISHED,
+    )
+    object.__setattr__(finished, "state", "FINISHED")
+
+    repository = AsyncMock()
+    repository.get_latest_by_video_path.return_value = finished
+    storage = AsyncMock()
+    storage.list_objects.return_value = [source_uri]
+    klin_service = AsyncMock()
+
+    from app.application.interfaces import IKlinTaskRepository, IKlinVideoStorage
+
+    container = FakeContainer(
+        {
+            IKlinVideoStorage: storage,
+            IKlinTaskRepository: repository,
+        }
+    )
+
+    monkeypatch.setattr("app.batch.run_batch.make_container", lambda *args: container)
+    monkeypatch.setattr("app.batch.run_batch.get_worker_providers", lambda: ("worker",))
+    monkeypatch.setattr(
+        "app.batch.run_batch._build_batch_klin_service",
+        lambda _container: klin_service,
+    )
+    monkeypatch.setattr(
+        "app.batch.run_batch._verify_database_connectivity",
+        AsyncMock(),
+    )
+
+    monkeypatch.setenv("KLIN_BATCH_S3_PREFIX", "klin/batch")
+    monkeypatch.setenv("KLIN_BATCH_FILE_EXTENSIONS", ".mp4")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://user:pass@postgresql:5432/klin",
+    )
+    for key in ("KLIN_BATCH_S3_PREFIX", "KLIN_BATCH_FILE_EXTENSIONS", "DATABASE_URL"):
+        app_settings.env_properties.pop(key, None)
+
+    args = argparse.Namespace(
+        date="2026-04-10",
+        prefix="",
+        limit=0,
+        continue_on_error=False,
+    )
+
+    exit_code = await process_batch(args)
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out.strip())
+    assert output["results"] == [
+        {
+            "klin_id": str(finished.id),
+            "source_uri": source_uri,
+            "state": "FINISHED",
+            "action": "skipped_finished",
+        }
+    ]
