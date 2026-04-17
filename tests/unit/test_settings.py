@@ -137,4 +137,4 @@ class TestSettings(unittest.TestCase):
         settings = Settings()
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(EnvVariableNotExistError):
-                _ = settings.jwt_secret
+                _ = settings.klin_secret

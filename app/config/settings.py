@@ -300,6 +300,13 @@ class Settings(BaseSettings):
         )
 
     @property
+    def klin_secret(self) -> str:
+        """
+        Bootstrap secret for obtaining API JWT tokens.
+        """
+        return self.resolve_env_property("KLIN_SECRET", str)
+
+    @property
     def jwt_secret(self) -> str:
         """
         Secret used to sign and validate API JWT tokens.
