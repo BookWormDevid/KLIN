@@ -300,13 +300,6 @@ class Settings(BaseSettings):
         )
 
     @property
-    def klin_secret(self) -> str:
-        """
-        Ссылка на секреты
-        """
-        return self.resolve_env_property("KLIN_SECRET", str)
-
-    @property
     def jwt_secret(self) -> str:
         """
         Secret used to sign and validate API JWT tokens.
@@ -314,7 +307,6 @@ class Settings(BaseSettings):
         return self.resolve_env_property(
             "JWT_SECRET",
             str,
-            default_value=self.klin_secret,
         )
 
     @property

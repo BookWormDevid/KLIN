@@ -29,7 +29,7 @@ class AuthController(Controller):
     async def issue_token(self, data: JWTLoginDto) -> JWTTokenDto:
         """Issue a signed Bearer token for API access."""
 
-        if not secrets.compare_digest(data.secret, app_settings.klin_secret):
+        if not secrets.compare_digest(data.secret, app_settings.jwt_secret):
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED,
                 detail="Invalid credentials",

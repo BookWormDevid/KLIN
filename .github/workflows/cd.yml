@@ -206,6 +206,8 @@ jobs:
           DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          JWT_SECRET: ${{ secrets.DEPLOY_JWT_SECRET }}
+          JWT_TOKEN_TTL_MINUTES: ${{ vars.DEPLOY_JWT_TOKEN_TTL_MINUTES }}
           FORCE_FULL_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
           AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
           DAGS_CHANGED: ${{ needs.check-changes.outputs.dags_changed }}
@@ -223,7 +225,7 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 30s
           command_timeout: 15m
-          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,FORCE_FULL_DEPLOY,AIRFLOW_COMPOSE_FILE,DAGS_CHANGED,APP_IMAGE_CHANGED,AIRFLOW_IMAGE_CHANGED,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,FORCE_FULL_DEPLOY,AIRFLOW_COMPOSE_FILE,DAGS_CHANGED,APP_IMAGE_CHANGED,AIRFLOW_IMAGE_CHANGED,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
@@ -235,10 +237,17 @@ jobs:
             fi
 
             if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+              : "${JWT_SECRET:?DEPLOY_JWT_SECRET GitHub secret is required}"
+              JWT_TOKEN_TTL_MINUTES="${JWT_TOKEN_TTL_MINUTES:-60}"
               export IMAGE_TAG
               export KLIN_API_IMAGE
               export KLIN_WORKER_IMAGE
+              KLIN_SECRET="$KLIN_SECRET" \
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
               docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
               docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
             fi
 
