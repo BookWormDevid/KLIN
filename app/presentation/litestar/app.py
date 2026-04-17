@@ -20,6 +20,7 @@ from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
 from litestar.static_files import create_static_files_router
 
 from app.config import app_settings
+from app.presentation.litestar.auth import build_jwt_auth
 from app.presentation.litestar.controllers import api_router
 
 
@@ -64,6 +65,7 @@ def create_litestar_app(
     Создаёт и настраивает экземпляр Litestar приложения.
     """
     prometheus_config = PrometheusConfig(group_path=group_path)
+    jwt_auth = build_jwt_auth()
 
     app = Litestar(
         route_handlers=[
@@ -77,6 +79,7 @@ def create_litestar_app(
             ),
         ],
         middleware=[prometheus_config.middleware],
+        on_app_init=[jwt_auth.on_app_init],
         request_max_body_size=200 * 1024 * 1024,
         cors_config=CORSConfig(allow_origins=app_settings.cors_allowed_origins),
         openapi_config=OpenAPIConfig(

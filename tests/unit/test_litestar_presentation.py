@@ -21,6 +21,8 @@ from app.models import KlinModel, ProcessingState
 
 HandlerFn = Callable[..., Awaitable[Any]]
 LITESTAR_MODULES = (
+    "app.presentation.litestar.auth",
+    "app.presentation.litestar.controllers.v1.auth",
     "app.presentation.litestar.controllers.v1.klin",
     "app.presentation.litestar.controllers.v1",
     "app.presentation.litestar.controllers",
@@ -339,6 +341,69 @@ async def test_health_and_readiness_handlers_cover_success_and_failure(
 
 
 @pytest.mark.anyio
+async def test_issue_token_returns_signed_jwt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_safe_distribution(monkeypatch)
+    clear_litestar_modules()
+    auth_controller_module = importlib.import_module(
+        "app.presentation.litestar.controllers.v1.auth"
+    )
+    auth_module = importlib.import_module("app.presentation.litestar.auth")
+    controller_cls = auth_controller_module.AuthController
+    controller = make_controller(controller_cls)
+    handler = get_handler_fn(controller_cls.issue_token)
+
+    monkeypatch.setenv("KLIN_SECRET", "bootstrap-secret-long-enough-for-tests")
+    monkeypatch.setenv("JWT_SECRET", "jwt-signing-secret-long-enough-for-tests")
+    monkeypatch.setenv("JWT_TOKEN_TTL_MINUTES", "15")
+    clear_settings_cache(auth_controller_module)
+    clear_settings_cache(auth_module)
+
+    from app.application.dto import JWTLoginDto
+
+    result = await handler(
+        controller,
+        data=JWTLoginDto(secret="bootstrap-secret-long-enough-for-tests"),
+    )
+    jwt_auth = auth_module.build_jwt_auth()
+    token = jwt_auth.token_cls.decode(
+        encoded_token=result.access_token,
+        secret=jwt_auth.token_secret,
+        algorithm=jwt_auth.algorithm,
+    )
+
+    assert result.token_type == "bearer"
+    assert result.expires_in == 900
+    assert token.sub == "klin-api"
+
+
+@pytest.mark.anyio
+async def test_issue_token_rejects_invalid_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    patch_safe_distribution(monkeypatch)
+    clear_litestar_modules()
+    auth_controller_module = importlib.import_module(
+        "app.presentation.litestar.controllers.v1.auth"
+    )
+    controller_cls = auth_controller_module.AuthController
+    controller = make_controller(controller_cls)
+    handler = get_handler_fn(controller_cls.issue_token)
+
+    monkeypatch.setenv("KLIN_SECRET", "bootstrap-secret-long-enough-for-tests")
+    clear_settings_cache(auth_controller_module)
+
+    from app.application.dto import JWTLoginDto
+
+    with pytest.raises(HTTPException) as exc_info:
+        await handler(controller, data=JWTLoginDto(secret="wrong-secret"))
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid credentials"
+
+
+@pytest.mark.anyio
 async def test_lifespan_connects_broker_and_closes_container(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -365,6 +430,7 @@ def test_create_litestar_app_builds_configured_application(
 
     monkeypatch.setenv("DEBUG", "false")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost")
+    monkeypatch.setenv("KLIN_SECRET", "bootstrap-secret-long-enough-for-tests")
     clear_settings_cache(app_module)
     monkeypatch.setattr(app_module, "setup_litestar_dishka", setup_dishka)
 
@@ -375,6 +441,8 @@ def test_create_litestar_app_builds_configured_application(
     assert app.request_max_body_size == 200 * 1024 * 1024
     assert app.cors_config.allow_origins == ["http://localhost"]
     assert app.openapi_config.path == "/api/docs"
+    assert app.openapi_config.security == [{"BearerAuth": []}]
+    assert "/api/v1/auth/token" in routes
     assert "/api/v1/Klin/upload" in routes
     assert "/metrics" in routes
     assert "/frontend" in routes

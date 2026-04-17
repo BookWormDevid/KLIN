@@ -4,12 +4,12 @@
 
 from litestar import Router
 
-from .v1 import KlinController, KlinStreamController
+from .v1 import AuthController, KlinController, KlinStreamController
 
 
 api_router = Router(
     path="/api/v1",
-    route_handlers=[KlinController, KlinStreamController],
+    route_handlers=[AuthController, KlinController, KlinStreamController],
 )
 
-__all__ = ("api_router", "KlinController", "KlinStreamController")
+__all__ = ("api_router", "AuthController", "KlinController", "KlinStreamController")

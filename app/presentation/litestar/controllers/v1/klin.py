@@ -122,7 +122,11 @@ class KlinController(Controller):
             litestar_errors.raise_404(exc)
         return Response(inference)
 
-    @get(path="/health/live", media_type=MediaType.TEXT)
+    @get(
+        path="/health/live",
+        media_type=MediaType.TEXT,
+        opt={"exclude_from_auth": True},
+    )
     async def health_check(self) -> str:
         """
         Проверка liveness для API-процесса.
@@ -130,7 +134,7 @@ class KlinController(Controller):
 
         return "healthy"
 
-    @get("/health/ready")
+    @get("/health/ready", opt={"exclude_from_auth": True})
     @inject
     async def readiness_check(
         self, klin_service: FromDishka[KlinService]
