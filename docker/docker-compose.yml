@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     networks:
       - web
     environment:
@@ -15,6 +17,9 @@ services:
       S3_REGION: ${S3_REGION}
       S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+      KLIN_SECRET: ${KLIN_SECRET:?KLIN_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_TOKEN_TTL_MINUTES: ${JWT_TOKEN_TTL_MINUTES:-60}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"

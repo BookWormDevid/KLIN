@@ -24,3 +24,6 @@ models/
 model_repository/
 start.bat
 README.md
+app/frontend/dist
+app/frontend/node_modules
+*.local

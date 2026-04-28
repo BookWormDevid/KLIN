@@ -1,9 +1,12 @@
 import { HttpClient } from '../http/httpClient';
-import { Analysis } from '../../domain/entities/Analysis';
-import { ProcessingState } from '../../domain/entities/Analysis';
+import type { Analysis, ProcessingState } from '../../domain/entities/Analysis';
 
 export class ApiVideoRepository {
-    constructor(private http: HttpClient) { }
+    private http: HttpClient;
+
+    constructor(http: HttpClient) {
+        this.http = http;
+    }
 
     async upload(file: File, responseUrl?: string): Promise<Analysis> {
         const formData = new FormData();
@@ -18,7 +21,7 @@ export class ApiVideoRepository {
         return this.parseAnalysis(raw);
     }
 
-    async getHistory(limit: number = 20): Promise<Analysis[]> {
+    async getHistory(limit: number = 100): Promise<Analysis[]> {
         const rawList = await this.http.get<any[]>('/Klin/');
         return rawList.slice(0, limit).map(item => this.parseAnalysis(item));
     }

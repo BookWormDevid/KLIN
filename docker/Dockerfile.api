@@ -1,11 +1,15 @@
+FROM node:18-alpine AS frontend-builder
+WORKDIR /app/frontend
+COPY app/frontend/package*.json ./
+RUN npm ci
+COPY app/frontend/ ./
+RUN npm run build
+
 FROM python:3.10.6-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
 WORKDIR /build
 ENV UV_LINK_MODE=copy
-
 RUN python -m venv /opt/venv
-
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
     "aiofiles>=25.1.0" \
@@ -30,5 +34,6 @@ WORKDIR /code
 
 COPY --from=builder /opt/venv /opt/venv
 COPY app /code/app
+COPY --from=frontend-builder /app/frontend/dist /code/app/frontend
 
 CMD ["python", "-m", "granian", "--interface", "asgi", "--host", "0.0.0.0", "--port", "8008", "app.presentation.litestar.run:app"]

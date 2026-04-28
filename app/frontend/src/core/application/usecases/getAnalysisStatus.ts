@@ -1,5 +1,5 @@
 import { ApiVideoRepository } from '../../infrastructure/repositories/apiVideoRepository';
-import { Analysis } from '../../domain/entities/Analysis';
+import type { Analysis } from '../../domain/entities/Analysis';
 
 export async function getAnalysisStatus(
     videoRepo: ApiVideoRepository,

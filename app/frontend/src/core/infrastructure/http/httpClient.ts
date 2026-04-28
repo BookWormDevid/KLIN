@@ -9,6 +9,14 @@ export class HttpClient {
         this.timeout = timeout || appConfig.requestTimeoutMs;
     }
 
+    private getAuthHeaders(): Record<string, string> {
+        const token = localStorage.getItem('klin_jwt');
+        if (token) {
+            return { Authorization: `Bearer ${token}` };
+        }
+        return {};
+    }
+
     private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
         const url = `${this.baseUrl}${endpoint}`;
         const controller = new AbortController();
@@ -20,18 +28,24 @@ export class HttpClient {
                 signal: controller.signal,
                 headers: {
                     'Content-Type': 'application/json',
+                    ...this.getAuthHeaders(),
                     ...options.headers,
                 },
             });
             clearTimeout(timeoutId);
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('klin_jwt');
+                    window.location.reload();
+                    throw new Error('Session expired, please login');
+                }
                 let errorText = await response.text();
                 throw new Error(errorText || `HTTP ${response.status}`);
             }
             return await response.json();
         } catch (err) {
-            if (err.name === 'AbortError') {
+            if (err instanceof Error && err.name === 'AbortError') {
                 throw new Error(`Request timeout (${this.timeout}ms)`);
             }
             throw err;
@@ -58,9 +72,15 @@ export class HttpClient {
             method: 'POST',
             body: formData,
             signal: controller.signal,
+            headers: this.getAuthHeaders(),
         }).then(async (response) => {
             clearTimeout(timeoutId);
             if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('klin_jwt');
+                    window.location.reload();
+                    throw new Error('Session expired');
+                }
                 let errorText = await response.text();
                 throw new Error(errorText || `HTTP ${response.status}`);
             }

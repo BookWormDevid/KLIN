@@ -1,4 +1,4 @@
-import { HistoryItem } from '../../domain/entities/HistoryItem';
+import type { HistoryItem } from '../../domain/entities/HistoryItem';
 import { appConfig } from '../../../config/appConfig';
 
 export class LocalStorageHistoryRepository {

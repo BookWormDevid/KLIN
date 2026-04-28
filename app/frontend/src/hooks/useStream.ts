@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { HttpClient } from '../core/infrastructure/http/httpClient';
 import { ApiStreamRepository } from '../core/infrastructure/repositories/apiStreamRepository';
 import { startStream, stopStream, getStreamStatus } from '../core/application/usecases';
-import { StreamState } from '../core/domain/entities/StreamState';
+import type { StreamState } from '../core/domain/entities/StreamState';
 import { appConfig } from '../config/appConfig';
 
 export function useStream() {

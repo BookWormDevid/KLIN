@@ -24,15 +24,11 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
         }));
 
         const handleTimeUpdate = () => {
-            if (videoRef.current && onProgress) {
-                onProgress(videoRef.current.currentTime);
-            }
+            if (videoRef.current && onProgress) onProgress(videoRef.current.currentTime);
         };
 
         const handleLoadedMetadata = () => {
-            if (videoRef.current && onDuration) {
-                onDuration(videoRef.current.duration);
-            }
+            if (videoRef.current && onDuration) onDuration(videoRef.current.duration);
         };
 
         if (!url) return <div className="video-placeholder">Нет видео</div>;
@@ -46,7 +42,6 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
                     className="video-element"
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
-                    style={{ width: '100%', height: '100%' }}
                 />
             </div>
         );
