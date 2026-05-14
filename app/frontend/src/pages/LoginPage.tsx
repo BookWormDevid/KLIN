@@ -15,14 +15,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         setError(null);
         setLoading(true);
 
-        // МОК-РЕЖИМ: пропускаем любой пароль
-        if (appConfig.useMocks) {
-            // Сохраняем фейковый JWT, чтобы остальной код думал, что мы авторизованы
-            localStorage.setItem('klin_jwt', 'mock-jwt-token-for-development');
+        // ⬇️ ВРЕМЕННАЯ ЗАГЛУШКА (убрать после включения JWT)
+        if (secret === 'dev') {
+            localStorage.setItem('klin_jwt', 'dev-token');
             onLoginSuccess();
             setLoading(false);
             return;
         }
+        //
 
         // Реальный запрос к серверу (только когда моки выключены)
         try {
