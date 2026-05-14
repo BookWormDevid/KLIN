@@ -3,16 +3,14 @@ import './BBoxCanvas.css';
 
 interface BBoxCanvasProps {
     videoElement: HTMLVideoElement | null;
-    yoloData: Record<number, number[][]> | null;   // ключ – timestamp (сек)
+    yoloData: Record<number, number[][]> | null;
     currentTime: number;
-    label?: string;
 }
 
 export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({
     videoElement,
     yoloData,
     currentTime,
-    label = 'АГРЕССИЯ'
 }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -31,7 +29,6 @@ export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({
 
             if (!yoloData) return;
 
-            // Найти ближайший timestamp <= currentTime
             const timestamps = Object.keys(yoloData).map(Number).sort((a, b) => a - b);
             let bestTimestamp: number | null = null;
             for (const t of timestamps) {
@@ -60,16 +57,11 @@ export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({
                 ctx.strokeRect(sx, sy, sw, sh);
                 ctx.fillRect(sx, sy, sw, sh);
             });
-
-            // Подпись
-            ctx.fillStyle = '#ef4444';
-            ctx.font = 'bold 14px sans-serif';
-            ctx.fillText(label, 10, 30);
         };
 
         const animation = requestAnimationFrame(draw);
         return () => cancelAnimationFrame(animation);
-    }, [videoElement, yoloData, currentTime, label]);
+    }, [videoElement, yoloData, currentTime]);
 
     return <canvas ref={canvasRef} className="bbox-canvas" />;
 };

@@ -1,8 +1,8 @@
 .timeline-container {
     position: absolute;
     bottom: 0.5rem;
-    left: 0.5rem;
-    right: 0.5rem;
+    left: 1rem;
+    right: 1rem;
     z-index: 20;
 }
 
@@ -17,17 +17,17 @@
 .timeline-event {
     position: absolute;
     height: 100%;
-    background: var(--accent);
-    opacity: 0.8;
+    background: #ef4444;
+    opacity: 0.9;
     border-radius: 0.15rem;
 }
 
 .timeline-cursor {
     position: absolute;
-    width: 0.2rem;
-    height: 1rem;
-    background: white;
-    top: -0.35rem;
+    width: 2px;
+    height: 14px;
+    background: #fff;
+    top: -6px;
     transform: translateX(-50%);
     pointer-events: none;
 }

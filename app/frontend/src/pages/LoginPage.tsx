@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { appConfig } from '../config/appConfig';
 
 interface LoginPageProps {
     onLoginSuccess: () => void;
@@ -13,8 +14,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
         e.preventDefault();
         setError(null);
         setLoading(true);
+
+        // МОК-РЕЖИМ: пропускаем любой пароль
+        if (appConfig.useMocks) {
+            // Сохраняем фейковый JWT, чтобы остальной код думал, что мы авторизованы
+            localStorage.setItem('klin_jwt', 'mock-jwt-token-for-development');
+            onLoginSuccess();
+            setLoading(false);
+            return;
+        }
+
+        // Реальный запрос к серверу (только когда моки выключены)
         try {
-            const response = await fetch('/api/v1/auth/token', {
+            const response = await fetch(`${appConfig.apiBaseUrl}/auth/token`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ secret }),

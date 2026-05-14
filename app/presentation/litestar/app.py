@@ -5,7 +5,6 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from dishka import AsyncContainer
 from dishka.integrations.litestar import setup_dishka as setup_litestar_dishka
@@ -17,7 +16,6 @@ from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.plugins.prometheus import PrometheusConfig, PrometheusController
 from litestar.plugins.structlog import StructlogConfig, StructlogPlugin
-from litestar.static_files import create_static_files_router
 
 from app.config import app_settings
 from app.presentation.litestar.auth import build_jwt_auth
@@ -25,10 +23,6 @@ from app.presentation.litestar.controllers import api_router
 
 
 logger = logging.getLogger(__name__)
-
-
-# Путь к фронтенду
-FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
 
 
 @asynccontextmanager
@@ -71,12 +65,6 @@ def create_litestar_app(
         route_handlers=[
             api_router,
             PrometheusController,
-            create_static_files_router(
-                path="/frontend",
-                directories=[str(FRONTEND_DIR)],
-                html_mode=True,
-                name="frontend",
-            ),
         ],
         middleware=[prometheus_config.middleware],
         on_app_init=[jwt_auth.on_app_init],
