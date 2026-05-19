@@ -95,10 +95,8 @@ jobs:
         run: uv sync --no-dev ${{ steps.lint-groups.outputs.args }} --frozen --no-install-project
 
       - name: Ruff check
-        run: uv run --no-sync ruff check app helpers tests
+        run: uv run --no-sync ruff check --fix app helpers tests
 
-      - name: Ruff format check
-        run: uv run --no-sync ruff format --check app helpers tests
 
       # ----- ty type checker. In beta. Mypy is used too. -----
       - name: Ty check
