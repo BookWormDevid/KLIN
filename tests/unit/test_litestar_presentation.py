@@ -431,6 +431,7 @@ def test_create_litestar_app_builds_configured_application(
     monkeypatch.setenv("DEBUG", "false")
     monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "http://localhost")
     monkeypatch.setenv("KLIN_SECRET", "bootstrap-secret-long-enough-for-tests")
+    monkeypatch.setenv("JWT_SECRET", "jwt-signing-secret-long-enough-for-tests")
     clear_settings_cache(app_module)
     monkeypatch.setattr(app_module, "setup_litestar_dishka", setup_dishka)
 
