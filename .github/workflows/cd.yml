@@ -346,8 +346,8 @@ jobs:
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
-            git fetch --all --tags --prune
-            git checkout "$DEPLOY_REF"
+            git fetch --no-tags origin "$DEPLOY_REF"
+            git -c advice.detachedHead=false checkout --detach "$DEPLOY_REF"
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
             : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
@@ -376,13 +376,14 @@ jobs:
             curl -fsS --retry 5 --retry-delay 3 "$api_url" >/dev/null
 
   deploy-frontend:
-    needs: [check-changes, build-frontend]
+    needs: [check-changes, build-frontend, deploy-app]
     runs-on: ubuntu-latest
     if: >
       always() &&
       !cancelled() &&
       needs.check-changes.result == 'success' &&
       needs.build-frontend.result == 'success' &&
+      (needs.deploy-app.result == 'success' || needs.deploy-app.result == 'skipped') &&
       (
         github.event_name == 'workflow_dispatch' ||
         (
@@ -420,8 +421,8 @@ jobs:
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
-            git fetch --all --tags --prune
-            git checkout "$DEPLOY_REF"
+            git fetch --no-tags origin "$DEPLOY_REF"
+            git -c advice.detachedHead=false checkout --detach "$DEPLOY_REF"
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
             : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
@@ -442,7 +443,7 @@ jobs:
             docker compose --env-file .env -f docker/docker-compose.deploy.yml ps klin_frontend_development
 
   deploy-airflow:
-    needs: [check-changes, build-worker, build-airflow]
+    needs: [check-changes, build-worker, build-airflow, deploy-app, deploy-frontend]
     runs-on: ubuntu-latest
     if: >
       always() &&
@@ -450,6 +451,8 @@ jobs:
       needs.check-changes.result == 'success' &&
       (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') &&
       (needs.build-airflow.result == 'success' || needs.build-airflow.result == 'skipped') &&
+      (needs.deploy-app.result == 'success' || needs.deploy-app.result == 'skipped') &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped') &&
       (
         github.event_name == 'workflow_dispatch' ||
         (
@@ -492,8 +495,8 @@ jobs:
             set -euo pipefail
             cd "$DEPLOY_PATH"
             AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.server.yml}"
-            git fetch --all --tags --prune
-            git checkout "$DEPLOY_REF"
+            git fetch --no-tags origin "$DEPLOY_REF"
+            git -c advice.detachedHead=false checkout --detach "$DEPLOY_REF"
 
             if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
