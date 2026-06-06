@@ -8,7 +8,7 @@ import logging
 import msgspec
 from dishka import make_container
 from faststream import FastStream
-from faststream.rabbit import RabbitBroker, RabbitMessage
+from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 from prometheus_client import Counter, Histogram, start_http_server
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -38,6 +38,7 @@ async def verify_worker_database() -> None:
 
 
 app = FastStream(broker, on_startup=(verify_worker_database,))
+KLIN_QUEUE = RabbitQueue(app_settings.Klin_queue, durable=False)
 
 KLIN_PROCESSED = Counter(
     "klin_processed_total", "Общее количество обработанных задач Klin"
@@ -50,7 +51,7 @@ start_http_server(8009)
 
 
 @broker.subscriber(
-    app_settings.Klin_queue,
+    KLIN_QUEUE,
     consume_args={"prefetch_count": 1},
 )
 async def base_handler(message: RabbitMessage) -> None:
