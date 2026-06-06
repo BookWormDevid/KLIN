@@ -1,15 +1,13 @@
 FROM apache/airflow:3.1.7
 
-RUN pip install uv
+WORKDIR /opt/airflow
 
 COPY pyproject.toml uv.lock ./
 
-RUN uv pip install --requirements pyproject.toml
-
-RUN uv pip install --no-cache-dir \
+RUN pip install --no-cache-dir uv==0.11.19 && \
+    uv pip install --requirements pyproject.toml && \
+    uv pip install --no-cache-dir \
     grpcio==1.67.1 \
-    grpcio-tools==1.67.1
-
-RUN uv pip install --no-cache-dir \
-    apache-airflow-providers-docker \
+    grpcio-tools==1.67.1 \
+    apache-airflow-providers-docker==4.5.4 \
     apache-airflow-providers-fab==3.3.0
