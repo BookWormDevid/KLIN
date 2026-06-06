@@ -9,7 +9,7 @@ import logging
 import msgspec
 from dishka import make_container
 from faststream import FastStream
-from faststream.rabbit import RabbitBroker, RabbitMessage
+from faststream.rabbit import RabbitBroker, RabbitMessage, RabbitQueue
 from prometheus_client import Counter, Histogram, start_http_server
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -52,6 +52,14 @@ app = FastStream(
     broker,
     on_startup=(verify_worker_database,),
 )  # ← вот эта переменная должна быть!
+KLIN_STREAM_EVENT_QUEUE = RabbitQueue(
+    app_settings.Klin_stream_event_queue,
+    durable=False,
+)
+KLIN_PROCESS_QUEUE = RabbitQueue(
+    app_settings.Klin_process_queue,
+    durable=False,
+)
 
 # ====================== Prometheus метрики ======================
 STREAM_PROCESSED = Counter(
@@ -69,14 +77,14 @@ STREAM_PROCESSING_TIME = Histogram(
 start_http_server(8010)
 
 
-@broker.subscriber(app_settings.Klin_stream_event_queue)
+@broker.subscriber(KLIN_STREAM_EVENT_QUEUE)
 async def event_handler(message: RabbitMessage):
     event = msgspec.json.decode(message.body, type=StreamEventDto)
     await stream_event_consumer.handle(event=event)
 
 
 @broker.subscriber(
-    app_settings.Klin_process_queue,
+    KLIN_PROCESS_QUEUE,
     consume_args={"prefetch_count": 1},
 )
 async def stream_start_handler(message: RabbitMessage) -> None:

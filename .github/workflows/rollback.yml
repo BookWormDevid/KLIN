@@ -122,7 +122,12 @@ jobs:
               KLIN_SECRET="$KLIN_SECRET" \
               JWT_SECRET="$JWT_SECRET" \
               JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
-              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d klin_frontend_development
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d --force-recreate klin_frontend_development
+
+              frontend_cid="$(docker compose --env-file .env -f docker/docker-compose.deploy.yml ps -q klin_frontend_development)"
+              echo "Frontend container id: $frontend_cid"
+              docker inspect "$frontend_cid" --format 'Frontend labels: {{json .Config.Labels}}'
+              docker inspect "$frontend_cid" --format 'Frontend networks: {{json .NetworkSettings.Networks}}'
 
               if [ -f .env ]; then
                 set -a
@@ -130,6 +135,7 @@ jobs:
                 set +a
               fi
               frontend_url="${DEPLOY_FRONTEND_SMOKE_URL:-https://${KLIN_FRONTEND_HOST:-manyflows.ru}/}"
+              echo "KLIN_FRONTEND_HOST=${KLIN_FRONTEND_HOST:-<unset>}"
               echo "Checking frontend smoke URL: $frontend_url"
               curl -fsS --retry 5 --retry-delay 3 "$frontend_url" >/dev/null
             fi
