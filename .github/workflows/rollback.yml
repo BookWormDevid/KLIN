@@ -36,11 +36,13 @@ jobs:
         run: |
           set -euo pipefail
           owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api" >> "$GITHUB_OUTPUT"
-          echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker" >> "$GITHUB_OUTPUT"
-          echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend" >> "$GITHUB_OUTPUT"
-          echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow" >> "$GITHUB_OUTPUT"
+          {
+            echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api"
+            echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker"
+            echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner"
+            echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend"
+            echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Roll back over SSH
         uses: appleboy/ssh-action@v1.2.2

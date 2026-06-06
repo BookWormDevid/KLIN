@@ -96,13 +96,15 @@ jobs:
           set -euo pipefail
           owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           deploy_ref="${{ github.event.workflow_run.head_sha || github.sha }}"
-          echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api" >> "$GITHUB_OUTPUT"
-          echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker" >> "$GITHUB_OUTPUT"
-          echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend" >> "$GITHUB_OUTPUT"
-          echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow" >> "$GITHUB_OUTPUT"
-          echo "deploy_ref=${deploy_ref}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${deploy_ref}" >> "$GITHUB_OUTPUT"
+          {
+            echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api"
+            echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker"
+            echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner"
+            echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend"
+            echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow"
+            echo "deploy_ref=${deploy_ref}"
+            echo "image_tag=${deploy_ref}"
+          } >> "$GITHUB_OUTPUT"
 
   deploy-plan:
     needs: check-changes

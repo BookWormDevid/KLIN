@@ -262,10 +262,12 @@ jobs:
 
       - name: Coverage summary
         run: |
-          echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          uv run --no-sync -m coverage report >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '## Coverage'
+            echo '```text'
+            uv run --no-sync -m coverage report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Minimize uv cache
         if: always()
