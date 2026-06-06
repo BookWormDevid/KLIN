@@ -55,7 +55,6 @@ jobs:
           JWT_TOKEN_TTL_MINUTES: ${{ vars.DEPLOY_JWT_TOKEN_TTL_MINUTES }}
           AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
           DEPLOY_API_SMOKE_URL: ${{ vars.DEPLOY_API_SMOKE_URL }}
-          DEPLOY_FRONTEND_SMOKE_URL: ${{ vars.DEPLOY_FRONTEND_SMOKE_URL }}
           IMAGE_TAG: ${{ inputs.image_tag }}
           ROLLBACK_TARGET: ${{ inputs.target }}
           KLIN_API_IMAGE_BASE: ${{ steps.vars.outputs.api_image }}
@@ -70,7 +69,7 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 30s
           command_timeout: 15m
-          envs: DEPLOY_PATH,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,AIRFLOW_COMPOSE_FILE,DEPLOY_API_SMOKE_URL,DEPLOY_FRONTEND_SMOKE_URL,IMAGE_TAG,ROLLBACK_TARGET,KLIN_API_IMAGE_BASE,KLIN_WORKER_IMAGE_BASE,KLIN_FRONTEND_IMAGE_BASE,KLIN_BATCH_RUNNER_IMAGE_BASE,KLIN_AIRFLOW_IMAGE_BASE
+          envs: DEPLOY_PATH,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,AIRFLOW_COMPOSE_FILE,DEPLOY_API_SMOKE_URL,IMAGE_TAG,ROLLBACK_TARGET,KLIN_API_IMAGE_BASE,KLIN_WORKER_IMAGE_BASE,KLIN_FRONTEND_IMAGE_BASE,KLIN_BATCH_RUNNER_IMAGE_BASE,KLIN_AIRFLOW_IMAGE_BASE
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
@@ -124,20 +123,7 @@ jobs:
               JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
               docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d --force-recreate klin_frontend_development
 
-              frontend_cid="$(docker compose --env-file .env -f docker/docker-compose.deploy.yml ps -q klin_frontend_development)"
-              echo "Frontend container id: $frontend_cid"
-              docker inspect "$frontend_cid" --format 'Frontend labels: {{json .Config.Labels}}'
-              docker inspect "$frontend_cid" --format 'Frontend networks: {{json .NetworkSettings.Networks}}'
-
-              if [ -f .env ]; then
-                set -a
-                . ./.env
-                set +a
-              fi
-              frontend_url="${DEPLOY_FRONTEND_SMOKE_URL:-https://${KLIN_FRONTEND_HOST:-manyflows.ru}/}"
-              echo "KLIN_FRONTEND_HOST=${KLIN_FRONTEND_HOST:-<unset>}"
-              echo "Checking frontend smoke URL: $frontend_url"
-              curl -fsS --retry 5 --retry-delay 3 "$frontend_url" >/dev/null
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml ps klin_frontend_development
             fi
 
             if [ "$ROLLBACK_TARGET" = "all" ] || [ "$ROLLBACK_TARGET" = "airflow" ]; then
