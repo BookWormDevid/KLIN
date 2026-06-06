@@ -46,17 +46,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-networks:
-  web:
-    name: klin-web
-
-    klin_frontend_development:
-    image: ${KLIN_FRONTEND_IMAGE:-klin-frontend:latest}
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+  klin_frontend_development:
+    image: ${KLIN_FRONTEND_IMAGE:?KLIN_FRONTEND_IMAGE is required}:${IMAGE_TAG:-latest}
+    pull_policy: always
     restart: unless-stopped
     networks:
       - web
@@ -67,3 +59,7 @@ networks:
       - "traefik.http.routers.klin_frontend.entrypoints=websecure"
       - "traefik.http.routers.klin_frontend.tls=true"
       - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"
+
+networks:
+  web:
+    name: klin-web

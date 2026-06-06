@@ -386,23 +386,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-  klin_frontend:
-    image: ${KLIN_FRONTEND_IMAGE:-klin-frontend:latest}
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile.frontend
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
-    restart: unless-stopped
-    networks:
-      - web
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=klin-web"
-      - "traefik.http.routers.klin_frontend.rule=Host(`${KLIN_FRONTEND_HOST:-manyflows.ru}`)"
-      - "traefik.http.routers.klin_frontend.entrypoints=websecure"
-      - "traefik.http.routers.klin_frontend.tls=true"
-      - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"
+
   traefik:
     image: traefik:v3.6.7
     container_name: klin-traefik

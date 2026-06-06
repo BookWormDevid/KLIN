@@ -2886,7 +2886,6 @@ ci-helpers = [
 dev = [
     { name = "boto3-stubs", extra = ["s3"] },
     { name = "flake8" },
-    { name = "mlflow" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pylint" },
@@ -2957,7 +2956,6 @@ ci-helpers = [
 dev = [
     { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.42.73" },
     { name = "flake8", specifier = ">=7.3.0" },
-    { name = "mlflow", specifier = ">=3.10.1" },
     { name = "mypy", specifier = ">=1.20.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pylint", specifier = ">=4.0.5" },

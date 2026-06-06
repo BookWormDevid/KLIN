@@ -1,0 +1,142 @@
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag to redeploy, usually a commit SHA"
+        required: true
+        type: string
+      target:
+        description: "Deployment target"
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - app
+          - frontend
+          - airflow
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Compute image names
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api" >> "$GITHUB_OUTPUT"
+          echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker" >> "$GITHUB_OUTPUT"
+          echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend" >> "$GITHUB_OUTPUT"
+          echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          KLIN_SECRET: ${{ secrets.DEPLOY_KLIN_SECRET }}
+          JWT_SECRET: ${{ secrets.DEPLOY_JWT_SECRET }}
+          JWT_TOKEN_TTL_MINUTES: ${{ vars.DEPLOY_JWT_TOKEN_TTL_MINUTES }}
+          AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
+          DEPLOY_API_SMOKE_URL: ${{ vars.DEPLOY_API_SMOKE_URL }}
+          DEPLOY_FRONTEND_SMOKE_URL: ${{ vars.DEPLOY_FRONTEND_SMOKE_URL }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          ROLLBACK_TARGET: ${{ inputs.target }}
+          KLIN_API_IMAGE_BASE: ${{ steps.vars.outputs.api_image }}
+          KLIN_WORKER_IMAGE_BASE: ${{ steps.vars.outputs.worker_image }}
+          KLIN_FRONTEND_IMAGE_BASE: ${{ steps.vars.outputs.frontend_image }}
+          KLIN_BATCH_RUNNER_IMAGE_BASE: ${{ steps.vars.outputs.batch_image }}
+          KLIN_AIRFLOW_IMAGE_BASE: ${{ steps.vars.outputs.airflow_image }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 30s
+          command_timeout: 15m
+          envs: DEPLOY_PATH,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,AIRFLOW_COMPOSE_FILE,DEPLOY_API_SMOKE_URL,DEPLOY_FRONTEND_SMOKE_URL,IMAGE_TAG,ROLLBACK_TARGET,KLIN_API_IMAGE_BASE,KLIN_WORKER_IMAGE_BASE,KLIN_FRONTEND_IMAGE_BASE,KLIN_BATCH_RUNNER_IMAGE_BASE,KLIN_AIRFLOW_IMAGE_BASE
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.server.yml}"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            if [ "$ROLLBACK_TARGET" = "all" ] || [ "$ROLLBACK_TARGET" = "app" ]; then
+              : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
+              : "${JWT_SECRET:?DEPLOY_JWT_SECRET GitHub secret is required}"
+              JWT_TOKEN_TTL_MINUTES="${JWT_TOKEN_TTL_MINUTES:-60}"
+              export KLIN_API_IMAGE="$KLIN_API_IMAGE_BASE"
+              export KLIN_WORKER_IMAGE="$KLIN_WORKER_IMAGE_BASE"
+              export KLIN_FRONTEND_IMAGE="$KLIN_FRONTEND_IMAGE_BASE"
+              export IMAGE_TAG KLIN_API_IMAGE KLIN_WORKER_IMAGE KLIN_FRONTEND_IMAGE
+
+              KLIN_SECRET="$KLIN_SECRET" \
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml pull klin_api_development klin_processor_worker_development
+
+              KLIN_SECRET="$KLIN_SECRET" \
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d klin_api_development klin_processor_worker_development
+
+              if [ -f .env ]; then
+                set -a
+                . ./.env
+                set +a
+              fi
+              api_url="${DEPLOY_API_SMOKE_URL:-https://${KLIN_API_HOST:-manyflows.ru}/api/v1/Klin/health/live}"
+              curl -fsS --retry 5 --retry-delay 3 "$api_url" >/dev/null
+            fi
+
+            if [ "$ROLLBACK_TARGET" = "all" ] || [ "$ROLLBACK_TARGET" = "frontend" ]; then
+              : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
+              : "${JWT_SECRET:?DEPLOY_JWT_SECRET GitHub secret is required}"
+              JWT_TOKEN_TTL_MINUTES="${JWT_TOKEN_TTL_MINUTES:-60}"
+              export KLIN_API_IMAGE="$KLIN_API_IMAGE_BASE"
+              export KLIN_WORKER_IMAGE="$KLIN_WORKER_IMAGE_BASE"
+              export KLIN_FRONTEND_IMAGE="$KLIN_FRONTEND_IMAGE_BASE"
+              export IMAGE_TAG KLIN_API_IMAGE KLIN_WORKER_IMAGE KLIN_FRONTEND_IMAGE
+
+              KLIN_SECRET="$KLIN_SECRET" \
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml pull klin_frontend_development
+
+              KLIN_SECRET="$KLIN_SECRET" \
+              JWT_SECRET="$JWT_SECRET" \
+              JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d klin_frontend_development
+
+              if [ -f .env ]; then
+                set -a
+                . ./.env
+                set +a
+              fi
+              frontend_url="${DEPLOY_FRONTEND_SMOKE_URL:-https://${KLIN_FRONTEND_HOST:-manyflows.ru}/}"
+              curl -fsS --retry 5 --retry-delay 3 "$frontend_url" >/dev/null
+            fi
+
+            if [ "$ROLLBACK_TARGET" = "all" ] || [ "$ROLLBACK_TARGET" = "airflow" ]; then
+              export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE_BASE}:${IMAGE_TAG}"
+              export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE_BASE}:${IMAGE_TAG}"
+              docker pull "$KLIN_BATCH_RUNNER_IMAGE"
+              docker pull "$KLIN_AIRFLOW_IMAGE"
+              docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor
+              docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" exec -T airflow-webserver \
+                python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v2/monitor/health').read()"
+            fi
