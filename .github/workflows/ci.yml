@@ -7,6 +7,12 @@ on:
       - "docs/**"
       - "mlflow/**"
       - "sandbox/**"
+  pull-request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "mlflow/**"
+      - "sandbox/**"
   workflow_dispatch:
 
 permissions:
