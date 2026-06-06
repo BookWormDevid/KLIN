@@ -247,3 +247,8 @@ dvc_remote/
 .dvc/state
 .dvc/state-journal
 .dvc/state-wal
+
+# Frontend specific
+*.local
+app/frontend/dist/
+app/frontend/node_modules

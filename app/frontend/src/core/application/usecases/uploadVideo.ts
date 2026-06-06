@@ -1,7 +1,7 @@
 import { ApiVideoRepository } from '../../infrastructure/repositories/apiVideoRepository';
 import { isValidVideoFile, isFileSizeValid } from '../../domain/services/validation';
 import { appConfig } from '../../../config/appConfig';
-import { Analysis } from '../../domain/entities/Analysis';
+import type { Analysis } from '../../domain/entities/Analysis';
 
 export async function uploadVideo(
     videoRepo: ApiVideoRepository,

@@ -15,6 +15,9 @@ services:
       S3_REGION: ${S3_REGION}
       S3_ADDRESSING_STYLE: ${S3_ADDRESSING_STYLE}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+      KLIN_SECRET: ${KLIN_SECRET:?KLIN_SECRET is required}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_TOKEN_TTL_MINUTES: ${JWT_TOKEN_TTL_MINUTES:-60}
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"
@@ -42,6 +45,20 @@ services:
       TRITON_GRPC_URL: ${TRITON_GRPC_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+  klin_frontend_development:
+    image: ${KLIN_FRONTEND_IMAGE:?KLIN_FRONTEND_IMAGE is required}:${IMAGE_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.klin_frontend.rule=Host(`${KLIN_FRONTEND_HOST:-localhost}`)"
+      - "traefik.http.routers.klin_frontend.entrypoints=websecure"
+      - "traefik.http.routers.klin_frontend.tls=true"
+      - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"
 
 networks:
   web:

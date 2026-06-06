@@ -2,6 +2,7 @@
 Бочка для передачи методов
 """
 
+from .auth import JWTLoginDto, JWTTokenDto
 from .klin import (
     KlinProcessDto,
     KlinReadDto,
@@ -15,6 +16,8 @@ from .klin import (
 
 
 __all__ = (
+    "JWTLoginDto",
+    "JWTTokenDto",
     "KlinUploadDto",
     "KlinResultDto",
     "KlinReadDto",

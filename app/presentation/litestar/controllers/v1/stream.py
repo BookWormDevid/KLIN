@@ -80,6 +80,6 @@ class KlinStreamController(Controller):
 
         path = "/health"
 
-        @get("/live")
+        @get("/live", opt={"exclude_from_auth": True})
         async def live(self) -> str:
             return "healthy"

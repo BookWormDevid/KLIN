@@ -3,6 +3,7 @@
 Настройки приложения с валидацией
 """
 
+from datetime import timedelta
 from typing import Any
 
 from dotenv import load_dotenv
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
     default_keep_s3_source_objects: bool = True
     default_batch_s3_prefix: str = "klin/batch"
     default_batch_file_extensions: str = ".mp4,.avi,.mov,.mkv,.wmv,.webm"
+    default_jwt_token_ttl_minutes: int = 60
 
     default_triton_grpc_url: str = "0.0.0.0:8001"
 
@@ -300,9 +302,33 @@ class Settings(BaseSettings):
     @property
     def klin_secret(self) -> str:
         """
-        Ссылка на секреты
+        Bootstrap secret for obtaining API JWT tokens.
         """
         return self.resolve_env_property("KLIN_SECRET", str)
+
+    @property
+    def jwt_secret(self) -> str:
+        """
+        Secret used to sign and validate API JWT tokens.
+        """
+        return self.resolve_env_property(
+            "JWT_SECRET",
+            str,
+        )
+
+    @property
+    def jwt_token_ttl(self) -> timedelta:
+        """
+        JWT access token lifetime.
+        """
+        ttl_minutes = self.resolve_env_property(
+            "JWT_TOKEN_TTL_MINUTES",
+            int,
+            default_value=self.default_jwt_token_ttl_minutes,
+        )
+        if ttl_minutes <= 0:
+            raise ValueError("JWT_TOKEN_TTL_MINUTES must be > 0")
+        return timedelta(minutes=ttl_minutes)
 
 
 app_settings = Settings()

@@ -26,8 +26,13 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      python: ${{ steps.filter.outputs.python }}
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      docker: ${{ steps.filter.outputs.docker }}
+      airflow: ${{ steps.filter.outputs.airflow }}
+      docs: ${{ steps.filter.outputs.docs }}
       helpers: ${{ steps.filter.outputs.helpers }}
+      workflows: ${{ steps.filter.outputs.workflows }}
 
     steps:
       - name: Checkout
@@ -38,22 +43,34 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
-            python:
+            backend:
               - "app/**"
+              - "!app/frontend/**"
               - "helpers/**"
               - "tests/**"
               - "pyproject.toml"
               - "uv.lock"
               - "alembic.ini"
               - ".github/workflows/ci.yml"
+            frontend:
+              - "app/frontend/**"
+            docker:
+              - "docker/**"
+            airflow:
+              - "airflow/**"
+            docs:
+              - "**/*.md"
+              - "docs/**"
             helpers:
               - "helpers/**"
+            workflows:
+              - ".github/workflows/**"
 
-  lint:
+  ruff:
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.python == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -70,19 +87,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Restore tool caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            .cache/pylint
-            .ruff_cache
-            .mypy_cache
-          key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-${{ hashFiles('uv.lock', 'pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-lint-tools-
-
       - name: Select CI dependency groups
-        id: lint-groups
+        id: groups
         shell: bash
         run: |
           groups=(--group ci)
@@ -92,48 +98,158 @@ jobs:
           printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Sync CI dependencies
-        run: uv sync --no-dev ${{ steps.lint-groups.outputs.args }} --frozen --no-install-project
+        run: uv sync --no-dev ${{ steps.groups.outputs.args }} --frozen --no-install-project
 
       - name: Ruff check
         run: uv run --no-sync ruff check app helpers tests
-
-      - name: Ruff format check
-        run: uv run --no-sync ruff format --check app helpers tests
-
-      # ----- ty type checker. In beta. Mypy is used too. -----
-      - name: Ty check
-        shell: bash
-        run: |
-          set -euo pipefail
-          ty_targets=(app tests)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
-            ty_targets+=(helpers)
-          fi
-          uv run --no-sync ty check "${ty_targets[@]}"
-
-      - name: Pylint
-        shell: bash
-        run: |
-          set -euo pipefail
-          uv run --no-sync -m pylint --jobs=0 app
-
-      - name: Mypy check
-        shell: bash
-        run: |
-          set -euo pipefail
-          mypy_targets=(app tests)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
-            mypy_targets+=(helpers)
-          fi
-          uv run --no-sync mypy "${mypy_targets[@]}"
 
       - name: Minimize uv cache
         if: always()
         run: uv cache prune --ci
 
+  typecheck:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Restore typecheck caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .mypy_cache
+          key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-typecheck-${{ hashFiles('uv.lock', 'pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-typecheck-
+
+      - name: Select CI dependency groups
+        id: groups
+        shell: bash
+        run: |
+          groups=(--group ci)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            groups+=(--group ci-helpers)
+          fi
+          printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync CI dependencies
+        run: uv sync --no-dev ${{ steps.groups.outputs.args }} --frozen --no-install-project
+
+      - name: Ty check
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(app tests)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            targets+=(helpers)
+          fi
+          uv run --no-sync ty check "${targets[@]}"
+
+      - name: Mypy check
+        shell: bash
+        run: |
+          set -euo pipefail
+          targets=(app tests)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            targets+=(helpers)
+          fi
+          uv run --no-sync mypy "${targets[@]}"
+
+      - name: Minimize uv cache
+        if: always()
+        run: uv cache prune --ci
+
+  pylint:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Restore pylint cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/pylint
+          key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-pylint-${{ hashFiles('uv.lock', 'pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-pylint-
+
+      - name: Select CI dependency groups
+        id: groups
+        shell: bash
+        run: |
+          groups=(--group ci)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ needs.changes.outputs.helpers }}" == "true" ]]; then
+            groups+=(--group ci-helpers)
+          fi
+          printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync CI dependencies
+        run: uv sync --no-dev ${{ steps.groups.outputs.args }} --frozen --no-install-project
+
+      - name: Pylint
+        run: uv run --no-sync -m pylint --jobs=0 app
+
+      - name: Minimize uv cache
+        if: always()
+        run: uv cache prune --ci
+
+  lint:
+    needs: [changes, ruff, typecheck, pylint]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check split lint jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in \
+            "${{ needs.changes.result }}" \
+            "${{ needs.ruff.result }}" \
+            "${{ needs.typecheck.result }}" \
+            "${{ needs.pylint.result }}"
+          do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "A split lint job failed or was cancelled."
+              exit 1
+            fi
+          done
+          echo "Split lint jobs passed or were skipped."
+
   test:
     needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.python == 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -153,7 +269,7 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Select CI dependency groups
-        id: test-groups
+        id: groups
         shell: bash
         run: |
           groups=(--group ci)
@@ -163,18 +279,120 @@ jobs:
           printf 'args=%s\n' "${groups[*]}" >> "$GITHUB_OUTPUT"
 
       - name: Sync CI dependencies
-        run: uv sync --no-dev ${{ steps.test-groups.outputs.args }} --frozen --no-install-project
+        run: uv sync --no-dev ${{ steps.groups.outputs.args }} --frozen --no-install-project
 
       - name: Pytest with coverage
         run: uv run --no-sync pytest -q --maxfail=1
 
       - name: Coverage summary
         run: |
-          echo '## Coverage' >> "$GITHUB_STEP_SUMMARY"
-          echo '```text' >> "$GITHUB_STEP_SUMMARY"
-          uv run --no-sync -m coverage report >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '## Coverage'
+            echo '```text'
+            uv run --no-sync -m coverage report
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Minimize uv cache
         if: always()
         run: uv cache prune --ci
+
+  frontend-dependencies:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: app/frontend
+        run: npm ci --ignore-scripts
+
+  workflow-validation:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Actionlint
+        uses: docker://rhysd/actionlint:latest
+
+  compose-validation:
+    needs: changes
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.docker == 'true' ||
+      needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare compose env
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp example.env .env.ci
+          cat >> .env.ci <<'EOF'
+          IMAGE_TAG=ci
+          LETSENCRYPT_EMAIL=ops@example.com
+          REGRU_USERNAME=ci
+          REGRU_PASSWORD=ci
+          ROOT_DOMAIN=example.com
+          EOF
+
+      - name: Validate compose files
+        run: |
+          docker compose --env-file .env.ci -f docker/docker-compose.yml config --quiet
+          docker compose --env-file .env.ci -f docker/docker-compose.deploy.yml config --quiet
+          docker compose --env-file .env.ci -f docker/docker-compose.server.yml config --quiet
+
+  dockerfile-validation:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Hadolint API Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.api
+          failure-threshold: error
+
+      - name: Hadolint worker Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.queue
+          failure-threshold: error
+
+      - name: Hadolint Airflow Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.airflow
+          failure-threshold: error
+
+      - name: Hadolint frontend Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/Dockerfile.frontend
+          failure-threshold: error

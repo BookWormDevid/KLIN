@@ -1,5 +1,5 @@
 import { ApiStreamRepository } from '../../infrastructure/repositories/apiStreamRepository';
-import { StreamState } from '../../domain/entities/StreamState';
+import type { StreamState } from '../../domain/entities/StreamState';
 
 export async function startStream(
     streamRepo: ApiStreamRepository,

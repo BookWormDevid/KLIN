@@ -1,9 +1,5 @@
 import { ApiStreamRepository } from '../../infrastructure/repositories/apiStreamRepository';
 
-export function sendFrame(streamRepo: ApiStreamRepository, frameBase64: string): void {
-    if (streamRepo.isConnected()) {
-        streamRepo.sendFrame(frameBase64);
-    } else {
-        console.warn('Stream not connected, cannot send frame');
-    }
+export function sendFrame(_streamRepo: ApiStreamRepository, _frameBase64: string): void {
+    console.warn('sendFrame is not implemented yet');
 }

@@ -28,11 +28,14 @@ jobs:
       deploy_changed: ${{ steps.filter.outputs.deploy_changed }}
       dags_changed: ${{ steps.filter.outputs.dags_changed }}
       app_image_changed: ${{ steps.filter.outputs.app_image_changed }}
+      frontend_image_changed: ${{ steps.filter.outputs.frontend_image_changed }}
       airflow_image_changed: ${{ steps.filter.outputs.airflow_image_changed }}
       api_image: ${{ steps.vars.outputs.api_image }}
       worker_image: ${{ steps.vars.outputs.worker_image }}
       batch_image: ${{ steps.vars.outputs.batch_image }}
+      frontend_image: ${{ steps.vars.outputs.frontend_image }}
       airflow_image: ${{ steps.vars.outputs.airflow_image }}
+      deploy_ref: ${{ steps.vars.outputs.deploy_ref }}
       image_tag: ${{ steps.vars.outputs.image_tag }}
 
     steps:
@@ -54,6 +57,7 @@ jobs:
               - "alembic.ini"
               - "docker/Dockerfile.api"
               - "docker/Dockerfile.airflow"
+              - "docker/Dockerfile.frontend"
               - "docker/Dockerfile.queue"
               - "docker/docker-compose.deploy.yml"
               - "docker/docker-compose.server.yml"
@@ -65,11 +69,18 @@ jobs:
               - ".github/workflows/cd.yml"
             app_image_changed:
               - "app/**"
+              - "!app/frontend/**"
               - "pyproject.toml"
               - "uv.lock"
               - "alembic.ini"
               - "docker/Dockerfile.api"
               - "docker/Dockerfile.queue"
+              - "docker/docker-compose.deploy.yml"
+              - ".github/workflows/cd.yml"
+            frontend_image_changed:
+              - "app/frontend/**"
+              - "docker/Dockerfile.frontend"
+              - "docker/docker-compose.deploy.yml"
               - ".github/workflows/cd.yml"
             airflow_image_changed:
               - "pyproject.toml"
@@ -84,138 +95,246 @@ jobs:
         run: |
           set -euo pipefail
           owner_lc="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api" >> "$GITHUB_OUTPUT"
-          echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker" >> "$GITHUB_OUTPUT"
-          echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner" >> "$GITHUB_OUTPUT"
-          echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          deploy_ref="${{ github.event.workflow_run.head_sha || github.sha }}"
+          {
+            echo "api_image=${{ env.REGISTRY }}/${owner_lc}/klin-api"
+            echo "worker_image=${{ env.REGISTRY }}/${owner_lc}/klin-worker"
+            echo "batch_image=${{ env.REGISTRY }}/${owner_lc}/klin-batch-runner"
+            echo "frontend_image=${{ env.REGISTRY }}/${owner_lc}/klin-frontend"
+            echo "airflow_image=${{ env.REGISTRY }}/${owner_lc}/klin-airflow"
+            echo "deploy_ref=${deploy_ref}"
+            echo "image_tag=${deploy_ref}"
+          } >> "$GITHUB_OUTPUT"
 
-  build-and-push:
+  deploy-plan:
     needs: check-changes
     runs-on: ubuntu-latest
     if: needs.check-changes.outputs.deploy_changed == 'true' || github.event_name == 'workflow_dispatch'
 
-    outputs:
-      api_image: ${{ needs.check-changes.outputs.api_image }}
-      worker_image: ${{ needs.check-changes.outputs.worker_image }}
-      batch_image: ${{ needs.check-changes.outputs.batch_image }}
-      airflow_image: ${{ needs.check-changes.outputs.airflow_image }}
-      image_tag: ${{ needs.check-changes.outputs.image_tag }}
+    steps:
+      - name: Write deploy plan
+        run: |
+          {
+            echo "## CD deploy plan"
+            echo
+            echo "| Target | Changed | Action |"
+            echo "| --- | --- | --- |"
+            echo "| API/worker | ${{ needs.check-changes.outputs.app_image_changed }} | build and deploy app services |"
+            echo "| Frontend | ${{ needs.check-changes.outputs.frontend_image_changed }} | build and deploy frontend service |"
+            echo "| Airflow image | ${{ needs.check-changes.outputs.airflow_image_changed }} | build and recreate Airflow services |"
+            echo "| DAGs/plugins | ${{ needs.check-changes.outputs.dags_changed }} | recreate Airflow services |"
+            echo
+            echo "Manual dispatch: \`${{ github.event_name == 'workflow_dispatch' }}\`"
+            echo "Image tag: \`${{ needs.check-changes.outputs.image_tag }}\`"
+            echo "Rollback can redeploy this tag later through the rollback workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-api:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Debug resolved outputs
-        shell: bash
-        run: |
-          echo "deploy_changed=${{ needs.check-changes.outputs.deploy_changed }}"
-          echo "app_image_changed=${{ needs.check-changes.outputs.app_image_changed }}"
-          echo "airflow_image_changed=${{ needs.check-changes.outputs.airflow_image_changed }}"
-          echo "api_image=${{ needs.check-changes.outputs.api_image }}"
-          echo "worker_image=${{ needs.check-changes.outputs.worker_image }}"
-          echo "batch_image=${{ needs.check-changes.outputs.batch_image }}"
-          echo "airflow_image=${{ needs.check-changes.outputs.airflow_image }}"
-          echo "image_tag=${{ needs.check-changes.outputs.image_tag }}"
-
-      - name: Validate image variables
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "${{ needs.check-changes.outputs.api_image }}"
-          test -n "${{ needs.check-changes.outputs.worker_image }}"
-          test -n "${{ needs.check-changes.outputs.batch_image }}"
-          test -n "${{ needs.check-changes.outputs.airflow_image }}"
-          test -n "${{ needs.check-changes.outputs.image_tag }}"
+          ref: ${{ needs.check-changes.outputs.deploy_ref }}
 
       - name: Set up Docker Buildx
-        if: needs.check-changes.outputs.app_image_changed == 'true' || needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: needs.check-changes.outputs.app_image_changed == 'true' || needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.check-changes.outputs.api_image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-changes.outputs.image_tag }}
+
       - name: Build and push API image
-        if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.api
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ needs.check-changes.outputs.api_image }}:latest
-            ${{ needs.check-changes.outputs.api_image }}:${{ needs.check-changes.outputs.image_tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
+  build-worker:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-changes.outputs.deploy_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ needs.check-changes.outputs.worker_image }}
+            ${{ needs.check-changes.outputs.batch_image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-changes.outputs.image_tag }}
+
       - name: Build and push worker and batch images
-        if: needs.check-changes.outputs.app_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.queue
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ needs.check-changes.outputs.worker_image }}:latest
-            ${{ needs.check-changes.outputs.worker_image }}:${{ needs.check-changes.outputs.image_tag }}
-            ${{ needs.check-changes.outputs.batch_image }}:latest
-            ${{ needs.check-changes.outputs.batch_image }}:${{ needs.check-changes.outputs.image_tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
+  build-frontend:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    if: needs.check-changes.outputs.frontend_image_changed == 'true' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-changes.outputs.deploy_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.check-changes.outputs.frontend_image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-changes.outputs.image_tag }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  build-airflow:
+    needs: check-changes
+    runs-on: ubuntu-latest
+    if: needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.check-changes.outputs.deploy_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ needs.check-changes.outputs.airflow_image }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.check-changes.outputs.image_tag }}
+
       - name: Build and push Airflow image
-        if: needs.check-changes.outputs.airflow_image_changed == 'true' || github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile.airflow
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ needs.check-changes.outputs.airflow_image }}:latest
-            ${{ needs.check-changes.outputs.airflow_image }}:${{ needs.check-changes.outputs.image_tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=airflow
           cache-to: type=gha,mode=max,scope=airflow
 
-  deploy:
-    needs: [check-changes, build-and-push]
+  deploy-app:
+    needs: [check-changes, build-api, build-worker]
     runs-on: ubuntu-latest
     if: >
-      github.event_name == 'workflow_dispatch' ||
+      always() &&
+      !cancelled() &&
+      needs.check-changes.result == 'success' &&
+      needs.build-api.result == 'success' &&
+      needs.build-worker.result == 'success' &&
       (
-        github.event_name == 'workflow_run' &&
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'main'
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          needs.check-changes.outputs.app_image_changed == 'true'
+        )
       )
     environment: production
 
     steps:
-      - name: Deploy to server over SSH
+      - name: Deploy app over SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          DEPLOY_REF: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DEPLOY_REF: ${{ needs.check-changes.outputs.deploy_ref }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
-          FORCE_FULL_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
-          AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
-          DAGS_CHANGED: ${{ needs.check-changes.outputs.dags_changed }}
-          APP_IMAGE_CHANGED: ${{ needs.check-changes.outputs.app_image_changed }}
-          AIRFLOW_IMAGE_CHANGED: ${{ needs.check-changes.outputs.airflow_image_changed }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-          KLIN_API_IMAGE: ${{ needs.build-and-push.outputs.api_image }}
-          KLIN_WORKER_IMAGE: ${{ needs.build-and-push.outputs.worker_image }}
-          KLIN_BATCH_RUNNER_IMAGE: ${{ needs.build-and-push.outputs.batch_image }}
-          KLIN_AIRFLOW_IMAGE: ${{ needs.build-and-push.outputs.airflow_image }}
+          KLIN_SECRET: ${{ secrets.DEPLOY_KLIN_SECRET }}
+          JWT_SECRET: ${{ secrets.DEPLOY_JWT_SECRET }}
+          JWT_TOKEN_TTL_MINUTES: ${{ vars.DEPLOY_JWT_TOKEN_TTL_MINUTES }}
+          DEPLOY_API_SMOKE_URL: ${{ vars.DEPLOY_API_SMOKE_URL }}
+          IMAGE_TAG: ${{ needs.check-changes.outputs.image_tag }}
+          KLIN_API_IMAGE: ${{ needs.check-changes.outputs.api_image }}
+          KLIN_WORKER_IMAGE: ${{ needs.check-changes.outputs.worker_image }}
+          KLIN_FRONTEND_IMAGE: ${{ needs.check-changes.outputs.frontend_image }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
@@ -223,35 +342,183 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT }}
           timeout: 30s
           command_timeout: 15m
-          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,FORCE_FULL_DEPLOY,AIRFLOW_COMPOSE_FILE,DAGS_CHANGED,APP_IMAGE_CHANGED,AIRFLOW_IMAGE_CHANGED,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_BATCH_RUNNER_IMAGE,KLIN_AIRFLOW_IMAGE
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,DEPLOY_API_SMOKE_URL,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_FRONTEND_IMAGE
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            git fetch --all --tags --prune
+            git checkout "$DEPLOY_REF"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
+            : "${JWT_SECRET:?DEPLOY_JWT_SECRET GitHub secret is required}"
+            JWT_TOKEN_TTL_MINUTES="${JWT_TOKEN_TTL_MINUTES:-60}"
+            export IMAGE_TAG KLIN_API_IMAGE KLIN_WORKER_IMAGE KLIN_FRONTEND_IMAGE
+
+            KLIN_SECRET="$KLIN_SECRET" \
+            JWT_SECRET="$JWT_SECRET" \
+            JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml pull klin_api_development klin_processor_worker_development
+
+            KLIN_SECRET="$KLIN_SECRET" \
+            JWT_SECRET="$JWT_SECRET" \
+            JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d klin_api_development klin_processor_worker_development
+
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml ps klin_api_development klin_processor_worker_development
+
+            if [ -f .env ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+            api_url="${DEPLOY_API_SMOKE_URL:-https://${KLIN_API_HOST:-manyflows.ru}/api/v1/Klin/health/live}"
+            curl -fsS --retry 5 --retry-delay 3 "$api_url" >/dev/null
+
+  deploy-frontend:
+    needs: [check-changes, build-frontend]
+    runs-on: ubuntu-latest
+    if: >
+      always() &&
+      !cancelled() &&
+      needs.check-changes.result == 'success' &&
+      needs.build-frontend.result == 'success' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          needs.check-changes.outputs.frontend_image_changed == 'true'
+        )
+      )
+    environment: production
+
+    steps:
+      - name: Deploy frontend over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_REF: ${{ needs.check-changes.outputs.deploy_ref }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          KLIN_SECRET: ${{ secrets.DEPLOY_KLIN_SECRET }}
+          JWT_SECRET: ${{ secrets.DEPLOY_JWT_SECRET }}
+          JWT_TOKEN_TTL_MINUTES: ${{ vars.DEPLOY_JWT_TOKEN_TTL_MINUTES }}
+          DEPLOY_FRONTEND_SMOKE_URL: ${{ vars.DEPLOY_FRONTEND_SMOKE_URL }}
+          IMAGE_TAG: ${{ needs.check-changes.outputs.image_tag }}
+          KLIN_API_IMAGE: ${{ needs.check-changes.outputs.api_image }}
+          KLIN_WORKER_IMAGE: ${{ needs.check-changes.outputs.worker_image }}
+          KLIN_FRONTEND_IMAGE: ${{ needs.check-changes.outputs.frontend_image }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 30s
+          command_timeout: 15m
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,KLIN_SECRET,JWT_SECRET,JWT_TOKEN_TTL_MINUTES,DEPLOY_FRONTEND_SMOKE_URL,IMAGE_TAG,KLIN_API_IMAGE,KLIN_WORKER_IMAGE,KLIN_FRONTEND_IMAGE
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH"
+            git fetch --all --tags --prune
+            git checkout "$DEPLOY_REF"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+
+            : "${KLIN_SECRET:?DEPLOY_KLIN_SECRET GitHub secret is required}"
+            : "${JWT_SECRET:?DEPLOY_JWT_SECRET GitHub secret is required}"
+            JWT_TOKEN_TTL_MINUTES="${JWT_TOKEN_TTL_MINUTES:-60}"
+            export IMAGE_TAG KLIN_API_IMAGE KLIN_WORKER_IMAGE KLIN_FRONTEND_IMAGE
+
+            KLIN_SECRET="$KLIN_SECRET" \
+            JWT_SECRET="$JWT_SECRET" \
+            JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml pull klin_frontend_development
+
+            KLIN_SECRET="$KLIN_SECRET" \
+            JWT_SECRET="$JWT_SECRET" \
+            JWT_TOKEN_TTL_MINUTES="$JWT_TOKEN_TTL_MINUTES" \
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d klin_frontend_development
+
+            docker compose --env-file .env -f docker/docker-compose.deploy.yml ps klin_frontend_development
+
+            if [ -f .env ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+            frontend_url="${DEPLOY_FRONTEND_SMOKE_URL:-https://${KLIN_FRONTEND_HOST:-manyflows.ru}/}"
+            curl -fsS --retry 5 --retry-delay 3 "$frontend_url" >/dev/null
+
+  deploy-airflow:
+    needs: [check-changes, build-worker, build-airflow]
+    runs-on: ubuntu-latest
+    if: >
+      always() &&
+      !cancelled() &&
+      needs.check-changes.result == 'success' &&
+      (needs.build-worker.result == 'success' || needs.build-worker.result == 'skipped') &&
+      (needs.build-airflow.result == 'success' || needs.build-airflow.result == 'skipped') &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          (
+            needs.check-changes.outputs.dags_changed == 'true' ||
+            needs.check-changes.outputs.app_image_changed == 'true' ||
+            needs.check-changes.outputs.airflow_image_changed == 'true'
+          )
+        )
+      )
+    environment: production
+
+    steps:
+      - name: Deploy Airflow over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_REF: ${{ needs.check-changes.outputs.deploy_ref }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          AIRFLOW_COMPOSE_FILE: ${{ secrets.AIRFLOW_COMPOSE_FILE }}
+          APP_IMAGE_CHANGED: ${{ needs.check-changes.outputs.app_image_changed }}
+          AIRFLOW_IMAGE_CHANGED: ${{ needs.check-changes.outputs.airflow_image_changed }}
+          FORCE_FULL_DEPLOY: ${{ github.event_name == 'workflow_dispatch' && 'true' || 'false' }}
+          IMAGE_TAG: ${{ needs.check-changes.outputs.image_tag }}
+          KLIN_BATCH_RUNNER_IMAGE_BASE: ${{ needs.check-changes.outputs.batch_image }}
+          KLIN_AIRFLOW_IMAGE_BASE: ${{ needs.check-changes.outputs.airflow_image }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          timeout: 30s
+          command_timeout: 15m
+          envs: DEPLOY_PATH,DEPLOY_REF,GHCR_USERNAME,GHCR_TOKEN,AIRFLOW_COMPOSE_FILE,APP_IMAGE_CHANGED,AIRFLOW_IMAGE_CHANGED,FORCE_FULL_DEPLOY,IMAGE_TAG,KLIN_BATCH_RUNNER_IMAGE_BASE,KLIN_AIRFLOW_IMAGE_BASE
           script: |
             set -euo pipefail
             cd "$DEPLOY_PATH"
             AIRFLOW_COMPOSE_FILE="${AIRFLOW_COMPOSE_FILE:-docker/docker-compose.server.yml}"
             git fetch --all --tags --prune
             git checkout "$DEPLOY_REF"
+
             if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
               echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
             fi
 
             if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
-              export IMAGE_TAG
-              export KLIN_API_IMAGE
-              export KLIN_WORKER_IMAGE
-              docker compose --env-file .env -f docker/docker-compose.deploy.yml pull
-              docker compose --env-file .env -f docker/docker-compose.deploy.yml up -d
+              export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE_BASE}:${IMAGE_TAG}"
+              docker pull "$KLIN_BATCH_RUNNER_IMAGE"
             fi
 
-            if [ "$DAGS_CHANGED" = "true" ] || [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
-              if [ "$APP_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
-                export KLIN_BATCH_RUNNER_IMAGE="${KLIN_BATCH_RUNNER_IMAGE}:${IMAGE_TAG}"
-                docker pull "$KLIN_BATCH_RUNNER_IMAGE"
-              fi
-
-              if [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
-                export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE}:${IMAGE_TAG}"
-                docker pull "$KLIN_AIRFLOW_IMAGE"
-              fi
-
-              docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor
+            if [ "$AIRFLOW_IMAGE_CHANGED" = "true" ] || [ "$FORCE_FULL_DEPLOY" = "true" ]; then
+              export KLIN_AIRFLOW_IMAGE="${KLIN_AIRFLOW_IMAGE_BASE}:${IMAGE_TAG}"
+              docker pull "$KLIN_AIRFLOW_IMAGE"
             fi
+
+            docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" up -d --force-recreate airflow-webserver airflow-scheduler airflow-dag-processor
+            docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" ps airflow-webserver airflow-scheduler airflow-dag-processor
+            docker compose --env-file .env -f "$AIRFLOW_COMPOSE_FILE" exec -T airflow-webserver \
+              python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/v2/monitor/health').read()"

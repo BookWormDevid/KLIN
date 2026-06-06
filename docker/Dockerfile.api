@@ -1,11 +1,8 @@
 FROM python:3.10.6-slim AS builder
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-
 WORKDIR /build
 ENV UV_LINK_MODE=copy
-
 RUN python -m venv /opt/venv
-
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /opt/venv/bin/python \
     "aiofiles>=25.1.0" \

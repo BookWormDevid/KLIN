@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { UploadPage } from './UploadPage';
 import { StreamPage } from './StreamPage';
+import { LoginPage } from './LoginPage';
 
 export const App: React.FC = () => {
     const [mode, setMode] = useState<'upload' | 'stream'>('upload');
+    const [loggedIn, setLoggedIn] = useState(() => !!localStorage.getItem('klin_jwt'));
+
+    const handleLoginSuccess = useCallback(() => {
+        setLoggedIn(true);
+    }, []);
+
+    if (!loggedIn) {
+        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+    }
 
     return (
         <div className="app-root">

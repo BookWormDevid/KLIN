@@ -3,11 +3,15 @@ import './BBoxCanvas.css';
 
 interface BBoxCanvasProps {
     videoElement: HTMLVideoElement | null;
-    detections: Array<[number, number, number, number]> | null;
-    label?: string;
+    yoloData: Record<number, number[][]> | null;
+    currentTime: number;
 }
 
-export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({ videoElement, detections, label }) => {
+export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({
+    videoElement,
+    yoloData,
+    currentTime,
+}) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -23,35 +27,41 @@ export const BBoxCanvas: React.FC<BBoxCanvasProps> = ({ videoElement, detections
             canvas.height = videoRect.height;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            if (detections && detections.length > 0) {
-                const videoWidth = videoElement.videoWidth;
-                const videoHeight = videoElement.videoHeight;
-                const scaleX = canvas.width / videoWidth;
-                const scaleY = canvas.height / videoHeight;
+            if (!yoloData) return;
 
-                ctx.strokeStyle = '#ef4444';
-                ctx.lineWidth = 3;
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
-
-                detections.forEach(([x1, y1, x2, y2]) => {
-                    const sx = x1 * scaleX;
-                    const sy = y1 * scaleY;
-                    const sw = (x2 - x1) * scaleX;
-                    const sh = (y2 - y1) * scaleY;
-                    ctx.strokeRect(sx, sy, sw, sh);
-                    ctx.fillRect(sx, sy, sw, sh);
-                    ctx.fillStyle = '#ef4444';
-                    ctx.font = 'bold 12px sans-serif';
-                    ctx.fillText(label || 'АГРЕССИЯ', sx, sy - 5);
-                    ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
-                });
+            const timestamps = Object.keys(yoloData).map(Number).sort((a, b) => a - b);
+            let bestTimestamp: number | null = null;
+            for (const t of timestamps) {
+                if (t <= currentTime) bestTimestamp = t;
+                else break;
             }
-            requestAnimationFrame(draw);
+            if (bestTimestamp === null) return;
+
+            const detections = yoloData[bestTimestamp];
+            if (!detections || detections.length === 0) return;
+
+            const videoWidth = videoElement.videoWidth;
+            const videoHeight = videoElement.videoHeight;
+            const scaleX = canvas.width / videoWidth;
+            const scaleY = canvas.height / videoHeight;
+
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3;
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+
+            detections.forEach(([x1, y1, x2, y2]) => {
+                const sx = x1 * scaleX;
+                const sy = y1 * scaleY;
+                const sw = (x2 - x1) * scaleX;
+                const sh = (y2 - y1) * scaleY;
+                ctx.strokeRect(sx, sy, sw, sh);
+                ctx.fillRect(sx, sy, sw, sh);
+            });
         };
 
         const animation = requestAnimationFrame(draw);
         return () => cancelAnimationFrame(animation);
-    }, [videoElement, detections, label]);
+    }, [videoElement, yoloData, currentTime]);
 
     return <canvas ref={canvasRef} className="bbox-canvas" />;
 };
