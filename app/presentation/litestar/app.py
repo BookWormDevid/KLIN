@@ -25,10 +25,7 @@ from app.presentation.litestar.controllers import api_router
 
 
 logger = logging.getLogger(__name__)
-
-
-# Путь к фронтенду
-FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend"
+FRONTEND_DIST_DIR = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -73,9 +70,8 @@ def create_litestar_app(
             PrometheusController,
             create_static_files_router(
                 path="/frontend",
-                directories=[str(FRONTEND_DIR)],
+                directories=[FRONTEND_DIST_DIR],
                 html_mode=True,
-                name="frontend",
             ),
         ],
         middleware=[prometheus_config.middleware],

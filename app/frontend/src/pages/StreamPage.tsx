@@ -3,53 +3,76 @@ import { VideoPlayer } from '../components/VideoPlayer/VideoPlayer';
 import type { VideoPlayerRef } from '../components/VideoPlayer/VideoPlayer';
 import { BBoxCanvas } from '../components/BBoxCanvas/BBoxCanvas';
 import { useStream } from '../hooks/useStream';
-
-// Заглушка для демонстрации bbox в стриме (случайные прямоугольники)
-const MockBBoxProvider: React.FC<{ videoElement: HTMLVideoElement | null; currentTime: number }> = ({
-    videoElement,
-    currentTime,
-}) => {
-    const [mockYolo, setMockYolo] = useState<Record<number, number[][]> | null>(null);
-
-    useEffect(() => {
-        // Генерируем случайные bbox раз в 2 секунды
-        const interval = setInterval(() => {
-            const t = Math.floor(currentTime);
-            if (t <= 0) return;
-            setMockYolo({
-                [t]: [
-                    [100, 150, 300, 450],
-                    [350, 200, 500, 400],
-                ],
-            });
-        }, 2000);
-        return () => clearInterval(interval);
-    }, [currentTime]);
-
-    return (
-        <BBoxCanvas
-            videoElement={videoElement}
-            yoloData={mockYolo}
-            currentTime={currentTime}
-            label="СТРИМ: АГРЕССИЯ"
-        />
-    );
-};
+import { useServices } from '../core/context/ServicesContext';
 
 export const StreamPage: React.FC = () => {
+    const { streamRepo } = useServices();
     const [cameraUrl, setCameraUrl] = useState('');
     const [cameraId, setCameraId] = useState('');
-    const { streamState, isActive, error, start, stop } = useStream();
+    const { streamState, isActive, error, start, stop } = useStream(streamRepo);
     const playerRef = useRef<VideoPlayerRef>(null);
     const [currentTime, setCurrentTime] = useState(0);
-
-    // Для тестирования без реальной камеры можно использовать тестовое видео
     const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
+
+    // ----- Состояние мигающей надписи -----
+    const [alertVisible, setAlertVisible] = useState(false);
+    const alertTimerRef = useRef<number | null>(null);
+
+    // ----- История событий стрима -----
+    const [streamEvents, setStreamEvents] = useState<
+        { time: string; cameraId: string; label: string; confidence: string }[]
+    >([]);
+
+    // Определяем, есть ли сейчас агрессия
+    const hasAggression =
+        streamState?.last_x3d_label === 'True' ||
+        (streamState?.last_mae_label && streamState.last_mae_label !== 'Normal');
+
+    // Управление видимостью надписи с задержкой
+    useEffect(() => {
+        if (hasAggression) {
+            setAlertVisible(true);
+            if (alertTimerRef.current) {
+                clearTimeout(alertTimerRef.current);
+                alertTimerRef.current = null;
+            }
+        } else {
+            if (alertVisible) {
+                alertTimerRef.current = window.setTimeout(() => {
+                    setAlertVisible(false);
+                }, 3000);
+            }
+        }
+        return () => {
+            if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+        };
+    }, [hasAggression, alertVisible]);
+
+    // Добавление событий в ленту (только MAE, без дублирования подряд)
+    useEffect(() => {
+        if (!streamState) return;
+        const now = new Date().toLocaleTimeString();
+        const camId = streamState.camera_id || 'unknown';
+
+        if (streamState.last_mae_label && streamState.last_mae_label !== 'Normal') {
+            const confidence = streamState.last_mae_confidence != null
+                ? streamState.last_mae_confidence.toFixed(2)
+                : '?';
+            const label = streamState.last_mae_label;
+
+            setStreamEvents(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.cameraId === camId && last.label === label) {
+                    return prev;
+                }
+                return [...prev, { time: now, cameraId: camId, label, confidence }];
+            });
+        }
+    }, [streamState]);
 
     const handleStart = () => {
         if (!cameraUrl.trim()) return;
         const id = cameraId.trim() || `cam_${Date.now()}`;
-        // Имитация: стрим "активен", показываем введённую ссылку как тестовое видео
         setDemoVideoUrl(cameraUrl);
         start(cameraUrl, id);
     };
@@ -86,43 +109,77 @@ export const StreamPage: React.FC = () => {
 
             {error && <div className="stream-error">Ошибка: {error}</div>}
 
-            {streamState && (
-                <div className="stream-info">
-                    <div>Статус: {streamState.state}</div>
-                    <div>ID стрима: {streamState.id}</div>
-                    <div>
-                        X3D: {streamState.last_x3d_label ?? '—'}
-                        {streamState.last_x3d_confidence && ` (${streamState.last_x3d_confidence.toFixed(2)})`}
-                    </div>
-                    <div>
-                        MAE: {streamState.last_mae_label ?? '—'}
-                        {streamState.last_mae_confidence && ` (${streamState.last_mae_confidence.toFixed(2)})`}
-                    </div>
-                    <div>Обнаруженные объекты: {streamState.objects?.join(', ') || '—'}</div>
-                </div>
-            )}
+            <div className="stream-main" style={{ display: 'flex', gap: '1rem' }}>
+                <div style={{ flex: 1 }}>
+                    {streamState && (
+                        <div className="stream-info">
+                            <div>Камера: {streamState.camera_id || '—'}</div>
+                            <div>
+                                Шанс агрессии:{' '}
+                                {streamState.last_x3d_label === 'True'
+                                    ? streamState.last_x3d_confidence != null
+                                        ? (streamState.last_x3d_confidence * 100).toFixed(1) + '%'
+                                        : '—'
+                                    : streamState.last_x3d_label === 'False'
+                                        ? streamState.last_x3d_confidence != null
+                                            ? (streamState.last_x3d_confidence * 100).toFixed(1) + '%'
+                                            : '—'
+                                        : '—'}
+                            </div>
+                            <div>
+                                Вид аномалии:{' '}
+                                {streamState.last_mae_label && streamState.last_mae_label !== 'Normal'
+                                    ? `${streamState.last_mae_label} (${streamState.last_mae_confidence != null
+                                        ? (streamState.last_mae_confidence * 100).toFixed(1) + '%'
+                                        : '—'
+                                    })`
+                                    : 'Не обнаружена'}
+                            </div>
+                        </div>
+                    )}
 
-            {/* Плеер для стрима (показываем тестовое видео) */}
-            <div className="stream-video-container">
-                {isActive && demoVideoUrl ? (
-                    <>
-                        <VideoPlayer
-                            ref={playerRef}
-                            url={demoVideoUrl}
-                            onProgress={setCurrentTime}
-                        />
-                        <MockBBoxProvider
-                            videoElement={playerRef.current?.getVideoElement() || null}
-                            currentTime={currentTime}
-                        />
-                    </>
-                ) : (
-                    <div className="stream-placeholder">
-                        {isActive
-                            ? 'Стрим активен (видео не доступно для плеера)'
-                            : 'Введите URL камеры и нажмите «Запустить стрим»'}
+                    <div className="stream-video-container" style={{ aspectRatio: '16/9', width: '100%', position: 'relative' }}>
+                        {isActive && demoVideoUrl ? (
+                            <>
+                                <VideoPlayer
+                                    ref={playerRef}
+                                    url={demoVideoUrl}
+                                    onProgress={setCurrentTime}
+                                />
+                                {streamState && (
+                                    <BBoxCanvas
+                                        videoElement={playerRef.current?.getVideoElement() || null}
+                                        yoloData={{}}
+                                        currentTime={currentTime}
+                                    />
+                                )}
+                            </>
+                        ) : (
+                            <div className="stream-placeholder">
+                                {isActive
+                                    ? 'Стрим активен (видео не доступно для плеера)'
+                                    : 'Введите URL камеры и нажмите «Запустить стрим»'}
+                            </div>
+                        )}
                     </div>
-                )}
+
+                    {alertVisible && (
+                        <div className="aggression-alert" style={{ marginTop: '0.5rem' }}>
+                            ⚠️ ОБНАРУЖЕНА АГРЕССИЯ ⚠️
+                        </div>
+                    )}
+                </div>
+
+                <div className="stream-events" style={{ width: '320px', maxHeight: '500px', overflowY: 'auto' }}>
+                    <h3>Журнал событий</h3>
+                    {streamEvents.length === 0 && <p>Нет событий</p>}
+                    {streamEvents.slice().reverse().map((ev, i) => (
+                        <div key={i} className="stream-event-entry">
+                            <span className="event-time">[{ev.time}]</span>{' '}
+                            <strong>{ev.cameraId}</strong> – {ev.label} ({ev.confidence})
+                        </div>
+                    ))}
+                </div>
             </div>
         </div>
     );

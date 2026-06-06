@@ -1,10 +1,12 @@
-import React, { useRef, forwardRef, useImperativeHandle } from 'react';
+import { useRef, forwardRef, useImperativeHandle } from 'react';
 import './VideoPlayer.css';
 
 interface VideoPlayerProps {
     url: string | null;
     onProgress?: (currentTime: number) => void;
     onDuration?: (duration: number) => void;
+    muted?: boolean;
+    loop?: boolean;
 }
 
 export interface VideoPlayerRef {
@@ -13,7 +15,7 @@ export interface VideoPlayerRef {
 }
 
 export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
-    ({ url, onProgress, onDuration }, ref) => {
+    ({ url, onProgress, onDuration, muted = false, loop = false }, ref) => {
         const videoRef = useRef<HTMLVideoElement>(null);
 
         useImperativeHandle(ref, () => ({
@@ -31,7 +33,7 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
             if (videoRef.current && onDuration) onDuration(videoRef.current.duration);
         };
 
-        if (!url) return <div className="video-placeholder">Нет видео</div>;
+        if (!url) return <div className="video-placeholder">Нет видеоданных</div>;
 
         return (
             <div className="video-player-wrapper">
@@ -42,6 +44,8 @@ export const VideoPlayer = forwardRef<VideoPlayerRef, VideoPlayerProps>(
                     className="video-element"
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleLoadedMetadata}
+                    muted={muted}
+                    loop={loop}
                 />
             </div>
         );

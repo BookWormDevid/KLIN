@@ -3,8 +3,6 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     networks:
       - web
     environment:
@@ -46,3 +44,17 @@ services:
 networks:
   web:
     name: klin-web
+
+    klin_frontend_development:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.klin_frontend.rule=Host(`localhost`)"
+      - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"

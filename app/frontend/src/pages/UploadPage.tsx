@@ -5,20 +5,14 @@ import { BBoxCanvas } from '../components/BBoxCanvas/BBoxCanvas';
 import { Timeline } from '../components/Timeline/Timeline';
 import { LogPanel } from '../components/LogPanel/LogPanel';
 import { HistoryList } from '../components/HistoryList/HistoryList';
-import { HttpClient } from '../core/infrastructure/http/httpClient';
-import { ApiVideoRepository } from '../core/infrastructure/repositories/apiVideoRepository';
-import { ApiFeedbackRepository } from '../core/infrastructure/repositories/apiFeedbackRepository';
-import { LocalStorageHistoryRepository } from '../core/infrastructure/repositories/localStorageHistoryRepository';
+import { useServices } from '../core/context/ServicesContext';
 import { uploadVideo, getHistory, getAnalysisStatus } from '../core/application/usecases';
 import type { Analysis } from '../core/domain/entities/Analysis';
 import type { HistoryItem } from '../core/domain/entities/HistoryItem';
 
-const http = new HttpClient();
-const videoRepo = new ApiVideoRepository(http);
-const feedbackRepo = new ApiFeedbackRepository(http);
-const historyRepo = new LocalStorageHistoryRepository();
-
 export const UploadPage: React.FC = () => {
+    const { videoRepo, feedbackRepo, historyRepo } = useServices();
+
     const [file, setFile] = useState<File | null>(null);
     const [url, setUrl] = useState('');
     const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -49,7 +43,7 @@ export const UploadPage: React.FC = () => {
         } catch (err) {
             console.error('Failed to load history', err);
         }
-    }, []);
+    }, [videoRepo, historyRepo]);
 
     const loadAnalysisById = async (id: string) => {
         try {
@@ -116,7 +110,7 @@ export const UploadPage: React.FC = () => {
             const historyItem: HistoryItem = {
                 id: analysis.id,
                 timestamp: new Date().toLocaleString(),
-                sourceName: analysis.id.slice(0, 8),
+                sourceName: sourceFile.name,
                 feedbackStatus: null,
             };
             historyRepo.addItem(historyItem);
@@ -158,7 +152,6 @@ export const UploadPage: React.FC = () => {
                                     videoElement={playerRef.current?.getVideoElement() || null}
                                     yoloData={result?.yolo ?? null}
                                     currentTime={currentTime}
-                                    label="АГРЕССИЯ"
                                 />
                                 {duration > 0 && timelineEvents.length > 0 && (
                                     <Timeline
@@ -173,6 +166,28 @@ export const UploadPage: React.FC = () => {
                             <div className="video-placeholder">Выберите видео для предпросмотра</div>
                         )}
                     </div>
+
+                    {/* ----- РЕЗУЛЬТАТ АНАЛИЗА ----- */}
+                    {result && result.state === 'FINISHED' && (
+                        <div className="analysis-result">
+                            {result.x3d && Object.keys(result.x3d).includes('True') ? (
+                                <>
+                                    <p className="result-status aggression">⚠️ Агрессия обнаружена</p>
+                                    {result.mae && result.mae.length > 0 && (
+                                        <div className="mae-details">
+                                            {result.mae.slice(0, 3).map((ev, i) => (
+                                                <div key={i}>
+                                                    {ev.time[0].toFixed(1)}–{ev.time[1].toFixed(1)}с: {ev.answer} (уверенность {ev.confident.toFixed(2)})
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <p className="result-status normal">✓ Агрессия не обнаружена</p>
+                            )}
+                        </div>
+                    )}
 
                     <div className="upload-controls">
                         <input type="file" accept="video/*" onChange={handleFileChange} />

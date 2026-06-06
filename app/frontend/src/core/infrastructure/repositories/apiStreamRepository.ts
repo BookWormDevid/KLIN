@@ -1,5 +1,21 @@
 import { HttpClient } from '../http/httpClient';
 import type { StreamState, StreamProcessingState } from '../../domain/entities/StreamState';
+import { appConfig } from '../../../config/appConfig';
+
+function createMockStreamState(overrides: Partial<StreamState> = {}): StreamState {
+    return {
+        id: overrides.id || `stream-mock-${Date.now()}`,
+        camera_id: overrides.camera_id || 'mock-cam',
+        camera_url: overrides.camera_url || null,
+        state: (overrides.state as StreamProcessingState) || 'PROCESSING',
+        last_x3d_label: 'violence',
+        last_x3d_confidence: 0.87,
+        last_mae_label: 'Fighting',
+        last_mae_confidence: 0.92,
+        objects: ['person'],
+        all_classes: ['Fighting'],
+    };
+}
 
 export class ApiStreamRepository {
     private http: HttpClient;
@@ -9,6 +25,10 @@ export class ApiStreamRepository {
     }
 
     async startStream(cameraUrl: string, cameraId: string): Promise<StreamState> {
+        if (appConfig.useMocks) {
+            await new Promise(res => setTimeout(res, 500));
+            return createMockStreamState({ camera_url: cameraUrl, camera_id: cameraId });
+        }
         const raw = await this.http.post<any>('/Klin_Stream/upload', {
             camera_url: cameraUrl,
             camera_id: cameraId,
@@ -17,23 +37,17 @@ export class ApiStreamRepository {
     }
 
     async stopStream(streamId: string): Promise<void> {
+        if (appConfig.useMocks) return;
         await this.http.post(`/Klin_Stream/${streamId}/stop`, {});
     }
 
     async getStatus(streamId: string): Promise<StreamState> {
+        if (appConfig.useMocks) {
+            await new Promise(res => setTimeout(res, 300));
+            return createMockStreamState({ id: streamId });
+        }
         const raw = await this.http.get<any>(`/Klin_Stream/${streamId}`);
         return this.parseStreamState(raw);
-    }
-
-    // Заглушки для будущей реализации WebSocket
-    isConnected(): boolean {
-        // Пока WebSocket не используется, всегда возвращаем false
-        return false;
-    }
-
-    sendFrame(frameBase64: string): void {
-        // В будущем здесь будет отправка кадра через WebSocket
-        console.warn('sendFrame is not implemented yet');
     }
 
     private parseStreamState(raw: any): StreamState {
