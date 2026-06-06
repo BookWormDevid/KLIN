@@ -223,6 +223,30 @@ jobs:
         if: always()
         run: uv cache prune --ci
 
+  lint:
+    needs: [changes, ruff, typecheck, pylint]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check split lint jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in \
+            "${{ needs.changes.result }}" \
+            "${{ needs.ruff.result }}" \
+            "${{ needs.typecheck.result }}" \
+            "${{ needs.pylint.result }}"
+          do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "A split lint job failed or was cancelled."
+              exit 1
+            fi
+          done
+          echo "Split lint jobs passed or were skipped."
+
   test:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
