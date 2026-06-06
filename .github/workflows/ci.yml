@@ -247,7 +247,7 @@ jobs:
           done
           echo "Split lint jobs passed or were skipped."
 
-  test:
+  pytest:
     needs: changes
     if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
@@ -296,6 +296,28 @@ jobs:
       - name: Minimize uv cache
         if: always()
         run: uv cache prune --ci
+
+  test:
+    needs: [changes, pytest]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check split test jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+          for result in \
+            "${{ needs.changes.result }}" \
+            "${{ needs.pytest.result }}"
+          do
+            if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
+              echo "A split test job failed or was cancelled."
+              exit 1
+            fi
+          done
+          echo "Split test jobs passed or were skipped."
 
   frontend-dependencies:
     needs: changes

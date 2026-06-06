@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     "granian>=2.7.2" \
     "litestar[prometheus,structlog]>=2.21.0" \
     "msgspec>=0.20.0" \
+    "pyjwt>=2.11.0" \
     "python-dotenv>=1.2.1" \
     "sqlalchemy[asyncio]>=2.0.46"
 
