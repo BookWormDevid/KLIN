@@ -55,7 +55,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=klin-web"
-      - "traefik.http.routers.klin_frontend.rule=Host(`${KLIN_FRONTEND_HOST:-localhost}`)"
+      - "traefik.http.routers.klin_frontend.rule=Host(`${KLIN_FRONTEND_HOST:-manyflows.ru}`)"
       - "traefik.http.routers.klin_frontend.entrypoints=websecure"
       - "traefik.http.routers.klin_frontend.tls=true"
       - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"

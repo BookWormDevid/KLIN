@@ -448,6 +448,7 @@ jobs:
               set +a
             fi
             frontend_url="${DEPLOY_FRONTEND_SMOKE_URL:-https://${KLIN_FRONTEND_HOST:-manyflows.ru}/}"
+            echo "Checking frontend smoke URL: $frontend_url"
             curl -fsS --retry 5 --retry-delay 3 "$frontend_url" >/dev/null
 
   deploy-airflow:
