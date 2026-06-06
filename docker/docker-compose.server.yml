@@ -294,14 +294,7 @@ services:
       - /bin/bash
       - -lc
       - >
-        airflow users list | grep -q "^${AIRFLOW_ADMIN_USER:-admin}[[:space:]]" ||
-        airflow users create
-        --username "${AIRFLOW_ADMIN_USER:-admin}"
-        --firstname Admin
-        --lastname User
-        --role Admin
-        --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}"
-        --password "${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
+        airflow users list | grep -q "^${AIRFLOW_ADMIN_USER:-admin}[[:space:]]" || airflow users create --username "${AIRFLOW_ADMIN_USER:-admin}" --firstname Admin --lastname User --role Admin --email "${AIRFLOW_ADMIN_EMAIL:-admin@example.com}" --password "${AIRFLOW_ADMIN_PASSWORD:?AIRFLOW_ADMIN_PASSWORD is required}"
 
   airflow-dag-processor:
     <<: *airflow-common
@@ -311,7 +304,7 @@ services:
       airflow-create-admin:
         condition: service_completed_successfully
     environment:
-      <<: [*airflow-common-env, *airflow-runtime-env]
+      <<: [ *airflow-common-env, *airflow-runtime-env ]
     user: "0:0"
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
@@ -332,7 +325,7 @@ services:
       airflow-create-admin:
         condition: service_completed_successfully
     environment:
-      <<: [*airflow-common-env, *airflow-runtime-env]
+      <<: [ *airflow-common-env, *airflow-runtime-env ]
       AIRFLOW__API__AUTH_BACKENDS: airflow.providers.fab.auth_manager.api.auth.backend.basic_auth,airflow.api.auth.backend.session
       AIRFLOW__WEBSERVER__BASE_URL: https://${AIRFLOW_HOST:-airflow.localhost}
       FORWARDED_ALLOW_IPS: "*"
@@ -373,7 +366,7 @@ services:
       airflow-webserver:
         condition: service_healthy
     environment:
-      <<: [*airflow-common-env, *airflow-runtime-env]
+      <<: [ *airflow-common-env, *airflow-runtime-env ]
     user: "0:0"
     volumes:
       - ../airflow/dags:/opt/airflow/dags:ro
@@ -393,7 +386,23 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-
+  klin_frontend:
+    image: ${KLIN_FRONTEND_IMAGE:-klin-frontend:latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    restart: unless-stopped
+    networks:
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=klin-web"
+      - "traefik.http.routers.klin_frontend.rule=Host(`${KLIN_FRONTEND_HOST:-manyflows.ru}`)"
+      - "traefik.http.routers.klin_frontend.entrypoints=websecure"
+      - "traefik.http.routers.klin_frontend.tls=true"
+      - "traefik.http.services.klin_frontend.loadbalancer.server.port=80"
   traefik:
     image: traefik:v3.6.7
     container_name: klin-traefik
